@@ -91,6 +91,44 @@ cmux_read_screen_response() {  # <dir> <n> <text>
   jq -n --arg t "$3" '{text:$t}' > "$1/responses/$2.out"
 }
 
+cmux_expected_root_hash() {  # <root>
+  local root real
+  root=$1
+  real=$(cd "$root" && pwd -P) || return 1
+  if command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$real" | shasum -a 256 | awk '{print substr($1,1,8)}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$real" | sha256sum | awk '{print substr($1,1,8)}'
+  else
+    printf '%s' "$real" | cksum | awk '{printf "%08x", $1}'
+  fi
+}
+
+cmux_expected_home_label() {  # [home] [root]
+  local home=${1:-$ROOT} root=${2:-$ROOT} marker id prefix
+  marker="$home/.fm-secondmate-home"
+  if [ -f "$marker" ]; then
+    id=$(tr -d '[:space:]' < "$marker" 2>/dev/null)
+    if [ -n "$id" ]; then
+      prefix="2ndmate-$id"
+    else
+      prefix="firstmate"
+    fi
+  else
+    prefix="firstmate"
+  fi
+  printf '%s-%s' "$prefix" "$(cmux_expected_root_hash "$root")"
+}
+
+cmux_expected_scoped_title() {  # <fm-task-label> [home] [root]
+  local label=$1 home=${2:-$ROOT} root=${3:-$ROOT} rest
+  case "$label" in
+    fm-*) rest=${label#fm-} ;;
+    *) rest=$label ;;
+  esac
+  printf 'fm-%s-%s' "$(cmux_expected_home_label "$home" "$root")" "$rest"
+}
+
 cmux_assert_call_order() {
   local log=$1 before=$2 after=$3 msg=$4 before_line after_line
   before_line=$(grep -anF -- "$before" "$log" | head -1 | cut -d: -f1)
@@ -225,20 +263,36 @@ test_normalize_key() {
 }
 
 test_scoped_title_uses_primary_home_label() {
-  local dir out
+  local dir out expected
   dir="$TMP_ROOT/scoped-title-primary"; mkdir -p "$dir"
+  expected=$(cmux_expected_scoped_title fm-task1 "$dir")
   out=$( FM_HOME="$dir" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_scoped_title fm-task1' "$ROOT" )
-  [ "$out" = "fm-firstmate-task1" ] || fail "primary scoped title should be fm-firstmate-task1, got '$out'"
-  pass "fm_backend_cmux_scoped_title: scopes a primary task title with firstmate"
+  [ "$out" = "$expected" ] || fail "primary scoped title should be $expected, got '$out'"
+  pass "fm_backend_cmux_scoped_title: scopes a primary task title with firstmate plus root hash"
 }
 
 test_scoped_title_uses_secondmate_home_label() {
-  local dir out
+  local dir out expected
   dir="$TMP_ROOT/scoped-title-secondmate"; mkdir -p "$dir"
   printf 'sm-one\n' > "$dir/.fm-secondmate-home"
+  expected=$(cmux_expected_scoped_title fm-task1 "$dir")
   out=$( FM_HOME="$dir" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_scoped_title fm-task1' "$ROOT" )
-  [ "$out" = "fm-2ndmate-sm-one-task1" ] || fail "secondmate scoped title should be fm-2ndmate-sm-one-task1, got '$out'"
-  pass "fm_backend_cmux_scoped_title: scopes a secondmate task title with the home marker"
+  [ "$out" = "$expected" ] || fail "secondmate scoped title should be $expected, got '$out'"
+  pass "fm_backend_cmux_scoped_title: scopes a secondmate task title with the home marker plus root hash"
+}
+
+test_scoped_title_changes_with_root_path() {
+  local dir home root_one root_two out_one out_two expected_one expected_two
+  dir="$TMP_ROOT/scoped-title-root-hash"; home="$dir/home"; root_one="$dir/root-one"; root_two="$dir/root-two"
+  mkdir -p "$home" "$root_one" "$root_two"
+  expected_one=$(cmux_expected_scoped_title fm-task1 "$home" "$root_one")
+  expected_two=$(cmux_expected_scoped_title fm-task1 "$home" "$root_two")
+  out_one=$( FM_HOME="$home" FM_ROOT_OVERRIDE="$root_one" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_scoped_title fm-task1' "$ROOT" )
+  out_two=$( FM_HOME="$home" FM_ROOT_OVERRIDE="$root_two" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_scoped_title fm-task1' "$ROOT" )
+  [ "$out_one" = "$expected_one" ] || fail "scoped title should include root-one hash as $expected_one, got '$out_one'"
+  [ "$out_two" = "$expected_two" ] || fail "scoped title should include root-two hash as $expected_two, got '$out_two'"
+  [ "$out_one" != "$out_two" ] || fail "scoped titles should differ for distinct FM_ROOT paths"
+  pass "fm_backend_cmux_scoped_title: includes the resolved FM_ROOT hash in the home label"
 }
 
 # --- dispatch wiring (fm-backend.sh) ------------------------------------------
@@ -342,9 +396,10 @@ SH
 # --- create_task: duplicate refusal, id resolution ---------------------------
 
 test_create_task_refuses_duplicate_label() {
-  local dir fb out status
+  local dir fb out status title
   dir="$TMP_ROOT/dup-task"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "fm-firstmate-dup1"
+  title=$(cmux_expected_scoped_title fm-dup1)
+  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "$title"
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-dup1 /tmp/proj' "$ROOT" 2>&1 )
@@ -355,13 +410,14 @@ test_create_task_refuses_duplicate_label() {
 }
 
 test_create_task_creates_and_parses_ids() {
-  local dir fb out
+  local dir fb out title
   dir="$TMP_ROOT/create-task"; mkdir -p "$dir/responses"
+  title=$(cmux_expected_scoped_title fm-newtask)
   # 1: workspace list --json (pre-create duplicate check) -> no match
   printf '{"workspaces":[]}' > "$dir/responses/1.out"
   # 2: new-workspace (silent on success)
   # 3: workspace list --json (post-create id resolution) -> match
-  cmux_workspace_list_response "$dir" 3 "bbbbbbbb-1111-1111-1111-111111111111" "fm-firstmate-newtask"
+  cmux_workspace_list_response "$dir" 3 "bbbbbbbb-1111-1111-1111-111111111111" "$title"
   # 4: list-panes --json --id-format uuids -> default surface id
   cmux_panes_response "$dir" 4 "cccccccc-2222-2222-2222-222222222222"
   fb=$(make_cmux_fakebin "$dir")
@@ -369,7 +425,7 @@ test_create_task_creates_and_parses_ids() {
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-newtask /tmp/proj' "$ROOT" )
   [ "$out" = "bbbbbbbb-1111-1111-1111-111111111111 cccccccc-2222-2222-2222-222222222222" ] \
     || fail "create_task should echo '<workspace_id> <surface_id>', got '$out'"
-  assert_contains "$(cat "$dir/log")" $'\x1f''new-workspace'$'\x1f''--name'$'\x1f''fm-firstmate-newtask'$'\x1f''--cwd'$'\x1f''/tmp/proj' \
+  assert_contains "$(cat "$dir/log")" $'\x1f''new-workspace'$'\x1f''--name'$'\x1f'"$title"$'\x1f''--cwd'$'\x1f''/tmp/proj' \
     "create_task did not call new-workspace with the right name/cwd"
   assert_contains "$(cat "$dir/log")" $'\x1f''--focus'$'\x1f''false' \
     "create_task did not pass --focus false"
@@ -392,9 +448,10 @@ test_target_ready_fails_when_target_absent() {
 }
 
 test_target_ready_checks_expected_label() {
-  local dir fb
+  local dir fb title
   dir="$TMP_ROOT/ready-label-ok"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "fm-firstmate-label"
+  title=$(cmux_expected_scoped_title fm-label)
+  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "$title"
   # 2: list-panes --json --id-format uuids -> matching surface
   cmux_panes_response "$dir" 2 "bbbbbbbb-1111-1111-1111-111111111111"
   fb=$(make_cmux_fakebin "$dir")
@@ -485,10 +542,11 @@ test_send_key_normalizes_and_targets() {
 }
 
 test_send_key_recovers_stale_target_by_label() {
-  local dir fb
+  local dir fb title
   dir="$TMP_ROOT/sendkey-stale-target"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "fm-firstmate-label"
-  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "fm-firstmate-label"
+  title=$(cmux_expected_scoped_title fm-label)
+  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "$title"
+  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "$title"
   cmux_panes_response "$dir" 3 "dddddddd-3333-3333-3333-333333333333"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
@@ -751,10 +809,11 @@ test_kill_is_best_effort_when_close_workspace_fails() {
 }
 
 test_kill_recovers_stale_target_by_label() {
-  local dir fb
+  local dir fb title
   dir="$TMP_ROOT/kill-stale-target"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "fm-firstmate-label"
-  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "fm-firstmate-label"
+  title=$(cmux_expected_scoped_title fm-label)
+  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "$title"
+  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "$title"
   cmux_panes_response "$dir" 3 "dddddddd-3333-3333-3333-333333333333"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
@@ -772,14 +831,17 @@ test_kill_recovers_stale_target_by_label() {
 # --- list_live: label-based orphan discovery ---------------------------------
 
 test_list_live_filters_by_title_prefix() {
-  local dir fb out
+  local dir fb out title other_title other_root
   dir="$TMP_ROOT/list-live"; mkdir -p "$dir/responses"
+  other_root="$dir/other-root"; mkdir -p "$other_root"
+  title=$(cmux_expected_scoped_title fm-task1)
+  other_title=$(cmux_expected_scoped_title fm-task2 "$ROOT" "$other_root")
   # 1: workspace list --json --id-format uuids -> one in-home task, two unrelated
   cmux_workspace_list_response "$dir" 1 \
-    "aaaaaaaa-0000-0000-0000-000000000000" "fm-firstmate-task1" \
-    "dddddddd-8888-8888-8888-888888888888" "fm-2ndmate-other-task2" \
+    "aaaaaaaa-0000-0000-0000-000000000000" "$title" \
+    "dddddddd-8888-8888-8888-888888888888" "$other_title" \
     "cccccccc-9999-9999-9999-999999999999" "zsh"
-  # 2: list-panes for the fm-firstmate-task1 workspace
+  # 2: list-panes for this home's task1 workspace
   cmux_panes_response "$dir" 2 "bbbbbbbb-1111-1111-1111-111111111111"
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
@@ -819,6 +881,7 @@ test_parse_target
 test_normalize_key
 test_scoped_title_uses_primary_home_label
 test_scoped_title_uses_secondmate_home_label
+test_scoped_title_changes_with_root_path
 test_dispatch_routes_cmux_backend
 test_dispatch_busy_state_unknown_for_cmux
 test_ping_state_ok

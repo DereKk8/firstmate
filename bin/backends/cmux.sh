@@ -12,7 +12,8 @@
 # tmux/herdr/zellij do - there is just "the app" (one running GUI instance).
 # ONE cmux workspace PER TASK (mirrors tmux's one-window-per-task / zellij's
 # one-tab-per-task), with exactly one surface inside it. cmux has no session
-# layer, so workspace titles are scoped by firstmate home inside this adapter.
+# layer, so workspace titles are scoped by firstmate home and installation
+# path inside this adapter.
 #
 # Target string shape: "<workspace_uuid>:<surface_uuid>" - both bare UUIDs
 # with no embedded colon, so splitting on the FIRST colon is trivially
@@ -70,8 +71,9 @@
 #      `restoredSurfaceId ?? UUID()` path scoped to same-run object reuse).
 #      No live app restart of the captain's own content was performed to
 #      confirm this; see docs/cmux-backend.md for the reasoning. Recovery
-#      therefore uses LABEL matching (fm-<id> workspace titles), never a
-#      stored uuid, mirroring herdr's/zellij's own recovery posture.
+#      therefore uses scoped-title matching from the caller-facing fm-<id>
+#      label, never a stored uuid, mirroring herdr's/zellij's own recovery
+#      posture.
 #   6. NO title uniqueness enforcement for workspaces OR surfaces/tabs -
 #      verified live (two workspaces, and two surfaces in one workspace, all
 #      created successfully sharing one title). The duplicate check below is
@@ -257,16 +259,33 @@ fm_backend_cmux_container_ensure() {
   return 0
 }
 
+# fm_backend_cmux_home_label: readable home prefix plus a short hash of the
+# resolved FM_ROOT path. cmux has one app-global workspace namespace, so the
+# path hash distinguishes every firstmate installation, including multiple
+# primary homes. Moving an installation changes this tag and old cmux titles
+# stop matching; task meta already records absolute worktree paths, so repo
+# relocation is already outside the supported recovery contract.
 fm_backend_cmux_home_label() {
-  local marker="$FM_HOME/$FM_BACKEND_CMUX_SECONDMATE_MARKER" id
+  local marker="$FM_HOME/$FM_BACKEND_CMUX_SECONDMATE_MARKER" id prefix root hash
   if [ -f "$marker" ]; then
     id=$(tr -d '[:space:]' < "$marker" 2>/dev/null)
     if [ -n "$id" ]; then
-      printf '2ndmate-%s' "$id"
-      return 0
+      prefix="2ndmate-$id"
+    else
+      prefix="firstmate"
     fi
+  else
+    prefix="firstmate"
   fi
-  printf 'firstmate'
+  root=$(cd "$FM_ROOT" 2>/dev/null && pwd -P) || root=$FM_ROOT
+  if command -v shasum >/dev/null 2>&1; then
+    hash=$(printf '%s' "$root" | shasum -a 256 | awk '{print substr($1,1,8)}')
+  elif command -v sha256sum >/dev/null 2>&1; then
+    hash=$(printf '%s' "$root" | sha256sum | awk '{print substr($1,1,8)}')
+  else
+    hash=$(printf '%s' "$root" | cksum | awk '{printf "%08x", $1}')
+  fi
+  printf '%s-%s' "$prefix" "$hash"
 }
 
 fm_backend_cmux_scoped_title() {  # <fm-task-label>
