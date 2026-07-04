@@ -262,7 +262,7 @@ bin/fm-crew-state.sh <id>     # one-line current-state; reconciles run-step, pan
 
 **Guard**: `bin/fm-guard.sh` warns to stderr when tasks are in flight but beacon is stale or queued wakes are pending. A bordered ●-banner with in-flight count, beacon age, and the exact re-arm command. Drain pending wakes first; arm the watcher if beacon is stale.
 
-**X mode**: if `config/x-mode.env` exists, source it before arming (`[ -f config/x-mode.env ] && . config/x-mode.env`). On `x-mention <id>` check wake, load `fmx-respond`. On `x-mode-error` check wake, report the blocker. Load `x-mode` for setup, cadence, and opt-in/out details.
+**X mode**: if `config/x-mode.env` exists, source it before arming (`[ -f config/x-mode.env ] && . config/x-mode.env`). On `x-mention <request_id>` check wake, load `fmx-respond`. On `x-mode-error` check wake, report the blocker. Load `x-mode` for setup, cadence, and opt-in/out details.
 
 **Away mode**: invoke `/afk` when the captain says `/afk`, says they are going afk, `state/.afk` exists, a message starts with `FM_INJECT_MARK`, or any `state/.subsuper-*` marker is involved.
 Inline facts that must survive without a loaded skill:
