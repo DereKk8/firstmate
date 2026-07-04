@@ -119,6 +119,163 @@ test_bootstrap_line() {
   pass "fm-bootstrap: TANGLE problem line fires only for a feature branch and suppresses repair commands in detect-only mode"
 }
 
+# --- shared lib: dirty classification ---------------------------------------
+
+# fm_primary_tangle_dirty alarms on staged or unstaged changes to tracked files
+# on a named branch; it stays silent for clean, detached HEAD, and untracked-only.
+test_lib_dirty_classification() {
+  local repo out tracked untracked
+  repo=$(make_repo "$TMP_ROOT/dirty-lib-repo")
+  tracked="$repo/tracked.txt"
+  untracked="$repo/untracked.txt"
+
+  # Clean default branch: silent.
+  out=$(fm_primary_tangle_dirty "$repo" || true)
+  [ -z "$out" ] || fail "dirty check alarmed on a clean default branch: '$out'"
+
+  # Detached HEAD (clean): silent.
+  git -C "$repo" checkout -q --detach
+  out=$(fm_primary_tangle_dirty "$repo" || true)
+  [ -z "$out" ] || fail "dirty check alarmed on a clean detached HEAD: '$out'"
+
+  # Detached HEAD with a staged tracked file: still silent (detached is exempt).
+  echo "change" > "$tracked"
+  git -C "$repo" add "$tracked"
+  out=$(fm_primary_tangle_dirty "$repo" || true)
+  [ -z "$out" ] || fail "dirty check alarmed on detached HEAD with staged changes: '$out'"
+  git -C "$repo" checkout -q main -- "$tracked" 2>/dev/null || git -C "$repo" restore --staged "$tracked" 2>/dev/null || true
+  rm -f "$tracked"
+
+  # Back to default branch, untracked file only: silent.
+  git -C "$repo" checkout -q main
+  printf 'untracked\n' > "$untracked"
+  out=$(fm_primary_tangle_dirty "$repo" || true)
+  [ -z "$out" ] || fail "dirty check alarmed with only untracked files: '$out'"
+  rm -f "$untracked"
+
+  # Staged change to a tracked file on default branch: alarms.
+  printf 'tracked content\n' > "$tracked"
+  git -C "$repo" add "$tracked"
+  git -C "$repo" commit -q -m "add tracked file"
+  printf 'modified\n' > "$tracked"
+  git -C "$repo" add "$tracked"
+  out=$(fm_primary_tangle_dirty "$repo" || true)
+  [ -n "$out" ] || fail "dirty check did not alarm on a staged tracked file on default branch"
+  git -C "$repo" restore --staged "$tracked" 2>/dev/null || git -C "$repo" reset HEAD "$tracked" 2>/dev/null || true
+
+  # Unstaged change to a tracked file on default branch: alarms.
+  printf 'unstaged modification\n' > "$tracked"
+  out=$(fm_primary_tangle_dirty "$repo" || true)
+  [ -n "$out" ] || fail "dirty check did not alarm on an unstaged tracked file on default branch"
+  git -C "$repo" checkout -q -- "$tracked"
+
+  pass "fm_primary_tangle_dirty: staged/unstaged tracked files alarm; clean/detached/untracked-only stays silent"
+}
+
+# --- GUARD 2a dirty: fm-guard banner for dirty primary ----------------------
+
+test_guard_dirty_banner() {
+  local repo out tracked untracked
+  repo=$(make_repo "$TMP_ROOT/guard-dirty-repo")
+  tracked="$repo/tracked.txt"
+  untracked="$repo/untracked.txt"
+
+  # Add a tracked file to commit baseline.
+  printf 'baseline\n' > "$tracked"
+  git -C "$repo" add "$tracked"
+  git -C "$repo" commit -q -m "add tracked file"
+
+  # Clean default branch: no dirty alarm.
+  out=$(run_guard "$repo")
+  assert_not_contains "$out" "UNCOMMITTED CHANGES" "guard alarmed on a clean default branch (dirty check)"
+
+  # Untracked-only: no alarm.
+  printf 'stray\n' > "$untracked"
+  out=$(run_guard "$repo")
+  assert_not_contains "$out" "UNCOMMITTED CHANGES" "guard alarmed with only untracked files"
+  rm -f "$untracked"
+
+  # Detached HEAD with staged change: no dirty alarm (detached is exempt).
+  git -C "$repo" checkout -q --detach
+  printf 'staged on detached\n' > "$tracked"
+  git -C "$repo" add "$tracked"
+  out=$(run_guard "$repo")
+  assert_not_contains "$out" "UNCOMMITTED CHANGES" "guard alarmed on dirty detached HEAD"
+  git -C "$repo" restore --staged "$tracked" 2>/dev/null || git -C "$repo" reset HEAD "$tracked" 2>/dev/null || true
+  git -C "$repo" checkout -q -- "$tracked"
+  git -C "$repo" checkout -q main
+
+  # Staged change on default branch: alarm fires.
+  printf 'staged on main\n' > "$tracked"
+  git -C "$repo" add "$tracked"
+  out=$(run_guard "$repo")
+  assert_contains "$out" "UNCOMMITTED CHANGES" "guard did not alarm on staged tracked file on default branch"
+  assert_contains "$out" "staged or unstaged changes to tracked files" "guard banner did not describe the dirty state"
+  assert_contains "$out" "switch -c" "guard banner did not suggest creating a branch"
+  assert_contains "$out" "stash" "guard banner did not offer stash as alternative"
+
+  # Read-only mode: alarm fires but no remediation commands.
+  out=$(FM_GUARD_READ_ONLY=1 run_guard "$repo")
+  assert_contains "$out" "UNCOMMITTED CHANGES" "read-only guard did not keep the dirty alarm"
+  assert_contains "$out" "read-only session must leave restore work" "read-only guard did not explain restore ownership"
+  assert_not_contains "$out" "switch -c" "read-only guard printed a state-changing restore command"
+  git -C "$repo" restore --staged "$tracked" 2>/dev/null || git -C "$repo" reset HEAD "$tracked" 2>/dev/null || true
+  git -C "$repo" checkout -q -- "$tracked"
+
+  pass "fm-guard: dirty-primary banner fires for staged/unstaged tracked files and suppresses repair commands in read-only mode"
+}
+
+# --- GUARD 2b dirty: fm-bootstrap TANGLE line for dirty primary -------------
+
+test_bootstrap_dirty_line() {
+  local repo out tracked untracked
+  repo=$(make_repo "$TMP_ROOT/bootstrap-dirty-repo")
+  tracked="$repo/tracked.txt"
+  untracked="$repo/untracked.txt"
+
+  # Add a tracked file to commit baseline.
+  printf 'baseline\n' > "$tracked"
+  git -C "$repo" add "$tracked"
+  git -C "$repo" commit -q -m "add tracked file"
+
+  # Clean default branch: no TANGLE dirty line.
+  out=$(run_bootstrap "$repo" | grep '^TANGLE:.*tracked' || true)
+  [ -z "$out" ] || fail "bootstrap emitted a dirty TANGLE line on a clean branch: $out"
+
+  # Untracked-only: no TANGLE dirty line.
+  printf 'stray\n' > "$untracked"
+  out=$(run_bootstrap "$repo" | grep '^TANGLE:.*tracked' || true)
+  [ -z "$out" ] || fail "bootstrap emitted a dirty TANGLE line with only untracked files: $out"
+  rm -f "$untracked"
+
+  # Detached HEAD with staged change: no dirty TANGLE line.
+  git -C "$repo" checkout -q --detach
+  printf 'staged on detached\n' > "$tracked"
+  git -C "$repo" add "$tracked"
+  out=$(run_bootstrap "$repo" | grep '^TANGLE:.*tracked' || true)
+  [ -z "$out" ] || fail "bootstrap emitted a dirty TANGLE line on dirty detached HEAD: $out"
+  git -C "$repo" restore --staged "$tracked" 2>/dev/null || git -C "$repo" reset HEAD "$tracked" 2>/dev/null || true
+  git -C "$repo" checkout -q -- "$tracked"
+  git -C "$repo" checkout -q main
+
+  # Staged change on default branch: TANGLE line emitted.
+  printf 'staged on main\n' > "$tracked"
+  git -C "$repo" add "$tracked"
+  out=$(run_bootstrap "$repo" | grep '^TANGLE:.*tracked' || true)
+  assert_contains "$out" "uncommitted changes to tracked files" "bootstrap did not report dirty primary"
+  assert_contains "$out" "switch -c" "bootstrap dirty TANGLE line lacked the create-branch remediation"
+
+  # Detect-only: alarm fires but no state-changing commands.
+  out=$(FM_ROOT_OVERRIDE="$repo" FM_HOME="$repo" FM_BOOTSTRAP_DETECT_ONLY=1 "$ROOT/bin/fm-bootstrap.sh" 2>/dev/null | grep '^TANGLE:.*tracked' || true)
+  assert_contains "$out" "uncommitted changes to tracked files" "detect-only bootstrap did not report dirty primary"
+  assert_contains "$out" "read-only session must leave restore work" "detect-only bootstrap did not explain restore ownership"
+  assert_not_contains "$out" "switch -c" "detect-only bootstrap printed a state-changing restore command"
+  git -C "$repo" restore --staged "$tracked" 2>/dev/null || git -C "$repo" reset HEAD "$tracked" 2>/dev/null || true
+  git -C "$repo" checkout -q -- "$tracked"
+
+  pass "fm-bootstrap: dirty TANGLE line fires for staged/unstaged tracked files and suppresses repair commands in detect-only mode"
+}
+
 # --- GUARD 1a: brief isolation assertion ------------------------------------
 
 # The generated ship brief must carry the isolation assertion AHEAD of the
@@ -215,7 +372,10 @@ test_spawn_isolation_abort() {
 }
 
 test_lib_classification
+test_lib_dirty_classification
 test_guard_banner
+test_guard_dirty_banner
 test_bootstrap_line
+test_bootstrap_dirty_line
 test_brief_assertion_precedes_branch
 test_spawn_isolation_abort

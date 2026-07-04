@@ -3,8 +3,8 @@
 # fm-wake-drain.sh after it empties queued wakes, and by fm-session-start.sh in
 # read-only advisory mode when another session holds the fleet lock.
 # First, always warn if the firstmate primary checkout (FM_ROOT) is on a named
-# non-default branch, because that means firstmate-on-itself work landed in the
-# primary instead of an isolated worktree.
+# non-default branch OR has uncommitted changes to tracked files, because either
+# means firstmate-on-itself work landed in the primary instead of an isolated worktree.
 # Then, if any task is in flight (a state/<id>.meta exists) and the watcher's
 # liveness beacon (state/.last-watcher-beat, touched every poll cycle) is
 # missing or older than FM_GUARD_GRACE seconds, prints a loud, clearly delimited
@@ -28,12 +28,13 @@ case "$READ_ONLY" in 1|true|TRUE|yes|YES) READ_ONLY=1 ;; *) READ_ONLY=0 ;; esac
 # shellcheck source=bin/fm-tangle-lib.sh
 . "$SCRIPT_DIR/fm-tangle-lib.sh"
 
-# Worktree-tangle alarm, checked FIRST and independent of in-flight tasks: the
-# firstmate PRIMARY checkout (FM_ROOT) must stay on its default branch. If a
-# crewmate's branch/commits landed here instead of in its own isolated worktree,
-# the primary is stranded on a feature branch - surface it loudly on the very next
-# fleet action, the same way the watcher-down banner does. Scoped to the primary
-# only: detached HEAD (linked worktrees, secondmate homes) never trips this.
+# Worktree-tangle alarms, checked FIRST and independent of in-flight tasks: the
+# firstmate PRIMARY checkout (FM_ROOT) must stay on its default branch and must
+# not have uncommitted changes to tracked files. Both checks are scoped to the
+# primary only; detached HEAD (linked worktrees, secondmate homes) never trips
+# either.
+
+# TANGLE 1: primary is on a named non-default branch.
 tangle_branch=$(fm_primary_tangle_branch "$FM_ROOT" || true)
 if [ -n "$tangle_branch" ]; then
   tangle_default=$(fm_default_branch "$FM_ROOT" 2>/dev/null || echo main)
@@ -52,6 +53,28 @@ if [ -n "$tangle_branch" ]; then
       printf "●  then re-validate '%s' in a proper isolated worktree.\n" "$tangle_branch"
     fi
     printf '●%s\n' "$trule"
+  } >&2
+fi
+
+# TANGLE 2: primary checkout has uncommitted changes to tracked files.
+tangle_dirty=$(fm_primary_tangle_dirty "$FM_ROOT" || true)
+if [ -n "$tangle_dirty" ]; then
+  drule='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+  {
+    printf '●%s\n' "$drule"
+    printf '●  WORKTREE TANGLE - PRIMARY CHECKOUT HAS UNCOMMITTED CHANGES TO TRACKED FILES\n'
+    printf '●  %s has staged or unstaged changes to tracked files.\n' "$FM_ROOT"
+    printf '●  A crewmate likely modified or staged files in the primary instead of its own worktree.\n'
+    printf '●  The work is SAFE. Never discard it.\n'
+    if [ "$READ_ONLY" -eq 1 ]; then
+      printf '●  This read-only session must leave restore work to the session holding the fleet lock.\n'
+    else
+      printf '●  To preserve: create a branch and commit:\n'
+      printf '●      git -C %s switch -c <branch-name> && git -C %s commit -a -m wip\n' "$FM_ROOT" "$FM_ROOT"
+      printf '●  Or stash:\n'
+      printf '●      git -C %s stash\n' "$FM_ROOT"
+    fi
+    printf '●%s\n' "$drule"
   } >&2
 fi
 

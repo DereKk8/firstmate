@@ -407,9 +407,10 @@ if command -v no-mistakes >/dev/null 2>&1 && ! no_mistakes_compatible; then
   echo "MISSING: no-mistakes (install: $(install_cmd no-mistakes))"
 fi
 gh auth status >/dev/null 2>&1 || echo "NEEDS_GH_AUTH"
-# Worktree-tangle check: the firstmate primary checkout (FM_ROOT) must sit on its
-# default branch, not a feature branch (see fm-tangle-lib.sh). Scoped to the
-# primary only; detached-HEAD worktrees and secondmate homes never trip it.
+# Worktree-tangle checks: the firstmate primary checkout (FM_ROOT) must sit on
+# its default branch and must not have uncommitted changes to tracked files (see
+# fm-tangle-lib.sh). Both checks are scoped to the primary only; detached-HEAD
+# worktrees and secondmate homes never trip either.
 tangle_branch=$(fm_primary_tangle_branch "$FM_ROOT" 2>/dev/null || true)
 if [ -n "$tangle_branch" ]; then
   tangle_default=$(fm_default_branch "$FM_ROOT" 2>/dev/null || echo main)
@@ -417,6 +418,14 @@ if [ -n "$tangle_branch" ]; then
     echo "TANGLE: primary checkout on feature branch '$tangle_branch' (expected '$tangle_default'); the work is safe on that ref - read-only session must leave restore work to the session holding the fleet lock"
   else
     echo "TANGLE: primary checkout on feature branch '$tangle_branch' (expected '$tangle_default'); the work is safe on that ref - restore the primary with: git -C $FM_ROOT checkout $tangle_default, then re-validate the branch in a proper worktree"
+  fi
+fi
+tangle_dirty=$(fm_primary_tangle_dirty "$FM_ROOT" 2>/dev/null || true)
+if [ -n "$tangle_dirty" ]; then
+  if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" = 1 ]; then
+    echo "TANGLE: primary checkout has uncommitted changes to tracked files; the work is safe - read-only session must leave restore work to the session holding the fleet lock"
+  else
+    echo "TANGLE: primary checkout has uncommitted changes to tracked files; the work is safe - create a branch and commit: git -C $FM_ROOT switch -c <branch> && git -C $FM_ROOT commit -a -m wip, or stash: git -C $FM_ROOT stash"
   fi
 fi
 crew=
