@@ -73,4 +73,4 @@ You should see a `fm-<id>` window for the task, live and updating as the crewmat
 
 ## Limitations
 
-None specific to tmux - it is the fully verified reference backend, while Orca is the backend without secondmate support.
+None specific to tmux - it is the fully verified reference backend, while Orca and cmux are the backends without secondmate support.
