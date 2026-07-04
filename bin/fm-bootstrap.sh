@@ -5,8 +5,6 @@
 #          Silent = all good.
 #          Lines: "MISSING: <tool> (install: <command>)", "NEEDS_GH_AUTH",
 #                 "CREW_HARNESS_OVERRIDE: <name>",
-#                 "CREW_DISPATCH: invalid config/crew-dispatch.json - <reason>",
-#                 "CREW_DISPATCH: active config/crew-dispatch.json" plus indented rules,
 #                 "FLEET_SYNC: <repo>: skipped|recovered|STUCK: <detail>",
 #                 "TASKS_AXI: available", "TANGLE: <remediation>",
 #                 "SECONDMATE_SYNC: secondmate <id>: skipped: <reason>",
@@ -15,14 +13,10 @@
 #          A NUDGE_SECONDMATES line lists the RUNNING secondmate windows whose
 #          worktree was fast-forwarded to firstmate's own current default-branch
 #          commit (a purely LOCAL fast-forward, never an origin fetch) AND whose
-#          instruction surface (AGENTS.md, bin/, or .agents/skills/) actually
-#          changed; firstmate nudges each to re-read.
+#          instruction surface actually changed; firstmate nudges each to re-read.
 #          Already-current or no-instruction-change homes are silently left alone.
-#          The secondmate sweep also propagates declared inheritable local config
-#          into each validated live secondmate home.
-#          SECONDMATE_SYNC lines report actionable skipped local-HEAD syncs or
-#          config-inheritance failures for live secondmate homes; no-op/current
-#          and successful updates stay quiet.
+#          SECONDMATE_SYNC lines report actionable skipped local-HEAD syncs for
+#          live secondmate homes; no-op/current and successful updates stay quiet.
 #          A TANGLE line means the firstmate primary checkout (FM_ROOT) is stranded
 #          on a feature branch instead of its default branch - a crewmate's work
 #          landed in the primary instead of its own worktree; restore it per the line.
@@ -30,11 +24,9 @@
 #          "treehouse get --lease" support.
 #          no-mistakes is also MISSING when its installed version is older than
 #          1.31.2.
-#          tasks-axi is the default backlog-management backend. It is reported
-#          as TASKS_AXI: available when compatible (0.1.1+). Without
-#          config/backlog-backend=manual, a missing or incompatible tasks-axi is
-#          reported through the MISSING line and backlog operations fall back to
-#          manual editing until the captain approves installation.
+#          tasks-axi is an OPTIONAL backlog-management capability reported only
+#          when tasks-axi --version is 0.1.1 or newer. It is never a MISSING
+#          line and never prompts an install.
 #          X mode is OPTIONAL and inert unless FM_HOME/.env has a non-empty
 #          FMX_PAIRING_TOKEN. When opted in, bootstrap requires curl+jq, writes
 #          the relay poll shim and 30s cadence config, and prints an FMX line.
@@ -42,15 +34,6 @@
 #          recovered and STUCK clone drift, and prunes gone local branches; it is
 #          bounded by FM_FLEET_SYNC_BOOTSTRAP_TIMEOUT, default 20s.
 #          Set FM_FLEET_PRUNE=0 to skip branch pruning during that refresh.
-#          Set FM_BOOTSTRAP_DETECT_ONLY=1 to skip the three MUTATING sweeps
-#          (secondmate_sync, x_mode_setup, fleet_sync) while still printing
-#          every read-only detect line above; the TANGLE line switches to
-#          advisory-only wording with no checkout command. Used by
-#          fm-session-start.sh's read-only path when another live session holds
-#          the fleet lock, so a second concurrent session never race-mutates
-#          secondmate homes, X-mode artifacts, project clones, or repair
-#          instructions. Unset/0 (the default) runs every sweep exactly as
-#          before - this flag is purely additive.
 #        fm-bootstrap.sh install <tool>...
 #          Install the named tools (only ones the captain approved).
 set -u
@@ -67,12 +50,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 . "$SCRIPT_DIR/fm-tangle-lib.sh"
 # shellcheck source=bin/fm-ff-lib.sh
 . "$SCRIPT_DIR/fm-ff-lib.sh"
-# shellcheck source=bin/fm-config-inherit-lib.sh
-. "$SCRIPT_DIR/fm-config-inherit-lib.sh"
 # shellcheck source=bin/fm-x-lib.sh
 . "$SCRIPT_DIR/fm-x-lib.sh"
-# shellcheck source=bin/fm-backend.sh
-. "$SCRIPT_DIR/fm-backend.sh"
 
 fleet_sync() {
   [ -x "$FM_ROOT/bin/fm-fleet-sync.sh" ] || return 0
@@ -119,11 +98,10 @@ secondmate_sync() {
   # to the primary checkout's current default-branch commit. Purely LOCAL - no
   # fetch, no origin dependency: a secondmate home is a worktree of this same repo
   # and already holds the primary's commit (fm-ff-lib.sh). Emits NUDGE_SECONDMATES:
-  # only for RUNNING secondmates whose instruction surface (AGENTS.md, bin/, or
-  # .agents/skills/) actually changed, so a secondmate already on the primary's
-  # version is never disturbed (AGENTS.md bootstrap + supervision). Mirrors
-  # fm-update's nudge-secondmates: report so firstmate can live-converge the
-  # listed windows.
+  # only for RUNNING secondmates whose instruction surface actually changed, so a
+  # secondmate already on the primary's version is never disturbed (AGENTS.md
+  # bootstrap + supervision). Mirrors fm-update's nudge-secondmates: report so
+  # firstmate can live-converge the listed windows.
   [ -d "$STATE" ] || return 0
   local primary_head
   if ! primary_head=$(primary_head_commit "$FM_ROOT"); then
@@ -147,50 +125,21 @@ secondmate_sync() {
     esac
   done < "$tmp"
   rm -f "$tmp"
-  # Inheritable-config propagation: push the primary's declared LOCAL config
-  # into every VALIDATED live secondmate home swept
-  # above (FF_SEEN_HOMES is exactly that set). config/ is gitignored, so this is a
-  # separate copy from the tracked-files fast-forward; primary-authoritative, so
-  # it runs whether or not the home's tracked files advanced, keeping the fleet
-  # converged on the primary. The propagation helper stays silent on success; a
-  # primary with no inheritable config set and no downstream copy is a no-op.
-  local id home home_real propagated_homes
-  propagated_homes=""
-  while IFS='|' read -r id home _window _meta; do
-    validate_secondmate_home "$id" "$home" || continue
-    home_real="$VALIDATED_HOME"
-    case " $FF_SEEN_HOMES " in
-      *" $home_real "*) ;;
-      *) continue ;;
-    esac
-    case " $propagated_homes " in
-      *" $home_real "*) continue ;;
-    esac
-    propagated_homes="$propagated_homes $home_real"
-    if ! propagate_inheritable_config "$CONFIG" "$home_real/config"; then
-      echo "SECONDMATE_SYNC: secondmate $id: skipped: config inheritance failed"
-    fi
-  done < <(live_secondmate_meta_records "$STATE" "$FM_HOME/data/secondmates.md")
   [ -n "$FF_NUDGE_WINDOWS" ] && echo "NUDGE_SECONDMATES:$FF_NUDGE_WINDOWS"
   return 0
 }
 
 install_cmd() {
   case "$1" in
-    tmux|node|gh|curl|jq|orca) echo "brew install $1  # or the platform's package manager" ;;
+    tmux|node|gh|curl|jq) echo "brew install $1  # or the platform's package manager" ;;
     treehouse) echo "curl -fsSL https://kunchenguid.github.io/treehouse/install.sh | sh" ;;
     no-mistakes) echo "curl -fsSL https://raw.githubusercontent.com/kunchenguid/no-mistakes/main/docs/install.sh | sh" ;;
     gh-axi|chrome-devtools-axi|lavish-axi) echo "npm install -g $1 && $1 setup hooks" ;;
-    tasks-axi) echo "npm install -g tasks-axi" ;;
     *) return 1 ;;
   esac
 }
 
-BACKEND=$(fm_backend_name)
-case "$BACKEND" in
-  orca) TOOLS="orca node gh no-mistakes gh-axi chrome-devtools-axi lavish-axi" ;;
-  *) TOOLS="tmux node gh treehouse no-mistakes gh-axi chrome-devtools-axi lavish-axi" ;;
-esac
+TOOLS="tmux node gh treehouse no-mistakes gh-axi chrome-devtools-axi lavish-axi"
 NO_MISTAKES_MIN_MAJOR=1
 NO_MISTAKES_MIN_MINOR=31
 NO_MISTAKES_MIN_PATCH=2
@@ -319,72 +268,6 @@ EOF
   echo "FMX: X mode on - relay poll armed via state/x-watch.check.sh; 30s watcher cadence in config/x-mode.env"
 }
 
-crew_dispatch_validate() {
-  local file err
-  file="$CONFIG/crew-dispatch.json"
-  [ -f "$file" ] || return 0
-  if ! command -v jq >/dev/null 2>&1; then
-    echo "MISSING: jq (install: $(install_cmd jq))"
-    return 0
-  fi
-  if ! jq -e . "$file" >/dev/null 2>&1; then
-    echo "CREW_DISPATCH: invalid config/crew-dispatch.json - malformed JSON"
-    return 0
-  fi
-  err=$(jq -r '
-    def verified($h): ["claude","codex","opencode","pi","grok"] | index($h);
-    def effort_ok($h; $e):
-      if $e == null then true
-      elif ($e | type) != "string" then false
-      elif $h == "claude" then (["low","medium","high","xhigh","max"] | index($e))
-      elif ($h == "codex" or $h == "grok" or $h == "pi") then (["low","medium","high","xhigh"] | index($e))
-      elif $h == "opencode" then false
-      else true
-      end;
-    def bad_efforts:
-      ([(.rules // [])[]? | select((.use? | type) == "object") | {h: .use.harness, e: .use.effort}]
-        + (if (.default? | type) == "object" then [{h: .default.harness, e: .default.effort}] else [] end))
-      | map(select(.e != null))
-      | map(select((.h | type) == "string" and verified(.h)))
-      | map(select(. as $p | effort_ok($p.h; $p.e) | not))
-      | map("\(.h):\(.e)")
-      | unique;
-    if type != "object" then "top-level value must be an object"
-    elif has("rules") and (.rules | type) != "array" then "rules must be an array"
-    elif [(.rules // [])[]? | select(type != "object")] | length > 0 then "each rule must be an object"
-    elif [(.rules // [])[]? | select((.when? | type) != "string" or (.when | length) == 0)] | length > 0 then "each rule needs non-empty when"
-    elif [(.rules // [])[]? | select((.use? | type) != "object" or (.use.harness? | type) != "string" or (.use.harness | length) == 0)] | length > 0 then "each rule needs use.harness"
-    elif has("default") and (.default | type) != "object" then "default must be an object"
-    elif has("default") and ((.default.harness? | type) != "string" or (.default.harness | length) == 0) then "default needs harness when present"
-    else
-      ([(.rules // [])[]?.use.harness, .default?.harness?]
-        | map(select(. != null))
-        | map(select(. as $h | verified($h) | not))
-        | unique) as $bad_harnesses
-      | if ($bad_harnesses | length) > 0 then "unverified harness: " + ($bad_harnesses | join(", "))
-        elif (bad_efforts | length) > 0 then "invalid effort: " + (bad_efforts | join(", "))
-        else empty
-        end
-    end
-  ' "$file" 2>/dev/null || true)
-  if [ -n "$err" ]; then
-    echo "CREW_DISPATCH: invalid config/crew-dispatch.json - $err"
-    return 0
-  fi
-  jq -r '
-    def profile($p):
-      ($p.harness | tostring)
-      + (if ($p.model? != null) then "/" + ($p.model | tostring)
-         elif ($p.effort? != null) then "/default"
-         else "" end)
-      + (if ($p.effort? != null) then "/" + ($p.effort | tostring) else "" end);
-    (["CREW_DISPATCH: active config/crew-dispatch.json"]
-      + [(.rules // [])[]? | "  rule: " + (.when | tostring) + " -> " + profile(.use)]
-      + (if (.default? | type) == "object" then ["  default: " + profile(.default)] else [] end))
-    | .[]
-  ' "$file"
-}
-
 if [ "${1:-}" = "install" ]; then
   shift
   [ $# -gt 0 ] || { echo "usage: fm-bootstrap.sh install <tool>..." >&2; exit 1; }
@@ -413,26 +296,13 @@ gh auth status >/dev/null 2>&1 || echo "NEEDS_GH_AUTH"
 tangle_branch=$(fm_primary_tangle_branch "$FM_ROOT" 2>/dev/null || true)
 if [ -n "$tangle_branch" ]; then
   tangle_default=$(fm_default_branch "$FM_ROOT" 2>/dev/null || echo main)
-  if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" = 1 ]; then
-    echo "TANGLE: primary checkout on feature branch '$tangle_branch' (expected '$tangle_default'); the work is safe on that ref - read-only session must leave restore work to the session holding the fleet lock"
-  else
-    echo "TANGLE: primary checkout on feature branch '$tangle_branch' (expected '$tangle_default'); the work is safe on that ref - restore the primary with: git -C $FM_ROOT checkout $tangle_default, then re-validate the branch in a proper worktree"
-  fi
+  echo "TANGLE: primary checkout on feature branch '$tangle_branch' (expected '$tangle_default'); the work is safe on that ref - restore the primary with: git -C $FM_ROOT checkout $tangle_default, then re-validate the branch in a proper worktree"
 fi
 crew=
 [ -f "$CONFIG/crew-harness" ] && crew=$(tr -d '[:space:]' < "$CONFIG/crew-harness" || true)
 [ -n "$crew" ] && [ "$crew" != "default" ] && echo "CREW_HARNESS_OVERRIDE: $crew"
-crew_dispatch_validate
-if ! fm_backlog_backend_manual "$CONFIG"; then
-  if fm_tasks_axi_compatible; then
-    echo "TASKS_AXI: available"
-  else
-    echo "MISSING: tasks-axi (install: $(install_cmd tasks-axi))"
-  fi
-fi
-if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ]; then
-  secondmate_sync
-  x_mode_setup
-  fleet_sync
-fi
+fm_tasks_axi_compatible && echo "TASKS_AXI: available"
+secondmate_sync
+x_mode_setup
+fleet_sync
 exit 0

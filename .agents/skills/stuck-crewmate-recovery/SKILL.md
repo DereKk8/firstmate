@@ -2,8 +2,6 @@
 name: stuck-crewmate-recovery
 description: Agent-only playbook for stuck firstmate direct reports. Use after a stale wake, looping pane, repeated confusion, an answered-by-brief question, an unresponsive crewmate, or a failed steer. Escalates from peek, to one-line steer, to harness-specific interrupt, to relaunch with progress, to failed status.
 user-invocable: false
-metadata:
-  internal: true
 ---
 
 # stuck-crewmate-recovery

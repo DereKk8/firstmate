@@ -2,8 +2,6 @@
 name: afk
 description: Enter away-mode supervision. Use when the user invokes /afk (e.g. "/afk", "/afk back in an hour", "going afk"). Sets a durable away-mode flag so the sub-supervisor daemon can self-handle routine wakes and escalate only captain-relevant events as one batched digest, cutting supervision token cost during walk-away stretches. Exit is automatic; any real (unmarked) message returns to full per-wake responsiveness.
 user-invocable: true
-metadata:
-  internal: true
 ---
 
 # afk
@@ -74,7 +72,7 @@ separator, 0x1f), invisible and untypable. This is how firstmate tells a
 daemon escalation apart from a real message in the same pane. The marker
 travels with the message text; it does not rely on harness-level
 typed-vs-injected detection (which is not portable across claude, codex,
-opencode, pi, and grok).
+opencode, and pi).
 
 ## Busy-guard and composer guard
 

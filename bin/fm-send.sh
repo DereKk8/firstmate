@@ -1,21 +1,17 @@
 #!/usr/bin/env bash
-# Send one line of literal text to a crewmate endpoint, then Enter.
-# Usage: fm-send.sh <target> <text...>
-#   <target> may be a bare firstmate task name (fm-xyz), resolved through
-#   this home's state/<id>.meta, or an explicit backend target.
-# Special keys instead of text: fm-send.sh <target> --key Enter
-# Key support is backend-specific: tmux/herdr support Escape, Enter, and C-c;
-# Orca currently supports Enter and C-c only, and rejects Escape.
+# Send one line of literal text to a crewmate window, then Enter.
+# Usage: fm-send.sh <window> <text...>
+#   <window> may be a bare firstmate window name (fm-xyz), resolved through
+#   this home's state/<id>.meta, or explicit session:window.
+# Special keys instead of text: fm-send.sh <window> --key Escape   (or Enter, C-c, ...)
 #
 # Text submission is verified: the line is typed ONCE, then Enter is sent and
-# retried (Enter only, never retyped) until the target backend reports a
-# submitted/cleared composer or an inconclusive send. If a swallowed Enter is
-# positively confirmed (the text is still sitting in the composer after all
-# retries), fm-send exits NON-ZERO so the caller knows the steer did not land
-# instead of silently leaving an unsubmitted instruction.
-# Submission dispatches through the target's recorded backend; the tmux adapter
-# shares its composer/submit core with the away-mode daemon via bin/fm-tmux-lib.sh.
-# Tune with FM_SEND_RETRIES (default 3) / FM_SEND_SLEEP (0.4).
+# retried (Enter only, never retyped) until the composer clears. If a swallowed
+# Enter is positively confirmed (the text is still sitting in the composer after
+# all retries), fm-send exits NON-ZERO so the caller knows the steer did not land
+# instead of silently leaving an unsubmitted instruction (incident afk-invx-i5).
+# The composer/submit logic is shared with the away-mode daemon via
+# bin/fm-tmux-lib.sh. Tune with FM_SEND_RETRIES (default 3) / FM_SEND_SLEEP (0.4).
 # Slash commands, and codex `$...` skill invocations resolved through harness
 # meta, get a longer pre-Enter settle so completion popups do not swallow Enter.
 #
@@ -23,7 +19,7 @@
 # records kind=secondmate, the text is prefixed with the from-firstmate marker
 # (bin/fm-marker-lib.sh) so the secondmate routes its reply via its status file
 # or a status-pointed doc instead of stranding it in chat the main firstmate
-# never reads. A crewmate/scout target, an explicit backend-target escape-hatch
+# never reads. A crewmate/scout target, an explicit session:window escape-hatch
 # target, and the --key path are never marked - their behavior is unchanged.
 # After a successful text submit fm-send pauses FM_SEND_SETTLE seconds (default 1,
 # 0 disables) before returning: a cleared composer only proves the text was
@@ -38,22 +34,40 @@ FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
-# shellcheck source=bin/fm-backend.sh
-. "$SCRIPT_DIR/fm-backend.sh"
+# shellcheck source=bin/fm-tmux-lib.sh
+. "$SCRIPT_DIR/fm-tmux-lib.sh"
 # shellcheck source=bin/fm-marker-lib.sh
 . "$SCRIPT_DIR/fm-marker-lib.sh"
 
 "$SCRIPT_DIR/fm-guard.sh" || true
 
+resolve() {
+  case "$1" in
+    *:*) echo "$1" ;;
+    fm-*)
+      meta="$STATE/${1#fm-}.meta"
+      if [ ! -f "$meta" ]; then
+        echo "error: no metadata for $1 in $STATE; pass session:window to target a window outside this firstmate home" >&2
+        exit 1
+      fi
+      window=$(grep '^window=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+      [ -n "$window" ] || { echo "error: no window recorded in $meta" >&2; exit 1; }
+      echo "$window"
+      ;;
+    *) tmux list-windows -a -F '#{session_name}:#{window_name}' | grep -m1 ":$1\$" \
+         || { echo "error: no window named $1" >&2; exit 1; } ;;
+  esac
+}
+
 RAW_TARGET=$1
-T=$(fm_backend_resolve_selector "$1" "$STATE")
+T=$(resolve "$1")
 shift
 
 # Mark a from-firstmate -> secondmate request. Only a bare `fm-<id>` target,
 # resolved through this home's meta and recording kind=secondmate, is marked: the
 # secondmate then routes its reply via the status path (see fm-marker-lib.sh).
-# An explicit backend target (the escape hatch for endpoints outside this home)
-# and any crewmate/scout target are left unmarked, and so is the --key path.
+# An explicit session:window target (the escape hatch for windows outside this
+# home) and any crewmate/scout target are left unmarked, and so is the --key path.
 MARK_PREFIX=""
 case "$RAW_TARGET" in
   fm-*)
@@ -66,24 +80,20 @@ esac
 
 # Resolve the target's harness from its meta (recorded by fm-spawn), used only to
 # scope the codex `$<skill>` popup-settle below. A bare fm-<id> target carries
-# meta; an explicit backend-target escape hatch has none, so its harness is
+# meta; an explicit session:window escape-hatch target has none, so its harness is
 # unknown and treated as non-codex (the safe default that keeps the fast path).
-# The target's BACKEND comes from fm-<id> meta, or from matching the resolved
-# explicit target back to recorded meta, then falls back to tmux.
 TARGET_HARNESS=""
-TARGET_BACKEND=$(fm_backend_of_selector "$RAW_TARGET" "$T" "$STATE")
-EXPECTED_LABEL=$(fm_backend_expected_label_of_selector "$RAW_TARGET" "$STATE")
 case "$RAW_TARGET" in
   fm-*)
     meta="$STATE/${RAW_TARGET#fm-}.meta"
     if [ -f "$meta" ]; then
-      TARGET_HARNESS=$(fm_meta_get "$meta" harness)
+      TARGET_HARNESS=$(grep '^harness=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
     fi
     ;;
 esac
 
 if [ "${1:-}" = "--key" ]; then
-  fm_backend_send_key "$TARGET_BACKEND" "$T" "$2" "$EXPECTED_LABEL"
+  tmux send-keys -t "$T" "$2"
 else
   # Slash commands open a completion popup in some TUIs (verified on codex);
   # submitting too fast selects nothing, so give the popup time to settle before
@@ -91,8 +101,8 @@ else
   # invocation, so a `$...` message to a codex target gets the same settle. That
   # `$` case is scoped to codex on purpose: unlike `/`, a leading `$` commonly
   # starts ordinary text ("$5/month", "$HOME"), so a universal `$` rule would
-  # needlessly slow plain text to claude/opencode/pi. The target backend's
-  # verified submit retry still backs the settle up either way.
+  # needlessly slow plain text to claude/opencode/pi. The retried Enter in
+  # fm_tmux_submit_core still backs the settle up either way.
   case "$*" in
     /*) settle=1.2 ;;
     \$*)
@@ -104,14 +114,14 @@ else
   sleep_s=${FM_SEND_SLEEP:-0.4}
   # Type once, submit, verify. Lenient: only a positively-confirmed swallow
   # (text still in the composer) is an error; an unreadable pane is assumed sent.
-  verdict=$(fm_backend_send_text_submit "$TARGET_BACKEND" "$T" "$MARK_PREFIX$*" "$retries" "$sleep_s" "$settle" "$EXPECTED_LABEL")
+  verdict=$(fm_tmux_submit_core "$T" "$MARK_PREFIX$*" "$retries" "$sleep_s" "$settle")
   case "$verdict" in
     pending)
       echo "error: text not submitted to $T (Enter swallowed; text left in composer)" >&2
       exit 1
       ;;
     send-failed)
-      echo "error: text not sent to $T ($TARGET_BACKEND send failed)" >&2
+      echo "error: text not sent to $T (tmux send-keys failed)" >&2
       exit 1
       ;;
   esac

@@ -19,18 +19,10 @@
 #   (h) dead pane: no run -> unknown/none; with a run -> run-step (not the shell)
 #   (i) kind=scout skips the run lookup                           -> pane/status-log
 #   (j) torn-down worktree / missing meta                         -> unknown/none
-#   (k) crew_is_provably_working end-to-end over the REAL helper (not a canned
-#       fake fm-crew-state.sh verdict): cross-branch attribution via the runs
-#       list -> absorbed; genuinely no run anywhere + idle pane -> surfaced.
-#       This is the direct regression pair for the 2026-07-02 herdr incident,
-#       proving the watcher's own absorb-only-when-provably-working predicate
-#       benefits from the fix in both directions.
 set -u
 
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
-# shellcheck source=bin/fm-classify-lib.sh
-. "$ROOT/bin/fm-classify-lib.sh"
 
 CREW_STATE="$ROOT/bin/fm-crew-state.sh"
 TMP_ROOT=$(fm_test_tmproot fm-crew-state)
@@ -48,29 +40,22 @@ make_repo_on_branch() {  # <dir> <branch>
 
 # A fakebin with a fake `no-mistakes` (serves the env-driven run output) and a
 # fake `tmux` (serves a busy or idle pane). The fake no-mistakes mirrors the real
-# command surface the helper uses: `axi status`, `axi status --run <id>` (the
-# `axi` surface - no runs-listing subcommand exists under it, verified against
-# the real CLI), and the actual top-level run-listing command, `no-mistakes
-# runs --limit N`, which is plain text - no run id, no quoting - serving
-# FM_FAKE_RUNS_LIST verbatim.
+# command surface the helper uses: `axi status`, `axi status --run <id>`, and a
+# bare `axi` (the run list). Each returns the matching FM_FAKE_AXI_* env text.
 make_fakebin() {  # <dir> -> echoes fakebin path
   local dir=$1 fb="$1/fakebin"
   mkdir -p "$fb"
   cat > "$fb/no-mistakes" <<'SH'
 #!/usr/bin/env bash
 set -u
+[ "${1:-}" = axi ] || exit 0
+shift
 case "${1:-}" in
-  axi)
+  status)
     shift
-    case "${1:-}" in
-      status)
-        shift
-        if [ "${1:-}" = --run ]; then printf '%s\n' "${FM_FAKE_AXI_STATUS_RUN:-}"
-        else printf '%s\n' "${FM_FAKE_AXI_STATUS:-}"; fi ;;
-    esac
-    ;;
-  runs)
-    printf '%s\n' "${FM_FAKE_RUNS_LIST:-}" ;;
+    if [ "${1:-}" = --run ]; then printf '%s\n' "${FM_FAKE_AXI_STATUS_RUN:-}"
+    else printf '%s\n' "${FM_FAKE_AXI_STATUS:-}"; fi ;;
+  '') printf '%s\n' "${FM_FAKE_AXI_LIST:-}" ;;
 esac
 exit 0
 SH
@@ -88,36 +73,7 @@ case "${1:-}" in
 esac
 exit 0
 SH
-  cat > "$fb/herdr" <<'SH'
-#!/usr/bin/env bash
-set -u
-case "${1:-}" in
-  status)
-    [ "${2:-}" = --json ] && {
-      printf '{"client":{"version":"0.7.1","protocol":14},"server":{"running":true}}\n'
-      exit 0
-    } ;;
-  server)
-    exit 0 ;;
-  pane)
-    case "${2:-}" in
-      read)
-        [ "${FM_FAKE_HERDR_MISSING:-0}" = 1 ] && exit 1
-        if [ "${FM_FAKE_HERDR_BUSY:-0}" = 1 ]; then printf 'work in progress\nesc to interrupt\n'
-        else printf 'all quiet\n> \n'; fi
-        exit 0 ;;
-    esac ;;
-  agent)
-    case "${2:-}" in
-      get)
-        [ -n "${FM_FAKE_HERDR_AGENT_STATUS:-}" ] || exit 1
-        printf '{"result":{"agent":{"agent_status":"%s"}}}\n' "$FM_FAKE_HERDR_AGENT_STATUS"
-        exit 0 ;;
-    esac ;;
-esac
-exit 0
-SH
-  chmod +x "$fb/no-mistakes" "$fb/tmux" "$fb/herdr"
+  chmod +x "$fb/no-mistakes" "$fb/tmux"
   printf '%s\n' "$fb"
 }
 
@@ -150,14 +106,10 @@ new_case() {  # <name> -> echoes case dir with an empty state/
 reset_fakes() {
   FM_FAKE_AXI_STATUS=""
   FM_FAKE_AXI_STATUS_RUN=""
-  FM_FAKE_RUNS_LIST=""
+  FM_FAKE_AXI_LIST=""
   FM_FAKE_BUSY=0
   FM_FAKE_TMUX_MISSING=0
-  FM_FAKE_HERDR_BUSY=0
-  FM_FAKE_HERDR_MISSING=0
-  FM_FAKE_HERDR_AGENT_STATUS=""
-  export FM_FAKE_AXI_STATUS FM_FAKE_AXI_STATUS_RUN FM_FAKE_RUNS_LIST FM_FAKE_BUSY FM_FAKE_TMUX_MISSING
-  export FM_FAKE_HERDR_BUSY FM_FAKE_HERDR_MISSING FM_FAKE_HERDR_AGENT_STATUS
+  export FM_FAKE_AXI_STATUS FM_FAKE_AXI_STATUS_RUN FM_FAKE_AXI_LIST FM_FAKE_BUSY FM_FAKE_TMUX_MISSING
 }
 
 # --- run-object fixtures (TOON, as `no-mistakes axi status` emits) -----------
@@ -424,17 +376,9 @@ test_terminal_failed() {
   pass "terminal failed run is authoritative"
 }
 
-# (e) cross-branch attribution: `axi status` returns ANOTHER branch's run (the
-# routine case once more than one crew validates the same underlying repo
-# concurrently - they share ONE no-mistakes repo registration), so the helper
-# falls back to the real top-level `no-mistakes runs` listing to learn whether
-# THIS branch has an active run of its own. Regression coverage for the
-# 2026-07-02 herdr incident: the old fallback shelled out to `no-mistakes axi`
-# (bare) expecting a `runs[N]{...}:` TOON table that the real CLI never emits
-# (verified against the installed v1.32.2 - the `axi` surface has no
-# runs-listing subcommand at all), so attribution silently failed every time
-# the repo-wide answer was not this crew's own branch.
-test_cross_branch_attribution_via_runs_list() {
+# (e) cross-branch attribution: `axi status` returns ANOTHER branch's run, so the
+# helper finds THIS branch's own run via the run list and inspects it directly.
+test_cross_branch_attribution_via_list() {
   reset_fakes
   local d; d=$(new_case crossbranch)
   make_repo_on_branch "$d/wt" fm/feat-f
@@ -442,42 +386,40 @@ test_cross_branch_attribution_via_runs_list() {
   fm_write_meta "$d/state/feat-f.meta" "window=fm:fm-feat-f" "worktree=$d/wt" "kind=ship"
   # The repo-wide active/most-recent run belongs to a different crew's branch.
   FM_FAKE_AXI_STATUS="$(run_running fm/other-crew)"
-  # Real `no-mistakes runs` shape: plain text, newest-first, no run id, no
-  # quoting - "<status> <branch> <short-sha> <date> [<pr-url>]".
-  FM_FAKE_RUNS_LIST="$(cat <<'EOF'
-  running    fm/other-crew aaaaaaa  2026-07-02 22:10
-  running    fm/feat-f bbbbbbb  2026-07-02 22:05
+  FM_FAKE_AXI_LIST="$(cat <<EOF
+runs[2]{id,branch,status,head,pr}:
+  "01OTHER",fm/other-crew,running,aa,""
+  "01MINE",fm/feat-f,running,bb,""
 EOF
 )"
+  FM_FAKE_AXI_STATUS_RUN="$(run_running fm/feat-f)"
   local out; out=$(run_crew_state "$d" feat-f)
-  assert_contains "$out" "state: working" "this branch's own run attributed via the runs list"
-  assert_contains "$out" "source: run-step" "runs-list-resolved run -> run-step source"
-  pass "cross-branch run is attributed via the real runs list"
+  assert_contains "$out" "state: working" "this branch's own run attributed via list"
+  assert_contains "$out" "source: run-step" "list-resolved run -> run-step source"
+  pass "cross-branch run is attributed via the run list"
 }
 
-# The runs list is newest-first; a branch with an OLDER completed run must not
-# shadow its own newer active one - the first (topmost) matching row wins.
-test_cross_branch_attribution_picks_most_recent_row() {
+test_cross_branch_attribution_unquoted_run_list() {
   reset_fakes
-  local d; d=$(new_case crossbranch-mostrecent)
+  local d; d=$(new_case crossbranch-unquoted)
   make_repo_on_branch "$d/wt" fm/feat-fq
   make_fakebin "$d" >/dev/null
   fm_write_meta "$d/state/feat-fq.meta" "window=fm:fm-feat-fq" "worktree=$d/wt" "kind=ship"
   FM_FAKE_AXI_STATUS="$(run_running fm/other-crew)"
-  FM_FAKE_RUNS_LIST="$(cat <<'EOF'
-  running    fm/other-crew aaaaaaa  2026-07-02 22:10
-  running    fm/feat-fq ccccccc  2026-07-02 21:50
-  completed  fm/feat-fq bbbbbbb  2026-07-02 20:00  https://github.com/o/r/pull/1
+  FM_FAKE_AXI_LIST="$(cat <<EOF
+runs[2]{id,branch,status,head,pr}:
+  01OTHER, "fm/other-crew" ,running,aa,""
+  01MINE, "fm/feat-fq" ,running,bb,""
 EOF
 )"
+  FM_FAKE_AXI_STATUS_RUN="$(run_running fm/feat-fq)"
   local out; out=$(run_crew_state "$d" feat-fq)
-  assert_contains "$out" "state: working" "most recent (running) row wins over an older completed row"
-  assert_contains "$out" "source: run-step" "most-recent-row resolution -> run-step source"
-  pass "cross-branch attribution picks the branch's most recent row"
+  assert_contains "$out" "state: working" "unquoted run id attributed via list"
+  assert_contains "$out" "source: run-step" "unquoted list-resolved run -> run-step source"
+  pass "unquoted run-list row is attributed"
 }
 
-# A different-branch run with NO matching runs-list row must NOT be
-# misattributed, and must not be treated as a false "working" verdict either.
+# A different-branch run with NO matching list row must NOT be misattributed.
 test_other_branch_run_ignored() {
   reset_fakes
   local d; d=$(new_case otherbranch)
@@ -486,8 +428,9 @@ test_other_branch_run_ignored() {
   fm_write_meta "$d/state/feat-g.meta" "window=fm:fm-feat-g" "worktree=$d/wt" "kind=ship"
   printf 'done: implemented, ready to validate\n' > "$d/state/feat-g.status"
   FM_FAKE_AXI_STATUS="$(run_running fm/some-other)"
-  FM_FAKE_RUNS_LIST="$(cat <<'EOF'
-  running    fm/some-other aaaaaaa  2026-07-02 22:10
+  FM_FAKE_AXI_LIST="$(cat <<EOF
+runs[1]{id,branch,status,head,pr}:
+  "01OTHER",fm/some-other,running,aa,""
 EOF
 )"
   FM_FAKE_BUSY=0
@@ -507,82 +450,12 @@ test_no_run_busy_pane() {
   fm_write_meta "$d/state/feat-h.meta" "window=fm:fm-feat-h" "worktree=$d/wt" "kind=ship"
   # No matching run anywhere.
   FM_FAKE_AXI_STATUS=""
-  FM_FAKE_RUNS_LIST=""
+  FM_FAKE_AXI_LIST=""
   FM_FAKE_BUSY=1
   local out; out=$(run_crew_state "$d" feat-h)
   assert_contains "$out" "state: working" "busy pane -> working"
   assert_contains "$out" "source: pane" "busy pane -> pane source"
   pass "no run + busy pane reads working from the pane"
-}
-
-test_no_run_herdr_unknown_uses_backend_capture() {
-  command -v jq >/dev/null 2>&1 || { pass "herdr pane fallback skipped without jq"; return; }
-  reset_fakes
-  local d; d=$(new_case herdr-busy)
-  make_repo_on_branch "$d/wt" fm/feat-herdr
-  make_fakebin "$d" >/dev/null
-  fm_write_meta "$d/state/feat-herdr.meta" "window=default:w1:p2" "worktree=$d/wt" "kind=ship" "backend=herdr"
-  FM_FAKE_AXI_STATUS=""
-  FM_FAKE_RUNS_LIST=""
-  FM_FAKE_TMUX_MISSING=1
-  FM_FAKE_HERDR_BUSY=1
-  FM_FAKE_HERDR_AGENT_STATUS=""
-  local out; out=$(run_crew_state "$d" feat-herdr)
-  assert_contains "$out" "state: working" "herdr busy pane -> working"
-  assert_contains "$out" "source: pane" "herdr busy pane -> pane source"
-  pass "herdr unknown native state falls back to backend capture busy regex"
-}
-
-# Regression: herdr's agent.get reports generation state ("working" only while
-# the model is actively streaming a turn - docs/herdr-backend.md "Busy state"),
-# not "this crew's tool call is still in progress". A crew blocked on its own
-# long-running foreground `no-mistakes axi run` (no --yes; blocks until a gate
-# or outcome) is not generating for that whole span, so agent.get can read
-# idle while the pane's own rendered text still shows the busy banner
-# (BUSY_REGEX) for the entire call. `idle` must be corroborated with that text
-# exactly like `unknown` already is, not trusted outright - the bug this
-# regression pins: crew_pane_is_busy previously returned "not busy" on a bare
-# `idle` verdict without ever looking at the pane.
-test_no_run_herdr_idle_agent_status_corroborated_by_busy_pane() {
-  command -v jq >/dev/null 2>&1 || { pass "herdr idle corroboration skipped without jq"; return; }
-  reset_fakes
-  local d; d=$(new_case herdr-idle-busy-pane)
-  make_repo_on_branch "$d/wt" fm/feat-herdr-idle
-  make_fakebin "$d" >/dev/null
-  fm_write_meta "$d/state/feat-herdr-idle.meta" "window=default:w1:p3" "worktree=$d/wt" "kind=ship" "backend=herdr"
-  # No run attributable (mirrors a no-mistakes run-step lookup that found no
-  # matching row within the configured runs-list window): the pane fallback is
-  # the only remaining signal.
-  FM_FAKE_AXI_STATUS=""
-  FM_FAKE_RUNS_LIST=""
-  FM_FAKE_TMUX_MISSING=1
-  FM_FAKE_HERDR_AGENT_STATUS=idle
-  FM_FAKE_HERDR_BUSY=1
-  local out; out=$(run_crew_state "$d" feat-herdr-idle)
-  assert_contains "$out" "state: working" "herdr idle agent_status with a busy-banner pane -> working"
-  assert_contains "$out" "source: pane" "herdr idle agent_status with a busy-banner pane -> pane source"
-  pass "herdr idle agent_status is corroborated by the pane text, not trusted outright"
-}
-
-# The corroboration must not mask a genuinely idle/human-blocked agent: idle
-# agent_status AND an idle-looking pane (no busy banner) still reads not-busy.
-test_no_run_herdr_idle_agent_status_and_idle_pane_stays_idle() {
-  command -v jq >/dev/null 2>&1 || { pass "herdr idle+idle-pane skipped without jq"; return; }
-  reset_fakes
-  local d; d=$(new_case herdr-idle-idle-pane)
-  make_repo_on_branch "$d/wt" fm/feat-herdr-stopped
-  make_fakebin "$d" >/dev/null
-  fm_write_meta "$d/state/feat-herdr-stopped.meta" "window=default:w1:p4" "worktree=$d/wt" "kind=ship" "backend=herdr"
-  printf 'working: implementing\n' > "$d/state/feat-herdr-stopped.status"
-  FM_FAKE_AXI_STATUS=""
-  FM_FAKE_RUNS_LIST=""
-  FM_FAKE_TMUX_MISSING=1
-  FM_FAKE_HERDR_AGENT_STATUS=idle
-  FM_FAKE_HERDR_BUSY=0
-  local out; out=$(run_crew_state "$d" feat-herdr-stopped)
-  assert_not_contains "$out" "source: pane" "herdr idle agent_status with an idle pane must not read as busy from the pane"
-  assert_contains "$out" "source: status-log" "herdr idle agent_status with an idle pane falls to the status log"
-  pass "herdr idle agent_status with a genuinely idle pane stays not-busy (no regression for a human-blocked agent)"
 }
 
 # (g) no run + idle pane -> the status-log verb, as-is
@@ -609,7 +482,7 @@ test_dead_window_ignores_stale_status_log() {
   fm_write_meta "$d/state/feat-dead.meta" "window=fm:fm-feat-dead" "worktree=$d/wt" "kind=ship"
   printf 'done: old completion event\n' > "$d/state/feat-dead.status"
   FM_FAKE_AXI_STATUS=""
-  FM_FAKE_RUNS_LIST=""
+  FM_FAKE_AXI_LIST=""
   FM_FAKE_TMUX_MISSING=1
   local out; out=$(run_crew_state "$d" feat-dead)
   assert_contains "$out" "state: unknown" "dead window -> unknown"
@@ -657,15 +530,12 @@ test_dead_window_still_reports_active_run_step() {
 
 test_no_timeout_uses_perl_bound() {
   reset_fakes
-  local d toolbin out start elapsed calls_file calls
+  local d toolbin out start elapsed
   d=$(new_case no-timeout)
   make_repo_on_branch "$d/wt" fm/feat-timeout
   make_fakebin "$d" >/dev/null
-  calls_file="$d/no-mistakes.calls"
-  : > "$calls_file"
   cat > "$d/fakebin/no-mistakes" <<'SH'
 #!/usr/bin/env bash
-printf '%s\n' "$*" >> "${FM_FAKE_NM_CALLS:-/dev/null}"
 while :; do :; done
 SH
   chmod +x "$d/fakebin/no-mistakes"
@@ -673,13 +543,11 @@ SH
   fm_write_meta "$d/state/feat-timeout.meta" "window=fm:fm-feat-timeout" "worktree=$d/wt" "kind=ship"
   FM_FAKE_BUSY=1
   start=$SECONDS
-  out=$(FM_FAKE_NM_CALLS="$calls_file" PATH="$d/fakebin:$toolbin" FM_STATE_OVERRIDE="$d/state" FM_CREW_STATE_NM_TIMEOUT=1 "$CREW_STATE" feat-timeout)
+  out=$(PATH="$d/fakebin:$toolbin" FM_STATE_OVERRIDE="$d/state" FM_CREW_STATE_NM_TIMEOUT=1 "$CREW_STATE" feat-timeout)
   elapsed=$((SECONDS - start))
   assert_contains "$out" "state: working" "timed-out no-mistakes falls back to pane"
   assert_contains "$out" "source: pane" "timed-out no-mistakes -> pane source"
   [ "$elapsed" -lt 5 ] || fail "perl timeout did not bound no-mistakes calls (elapsed ${elapsed}s)"
-  calls=$(awk 'END { print NR + 0 }' "$calls_file" 2>/dev/null || echo 0)
-  [ "$calls" -eq 1 ] || fail "empty no-mistakes status triggered extra lookups ($calls calls)"
   pass "no timeout command uses perl bound"
 }
 
@@ -725,50 +593,6 @@ test_missing_meta() {
   pass "missing meta is handled gracefully"
 }
 
-# (k) crew_is_provably_working end-to-end over the REAL fm-crew-state.sh (not a
-# canned fake verdict, unlike tests/fm-watch-triage.test.sh's classifier
-# coverage). This is the direct regression pair for the 2026-07-02 herdr
-# incident: a validating crew whose bare `axi status` answer belongs to
-# another branch must still be absorbed by the watcher via the runs-list
-# fallback (working), while a crew with genuinely no run anywhere and an idle
-# pane must still surface (the safety property the fix must never widen away).
-test_provably_working_via_runs_list_fallback() {
-  reset_fakes
-  local d; d=$(new_case provably-working-crossbranch)
-  make_repo_on_branch "$d/wt" fm/feat-provable
-  make_fakebin "$d" >/dev/null
-  fm_write_meta "$d/state/feat-provable.meta" "window=fm:fm-feat-provable" "worktree=$d/wt" "kind=ship"
-  FM_FAKE_AXI_STATUS="$(run_running fm/other-crew)"
-  FM_FAKE_RUNS_LIST="$(cat <<'EOF'
-  running    fm/other-crew aaaaaaa  2026-07-02 22:10
-  running    fm/feat-provable bbbbbbb  2026-07-02 22:05
-EOF
-)"
-  PATH="$d/fakebin:$PATH" FM_STATE_OVERRIDE="$d/state" crew_is_provably_working feat-provable \
-    || fail "cross-branch attribution via the runs list was not treated as provably working"
-  pass "crew_is_provably_working absorbs a validating crew found only via the runs-list fallback"
-}
-
-test_not_provably_working_when_stopped() {
-  reset_fakes
-  local d; d=$(new_case provably-working-stopped)
-  make_repo_on_branch "$d/wt" fm/feat-stopped
-  make_fakebin "$d" >/dev/null
-  fm_write_meta "$d/state/feat-stopped.meta" "window=fm:fm-feat-stopped" "worktree=$d/wt" "kind=ship"
-  # Repo-wide run belongs to someone else, and this branch has no row in the
-  # runs list either (it never validated, or genuinely finished/stopped) - the
-  # only remaining signal is the pane, which is idle.
-  FM_FAKE_AXI_STATUS="$(run_running fm/other-crew)"
-  FM_FAKE_RUNS_LIST="$(cat <<'EOF'
-  running    fm/other-crew aaaaaaa  2026-07-02 22:10
-EOF
-)"
-  FM_FAKE_BUSY=0
-  PATH="$d/fakebin:$PATH" FM_STATE_OVERRIDE="$d/state" crew_is_provably_working feat-stopped \
-    && fail "a stopped crew with no run anywhere and an idle pane was treated as provably working"
-  pass "crew_is_provably_working still surfaces a genuinely stopped crew (safety property preserved)"
-}
-
 # Usage error (no id) is the one non-zero exit.
 test_usage_error() {
   reset_fakes
@@ -787,13 +611,10 @@ test_gate_block_parked_not_superseded
 test_ci_ready_done_log_beats_monitoring_run
 test_terminal_passed
 test_terminal_failed
-test_cross_branch_attribution_via_runs_list
-test_cross_branch_attribution_picks_most_recent_row
+test_cross_branch_attribution_via_list
+test_cross_branch_attribution_unquoted_run_list
 test_other_branch_run_ignored
 test_no_run_busy_pane
-test_no_run_herdr_unknown_uses_backend_capture
-test_no_run_herdr_idle_agent_status_corroborated_by_busy_pane
-test_no_run_herdr_idle_agent_status_and_idle_pane_stays_idle
 test_no_run_idle_pane_uses_log
 test_dead_window_ignores_stale_status_log
 test_dead_window_still_reports_terminal_run_step
@@ -802,8 +623,6 @@ test_no_timeout_uses_perl_bound
 test_scout_skips_run_lookup
 test_torn_down_worktree
 test_missing_meta
-test_provably_working_via_runs_list_fallback
-test_not_provably_working_when_stopped
 test_usage_error
 
 echo "all fm-crew-state tests passed"

@@ -12,19 +12,6 @@
 #                                and FMX_THREAD_MAX (env wins over .env)
 #   fmx_auth_header_file       - write the bearer header to a 0600 temp file
 #   fmx_split_thread <max> <cap> - split a reply (stdin) into a numbered thread
-#   fmx_image_payload_file <path> <client> <payload-file> - encode one image
-#                                attachment to a JSON file and print preview JSON
-#   fmx_reply_payload_json <request_id> <chunks> <n> [image-json-file]
-#                                - build the answer/followup POST body
-#   fmx_reply_outbox_json <request_id> <chunks> <n> <followup-0|1> [image-preview-json]
-#                                - build the dry-run record without image bytes
-#   fmx_post_json <endpoint> <payload-file> [body-file] - POST JSON to the relay,
-#                                printing HTTP code and writing response body
-#   fmx_meta_get <meta> <key>  - read one key=value line from a task meta file
-#   fmx_meta_link_set <meta> <request_id> <epoch> [followups] - (re)write the
-#                                X-request link, defaulting followups to 0
-#   fmx_meta_followups_set <meta> <n> - rewrite just the follow-up counter
-#   fmx_meta_link_clear <meta> - remove the X-request link entirely
 # Callers must have FM_HOME set before calling fmx_load_config.
 
 # Read the value of KEY from a .env-style file: last assignment wins; tolerates a
@@ -140,170 +127,16 @@ fmx_auth_header_file() {
   printf '%s\n' "$file"
 }
 
-fmx_image_media_type_from_path() {
-  local path=$1 lower detected
-  lower=$(printf '%s' "$path" | tr '[:upper:]' '[:lower:]')
-  case "$lower" in
-    *.png) printf 'image/png\n' ;;
-    *.jpg|*.jpeg) printf 'image/jpeg\n' ;;
-    *.gif) printf 'image/gif\n' ;;
-    *.webp) printf 'image/webp\n' ;;
-    *.bmp) printf 'image/bmp\n' ;;
-    *.tif|*.tiff) printf 'image/tiff\n' ;;
-    *)
-      if command -v file >/dev/null 2>&1; then
-        detected=$(file --mime-type -b -- "$path" 2>/dev/null | tr '[:upper:]' '[:lower:]')
-        case "$detected" in
-          image/png|image/jpeg|image/pjpeg|image/gif|image/webp|image/bmp|image/tiff) printf '%s\n' "$detected" ;;
-          *) return 1 ;;
-        esac
-      else
-        return 1
-      fi
-      ;;
-  esac
-}
-
-# fmx_image_payload_file <path> <client-name> <payload-file>: validate and encode
-# a local outbound image. The relay payload object is written to <payload-file>.
-# The compact preview object is printed for FMX_DRY_RUN outbox records.
-fmx_image_payload_file() {
-  local path=$1 client=${2:-fm-x-reply} payload_file=${3:-} media_type bytes
-  if [ -z "$payload_file" ]; then
-    echo "$client: missing image payload destination" >&2
-    return 1
-  fi
-  if [ ! -e "$path" ]; then
-    echo "$client: image file does not exist: $path" >&2
-    return 1
-  fi
-  if [ ! -f "$path" ]; then
-    echo "$client: image path is not a regular file: $path" >&2
-    return 1
-  fi
-  if [ ! -r "$path" ]; then
-    echo "$client: image file is not readable: $path" >&2
-    return 1
-  fi
-  media_type=$(fmx_image_media_type_from_path "$path") || {
-    echo "$client: unsupported image media type for: $path" >&2
-    return 1
-  }
-  command -v base64 >/dev/null 2>&1 || {
-    echo "$client: base64 not found" >&2
-    return 1
-  }
-  bytes=$(wc -c < "$path" | tr -d '[:space:]') || {
-    echo "$client: cannot stat image file: $path" >&2
-    return 1
-  }
-  if [ "$bytes" = 0 ]; then
-    echo "$client: image file is empty: $path" >&2
-    return 1
-  fi
-  if ! (set -o pipefail; base64 < "$path" | tr -d '\n\r' \
-    | jq -Rsc --arg media_type "$media_type" \
-      '{media_type:$media_type,data_base64:.}' > "$payload_file"); then
-    rm -f "$payload_file"
-    echo "$client: cannot read image file: $path" >&2
-    return 1
-  fi
-  jq -cn \
-    --arg media_type "$media_type" \
-    --arg source_path "$path" \
-    --argjson bytes "$bytes" \
-    '{media_type:$media_type,bytes:$bytes,source_path:$source_path}'
-}
-
-fmx_reply_payload_json() {
-  local rid=$1 chunks=$2 n=$3 image_json_file=${4:-}
-  if [ -n "$image_json_file" ]; then
-    if [ "$n" -le 1 ]; then
-      printf '%s' "$chunks" | jq -c --arg rid "$rid" --slurpfile image "$image_json_file" \
-        '{request_id:$rid, text:(.[0] // ""), image:$image[0]}'
-    else
-      printf '%s' "$chunks" | jq -c --arg rid "$rid" --slurpfile image "$image_json_file" \
-        '{request_id:$rid, text:.[0], texts:., image:$image[0]}'
-    fi
-  else
-    if [ "$n" -le 1 ]; then
-      printf '%s' "$chunks" | jq -c --arg rid "$rid" '{request_id:$rid, text:(.[0] // "")}'
-    else
-      printf '%s' "$chunks" | jq -c --arg rid "$rid" '{request_id:$rid, text:.[0], texts:.}'
-    fi
-  fi
-}
-
-fmx_reply_outbox_json() {
-  local rid=$1 chunks=$2 n=$3 followup=$4 image_preview_json=${5:-}
-  if [ -n "$image_preview_json" ]; then
-    if [ "$followup" = 1 ]; then
-      if [ "$n" -le 1 ]; then
-        printf '%s' "$chunks" | jq -c --arg rid "$rid" --argjson image "$image_preview_json" \
-          '{request_id:$rid, text:(.[0] // ""), image:$image, endpoint:"followup"}'
-      else
-        printf '%s' "$chunks" | jq -c --arg rid "$rid" --argjson image "$image_preview_json" \
-          '{request_id:$rid, text:.[0], texts:., image:$image, endpoint:"followup"}'
-      fi
-    else
-      if [ "$n" -le 1 ]; then
-        printf '%s' "$chunks" | jq -c --arg rid "$rid" --argjson image "$image_preview_json" \
-          '{request_id:$rid, text:(.[0] // ""), image:$image}'
-      else
-        printf '%s' "$chunks" | jq -c --arg rid "$rid" --argjson image "$image_preview_json" \
-          '{request_id:$rid, text:.[0], texts:., image:$image}'
-      fi
-    fi
-  else
-    if [ "$followup" = 1 ]; then
-      if [ "$n" -le 1 ]; then
-        printf '%s' "$chunks" | jq -c --arg rid "$rid" \
-          '{request_id:$rid, text:(.[0] // ""), endpoint:"followup"}'
-      else
-        printf '%s' "$chunks" | jq -c --arg rid "$rid" \
-          '{request_id:$rid, text:.[0], texts:., endpoint:"followup"}'
-      fi
-    else
-      if [ "$n" -le 1 ]; then
-        printf '%s' "$chunks" | jq -c --arg rid "$rid" '{request_id:$rid, text:(.[0] // "")}'
-      else
-        printf '%s' "$chunks" | jq -c --arg rid "$rid" '{request_id:$rid, text:.[0], texts:.}'
-      fi
-    fi
-  fi
-}
-
-fmx_post_json() (
-  local endpoint=$1 payload_file=$2 body_file=${3:-/dev/null} auth_header_file code rc
-  command -v curl >/dev/null 2>&1 || return 127
-  [ -r "$payload_file" ] || return 2
-  auth_header_file=$(fmx_auth_header_file) || return 3
-  trap 'rm -f "$auth_header_file"' EXIT
-  trap 'rm -f "$auth_header_file"; exit 143' HUP INT TERM
-  code=$(curl -m 10 -s -o "$body_file" -w '%{http_code}' \
-    -X POST \
-    -H "@$auth_header_file" \
-    -H 'Content-Type: application/json' \
-    --data-binary "@$payload_file" \
-    "$FMX_RELAY/connector/$endpoint" 2>/dev/null)
-  rc=$?
-  rm -f "$auth_header_file"
-  trap - EXIT HUP INT TERM
-  [ "$rc" = 0 ] || return 4
-  printf '%s\n' "$code"
-)
-
 # --- task <-> X-request link (state/<id>.meta backed) -----------------------
 #
 # When an X mention spawns real work, the task is linked to its originating
-# mention by three lines in state/<id>.meta:
+# mention by two lines in state/<id>.meta:
 #   x_request=<request_id>     the relay-issued id the follow-up posts against
-#   x_request_ts=<epoch>       when the link was made, for the 7-day follow-up window
-#   x_followups=<n>            follow-ups already posted against this binding (0..3)
-# fm-x-followup.sh posts against that link (within the window, up to the cap),
-# then either records the incremented count or clears the link. These helpers
-# own the read/write/clear so fm-x-link.sh and fm-x-followup.sh never hand-edit
-# meta and the rewrite stays atomic and preserves every other meta line.
+#   x_request_ts=<epoch>       when the link was made, for the 24h follow-up window
+# On the task's terminal completion firstmate posts ONE follow-up reply to that
+# request (within the window) and clears the link. These helpers own the
+# read/write/clear so fm-x-link.sh and fm-x-followup.sh never hand-edit meta and
+# the rewrite stays atomic and preserves every other meta line.
 
 # fmx_meta_get <meta> <key>: print the value of the last "key=value" line in
 # <meta>, or nothing (and succeed) when the file or key is absent. Callers treat
@@ -325,48 +158,29 @@ fmx_meta_tmp() {
   mktemp "$dir/.${base}.fm-x.XXXXXX"
 }
 
-# fmx_meta_link_set <meta> <request_id> <epoch> [followups]: atomically (re)write
-# the x_request/x_request_ts/x_followups lines, dropping any prior link and
-# preserving every other meta line. <followups> defaults to 0 (a fresh link);
-# pass the prior task's count to carry it forward onto a successor task instead
-# of granting a fresh follow-up budget against a binding the relay already knows
-# about. Returns non-zero if <meta> is missing or the rewrite fails.
+# fmx_meta_link_set <meta> <request_id> <epoch>: atomically (re)write the
+# x_request/x_request_ts lines, dropping any prior link and preserving every
+# other meta line. Returns non-zero if <meta> is missing or the rewrite fails.
 fmx_meta_link_set() {
-  local meta=$1 rid=$2 ts=$3 followups=${4:-0} tmp
+  local meta=$1 rid=$2 ts=$3 tmp
   [ -f "$meta" ] || return 1
   tmp=$(fmx_meta_tmp "$meta") || return 1
-  if ! { grep -vE '^x_request=|^x_request_ts=|^x_followups=' "$meta" || true; } > "$tmp"; then
+  if ! { grep -vE '^x_request=|^x_request_ts=' "$meta" || true; } > "$tmp"; then
     rm -f "$tmp"; return 1
   fi
   printf 'x_request=%s\n' "$rid" >> "$tmp" || { rm -f "$tmp"; return 1; }
   printf 'x_request_ts=%s\n' "$ts" >> "$tmp" || { rm -f "$tmp"; return 1; }
-  printf 'x_followups=%s\n' "$followups" >> "$tmp" || { rm -f "$tmp"; return 1; }
   mv -f "$tmp" "$meta" || { rm -f "$tmp"; return 1; }
 }
 
-# fmx_meta_followups_set <meta> <n>: atomically rewrite just the x_followups
-# line, preserving every other meta line including x_request/x_request_ts.
-# Returns non-zero if <meta> is missing or the rewrite fails.
-fmx_meta_followups_set() {
-  local meta=$1 n=$2 tmp
-  [ -f "$meta" ] || return 1
-  tmp=$(fmx_meta_tmp "$meta") || return 1
-  if ! { grep -vE '^x_followups=' "$meta" || true; } > "$tmp"; then
-    rm -f "$tmp"; return 1
-  fi
-  printf 'x_followups=%s\n' "$n" >> "$tmp" || { rm -f "$tmp"; return 1; }
-  mv -f "$tmp" "$meta" || { rm -f "$tmp"; return 1; }
-}
-
-# fmx_meta_link_clear <meta>: atomically remove the x_request/x_request_ts/
-# x_followups lines while preserving every other meta line. Idempotent:
-# succeeds whether or not a link is present, and is a no-op when <meta> is
-# missing.
+# fmx_meta_link_clear <meta>: atomically remove the x_request/x_request_ts lines
+# while preserving every other meta line. Idempotent: succeeds whether or not a
+# link is present, and is a no-op when <meta> is missing.
 fmx_meta_link_clear() {
   local meta=$1 tmp
   [ -f "$meta" ] || return 0
   tmp=$(fmx_meta_tmp "$meta") || return 1
-  if ! { grep -vE '^x_request=|^x_request_ts=|^x_followups=' "$meta" || true; } > "$tmp"; then
+  if ! { grep -vE '^x_request=|^x_request_ts=' "$meta" || true; } > "$tmp"; then
     rm -f "$tmp"; return 1
   fi
   mv -f "$tmp" "$meta" || { rm -f "$tmp"; return 1; }
