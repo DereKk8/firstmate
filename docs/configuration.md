@@ -26,7 +26,7 @@ If both runtime markers are present, `$TMUX` wins because tmux is the innermost 
 Auto-detected herdr prints a stderr notice naming `config/backend` and `--backend tmux` as opt-outs; auto-detected tmux stays silent to preserve existing default behavior.
 Zellij, Orca, and cmux are never auto-detected; select them by putting the name in a local `config/backend` file, by exporting `FM_BACKEND=<name>`, or by telling the first mate in chat.
 Any value other than `tmux`, `herdr`, `zellij`, `orca`, or `cmux` is rejected until another adapter is implemented and verified.
-`fm-spawn.sh` accepts `tmux`, `herdr`, `zellij`, `orca`, and `cmux` for ship and scout tasks; `backend=orca` and `backend=cmux` both still refuse `--secondmate` until per-home semantics are designed for each.
+`fm-spawn.sh` accepts `tmux`, `herdr`, `zellij`, `orca`, and `cmux` for ship and scout tasks; `backend=orca` and `backend=cmux` both still refuse `--secondmate` until secondmate launch semantics are designed for each.
 A herdr spawn additionally version-gates against the installed `herdr` binary's protocol and requires `jq`, refusing loudly on an incompatible or missing installation.
 A zellij spawn additionally version-gates against the installed `zellij` binary's version and requires `jq`, refusing loudly when either is missing or the version is older than 0.44.
 A cmux spawn additionally version-gates against the installed `cmux` binary's version, requires `jq`, and requires the control socket to be reachable and authenticated (see [`docs/cmux-backend.md`](cmux-backend.md) "Setup" for the one-time password-mode configuration this needs), refusing loudly and non-retryably on a `cmuxOnly`/unauthenticated socket.
@@ -44,6 +44,7 @@ For normal zellij operations, `FM_ZELLIJ_SESSION` selects the named session and 
 Zellij has no per-home workspace split: primary and secondmate tasks all land as `fm-<id>` tabs in that one session.
 Use the guarded cleanup path described in [`docs/zellij-backend.md`](zellij-backend.md) instead of `kill-all-sessions` or `delete-all-sessions`.
 cmux has no session layer at all - one workspace per task, in whatever cmux window is open - and its socket password (when configured) is read from local, gitignored `config/cmux-socket-password`, never committed.
+The caller-facing label remains `fm-<id>`, but the actual cmux workspace title is scoped by the active `FM_HOME` as `fm-<home-label>-<id>`.
 Test cleanup must use the guarded path described in [`docs/cmux-backend.md`](cmux-backend.md)'s "Test safety" section, never enumerate-and-close every workspace.
 The `config/backend` file is not inherited by secondmate homes.
 
@@ -85,7 +86,7 @@ When `FM_HOME` is unset, it also behaves as the old whole-root override.
 `FM_STATE_OVERRIDE`, `FM_DATA_OVERRIDE`, `FM_PROJECTS_OVERRIDE`, and `FM_CONFIG_OVERRIDE` override individual operational directories for tests and specialized harness setup.
 For the herdr backend, `FM_HOME` also determines the workspace label used by the adapter.
 For the zellij backend, `FM_HOME` does not split containers; use `FM_ZELLIJ_SESSION` when a separate zellij session is needed.
-For the cmux backend, `FM_HOME` determines where `config/cmux-socket-password` is read from; there is no per-home container split.
+For the cmux backend, `FM_HOME` determines where `config/cmux-socket-password` is read from and which home label is embedded in workspace titles; there is no per-home container split.
 
 ## Harness support
 

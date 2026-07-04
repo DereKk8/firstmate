@@ -213,6 +213,23 @@ test_normalize_key() {
   pass "fm_backend_cmux_normalize_key: Enter/Escape/C-c map to cmux's verified enter/escape/ctrl-c"
 }
 
+test_scoped_title_uses_primary_home_label() {
+  local dir out
+  dir="$TMP_ROOT/scoped-title-primary"; mkdir -p "$dir"
+  out=$( FM_HOME="$dir" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_scoped_title fm-task1' "$ROOT" )
+  [ "$out" = "fm-firstmate-task1" ] || fail "primary scoped title should be fm-firstmate-task1, got '$out'"
+  pass "fm_backend_cmux_scoped_title: scopes a primary task title with firstmate"
+}
+
+test_scoped_title_uses_secondmate_home_label() {
+  local dir out
+  dir="$TMP_ROOT/scoped-title-secondmate"; mkdir -p "$dir"
+  printf 'sm-one\n' > "$dir/.fm-secondmate-home"
+  out=$( FM_HOME="$dir" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_scoped_title fm-task1' "$ROOT" )
+  [ "$out" = "fm-2ndmate-sm-one-task1" ] || fail "secondmate scoped title should be fm-2ndmate-sm-one-task1, got '$out'"
+  pass "fm_backend_cmux_scoped_title: scopes a secondmate task title with the home marker"
+}
+
 # --- dispatch wiring (fm-backend.sh) ------------------------------------------
 
 test_dispatch_routes_cmux_backend() {
@@ -316,7 +333,7 @@ SH
 test_create_task_refuses_duplicate_label() {
   local dir fb out status
   dir="$TMP_ROOT/dup-task"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "fm-dup1"
+  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "fm-firstmate-dup1"
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-dup1 /tmp/proj' "$ROOT" 2>&1 )
@@ -333,7 +350,7 @@ test_create_task_creates_and_parses_ids() {
   printf '{"workspaces":[]}' > "$dir/responses/1.out"
   # 2: new-workspace (silent on success)
   # 3: workspace list --json (post-create id resolution) -> match
-  cmux_workspace_list_response "$dir" 3 "bbbbbbbb-1111-1111-1111-111111111111" "fm-newtask"
+  cmux_workspace_list_response "$dir" 3 "bbbbbbbb-1111-1111-1111-111111111111" "fm-firstmate-newtask"
   # 4: list-panes --json --id-format uuids -> default surface id
   cmux_panes_response "$dir" 4 "cccccccc-2222-2222-2222-222222222222"
   fb=$(make_cmux_fakebin "$dir")
@@ -341,7 +358,7 @@ test_create_task_creates_and_parses_ids() {
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_create_task fm-newtask /tmp/proj' "$ROOT" )
   [ "$out" = "bbbbbbbb-1111-1111-1111-111111111111 cccccccc-2222-2222-2222-222222222222" ] \
     || fail "create_task should echo '<workspace_id> <surface_id>', got '$out'"
-  assert_contains "$(cat "$dir/log")" $'\x1f''new-workspace'$'\x1f''--name'$'\x1f''fm-newtask'$'\x1f''--cwd'$'\x1f''/tmp/proj' \
+  assert_contains "$(cat "$dir/log")" $'\x1f''new-workspace'$'\x1f''--name'$'\x1f''fm-firstmate-newtask'$'\x1f''--cwd'$'\x1f''/tmp/proj' \
     "create_task did not call new-workspace with the right name/cwd"
   assert_contains "$(cat "$dir/log")" $'\x1f''--focus'$'\x1f''false' \
     "create_task did not pass --focus false"
@@ -366,7 +383,7 @@ test_target_ready_fails_when_target_absent() {
 test_target_ready_checks_expected_label() {
   local dir fb
   dir="$TMP_ROOT/ready-label-ok"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "fm-label"
+  cmux_workspace_list_response "$dir" 1 "aaaaaaaa-0000-0000-0000-000000000000" "fm-firstmate-label"
   # 2: list-panes --json --id-format uuids -> matching surface
   cmux_panes_response "$dir" 2 "bbbbbbbb-1111-1111-1111-111111111111"
   fb=$(make_cmux_fakebin "$dir")
@@ -459,8 +476,8 @@ test_send_key_normalizes_and_targets() {
 test_send_key_recovers_stale_target_by_label() {
   local dir fb
   dir="$TMP_ROOT/sendkey-stale-target"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "fm-label"
-  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "fm-label"
+  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "fm-firstmate-label"
+  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "fm-firstmate-label"
   cmux_panes_response "$dir" 3 "dddddddd-3333-3333-3333-333333333333"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
@@ -692,69 +709,52 @@ test_send_text_submit_send_failed_when_target_absent() {
   pass "fm_backend_cmux_send_text_submit: reports 'send-failed' when the target workspace/surface is absent"
 }
 
-# --- kill: close-surface then fall back to close-workspace -------------------
+# --- kill: close whole workspace ---------------------------------------------
 
-test_kill_succeeds_when_close_surface_works() {
+test_kill_closes_workspace_directly() {
   local dir fb
-  dir="$TMP_ROOT/kill-surface-ok"; mkdir -p "$dir/responses"
+  dir="$TMP_ROOT/kill-workspace"; mkdir -p "$dir/responses"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111"' "$ROOT"
-  expect_code 0 $? "kill should succeed when close-surface succeeds"
-  assert_contains "$(cat "$dir/log")" $'\x1f''close-surface'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000'$'\x1f''--surface'$'\x1f''bbbbbbbb-1111-1111-1111-111111111111' \
-    "kill did not try close-surface first"
-  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-workspace' \
-    "kill should not fall back to close-workspace when close-surface already succeeded"
-  pass "fm_backend_cmux_kill: does not fall back to close-workspace when close-surface already succeeds"
-}
-
-# Verified real-cmux finding (docs/cmux-backend.md finding #4): close-surface
-# REFUSES to close a workspace's last surface (invalid_state: Cannot close the
-# last surface) - a third shape distinct from herdr (auto-closes) and zellij
-# (leaves a ghost). This is the common case for every firstmate cmux task
-# (exactly one surface per workspace), so kill must fall back to
-# close-workspace, which cleanly removes the whole workspace with no ghost.
-test_kill_falls_back_to_close_workspace_when_close_surface_refuses() {
-  local dir fb
-  dir="$TMP_ROOT/kill-fallback"; mkdir -p "$dir/responses"
-  printf '1\n' > "$dir/responses/1.exit"
-  fb=$(make_cmux_fakebin "$dir")
-  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
-    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111"' "$ROOT"
-  expect_code 0 $? "kill should still succeed (best-effort) after falling back"
-  cmux_assert_call_order "$dir/log" $'\x1f''close-surface' $'\x1f''close-workspace' \
-    "kill did not try close-surface before falling back to close-workspace"
   assert_contains "$(cat "$dir/log")" $'\x1f''close-workspace'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
-    "kill did not fall back to close-workspace when close-surface refused (last-surface case)"
-  pass "fm_backend_cmux_kill: falls back to close-workspace when close-surface refuses (the last-surface case, verified live)"
+    "kill did not close the task workspace"
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-surface' \
+    "kill should close the whole workspace directly"
+  pass "fm_backend_cmux_kill: closes the whole task workspace directly"
 }
 
-test_kill_is_best_effort_when_both_fail() {
+test_kill_is_best_effort_when_close_workspace_fails() {
   local dir fb
-  dir="$TMP_ROOT/kill-both-fail"; mkdir -p "$dir/responses"
+  dir="$TMP_ROOT/kill-workspace-fail"; mkdir -p "$dir/responses"
   printf '1\n' > "$dir/responses/1.exit"
-  printf '1\n' > "$dir/responses/2.exit"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111"' "$ROOT"
-  expect_code 0 $? "kill must stay best-effort (never fail) even when both close calls fail"
-  pass "fm_backend_cmux_kill: never fails even when both close-surface and close-workspace fail"
+  expect_code 0 $? "kill must stay best-effort (never fail) even when close-workspace fails"
+  assert_contains "$(cat "$dir/log")" $'\x1f''close-workspace'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
+    "kill should still attempt close-workspace"
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-surface' \
+    "kill should not call close-surface"
+  pass "fm_backend_cmux_kill: never fails even when close-workspace fails"
 }
 
 test_kill_recovers_stale_target_by_label() {
   local dir fb
   dir="$TMP_ROOT/kill-stale-target"; mkdir -p "$dir/responses"
-  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "fm-label"
-  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "fm-label"
+  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "fm-firstmate-label"
+  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "fm-firstmate-label"
   cmux_panes_response "$dir" 3 "dddddddd-3333-3333-3333-333333333333"
   fb=$(make_cmux_fakebin "$dir")
   PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" "" fm-label' "$ROOT"
   expect_code 0 $? "kill should recover a stale cmux target when the expected label is live"
-  assert_contains "$(cat "$dir/log")" $'\x1f''close-surface'$'\x1f''--workspace'$'\x1f''cccccccc-2222-2222-2222-222222222222'$'\x1f''--surface'$'\x1f''dddddddd-3333-3333-3333-333333333333' \
+  assert_contains "$(cat "$dir/log")" $'\x1f''close-workspace'$'\x1f''--workspace'$'\x1f''cccccccc-2222-2222-2222-222222222222' \
     "kill did not use the refreshed cmux workspace/surface ids"
-  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-surface'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-workspace'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
     "kill should not target the stale cmux workspace id after label recovery"
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-surface' \
+    "kill should not call close-surface"
   pass "fm_backend_cmux_kill: recovers stale workspace/surface ids by expected label"
 }
 
@@ -763,18 +763,19 @@ test_kill_recovers_stale_target_by_label() {
 test_list_live_filters_by_title_prefix() {
   local dir fb out
   dir="$TMP_ROOT/list-live"; mkdir -p "$dir/responses"
-  # 1: workspace list --json --id-format uuids -> one fm-* task, one unrelated
+  # 1: workspace list --json --id-format uuids -> one in-home task, two unrelated
   cmux_workspace_list_response "$dir" 1 \
-    "aaaaaaaa-0000-0000-0000-000000000000" "fm-task1" \
+    "aaaaaaaa-0000-0000-0000-000000000000" "fm-firstmate-task1" \
+    "dddddddd-8888-8888-8888-888888888888" "fm-2ndmate-other-task2" \
     "cccccccc-9999-9999-9999-999999999999" "zsh"
-  # 2: list-panes for the fm-task1 workspace
+  # 2: list-panes for the fm-firstmate-task1 workspace
   cmux_panes_response "$dir" 2 "bbbbbbbb-1111-1111-1111-111111111111"
   fb=$(make_cmux_fakebin "$dir")
   out=$( PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
     bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_list_live' "$ROOT" )
   [ "$out" = $'aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111\tfm-task1' ] \
-    || fail "list_live should list only the fm-* workspace with its surface id, got '$out'"
-  pass "fm_backend_cmux_list_live: lists only fm-<id>-titled workspaces, resolving each default surface"
+    || fail "list_live should list only the in-home task workspace with its plain label and surface id, got '$out'"
+  pass "fm_backend_cmux_list_live: lists only this home's scoped task workspaces using plain fm-<id> labels"
 }
 
 # --- fm-spawn.sh: --secondmate refuses backend=cmux --------------------------
@@ -788,7 +789,7 @@ test_secondmate_spawn_refuses_cmux_backend() {
   status=$?
   [ "$status" -ne 0 ] || fail "fm-spawn.sh should refuse a --secondmate spawn with --backend cmux"
   assert_contains "$out" "does not support --secondmate" "fm-spawn.sh did not report the cmux secondmate refusal"
-  pass "fm-spawn.sh: refuses backend=cmux for --secondmate spawns (mirrors Orca's refusal; no per-home design exists yet)"
+  pass "fm-spawn.sh: refuses backend=cmux for --secondmate spawns (mirrors Orca's refusal; no secondmate launch design exists yet)"
 }
 
 # shellcheck source=bin/fm-backend.sh
@@ -804,6 +805,8 @@ test_password_empty_when_config_absent
 test_cli_exports_password_only_when_configured
 test_parse_target
 test_normalize_key
+test_scoped_title_uses_primary_home_label
+test_scoped_title_uses_secondmate_home_label
 test_dispatch_routes_cmux_backend
 test_dispatch_busy_state_unknown_for_cmux
 test_ping_state_ok
@@ -834,9 +837,8 @@ test_send_text_submit_detects_landed_send
 test_send_text_submit_detects_swallowed_enter
 test_send_text_submit_popup_autocomplete_requires_second_enter
 test_send_text_submit_send_failed_when_target_absent
-test_kill_succeeds_when_close_surface_works
-test_kill_falls_back_to_close_workspace_when_close_surface_refuses
-test_kill_is_best_effort_when_both_fail
+test_kill_closes_workspace_directly
+test_kill_is_best_effort_when_close_workspace_fails
 test_kill_recovers_stale_target_by_label
 test_list_live_filters_by_title_prefix
 test_secondmate_spawn_refuses_cmux_backend

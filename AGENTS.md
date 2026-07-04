@@ -117,7 +117,7 @@ For the herdr backend, task tabs live inside the current firstmate home's worksp
 For a primary-launched `--secondmate` spawn, `fm-spawn.sh` resolves that workspace from the target secondmate home, not the primary home.
 For the zellij backend, the task tab is labeled `fm-<id>` and the recorded `window=` target is `<zellij-session>:<pane-id>`; unlike herdr, all zellij tasks (primary and every secondmate) share one `firstmate` session's tab bar - there is no per-home workspace split (docs/zellij-backend.md).
 For the Orca backend, ship/scout tasks record `window=fm-<id>` as the firstmate alias plus `terminal=<orca-terminal-handle>` and `orca_worktree_id=<orca-worktree-id>`; Orca owns the task worktree and terminal, and `--secondmate` still refuses Orca (docs/orca-backend.md).
-For the cmux backend, ship/scout tasks record `window=<cmux-workspace-uuid>:<cmux-surface-uuid>` plus `cmux_workspace_id=` and `cmux_surface_id=`; cmux is a session provider only (treehouse still owns the worktree), and `--secondmate` still refuses cmux until per-home semantics are designed (docs/cmux-backend.md).
+For the cmux backend, ship/scout tasks record `window=<cmux-workspace-uuid>:<cmux-surface-uuid>` plus `cmux_workspace_id=` and `cmux_surface_id=`; cmux is a session provider only (treehouse still owns the worktree), workspace titles are scoped by the active home label while callers still use `fm-<id>`, and `--secondmate` still refuses cmux until secondmate launch semantics are designed (docs/cmux-backend.md).
 
 ## 3. Session start (run at every session start)
 

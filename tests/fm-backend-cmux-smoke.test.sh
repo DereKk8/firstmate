@@ -6,10 +6,11 @@
 # structure: every other suite fakes the CLI, this one talks to the REAL app -
 # but unlike herdr/zellij there is no isolated throwaway SESSION to spin up:
 # cmux is one shared, GUI-first, macOS-only instance (the same posture as
-# Orca). So this test creates ONLY fm-test--prefixed workspaces, touches and
+# Orca). So this test creates ONLY `fm-test-`-prefixed task labels, touches and
 # closes ONLY what it created, never enumerates-and-closes, never quits or
 # relaunches the app, and cleans up every artifact via
-# tests/cmux-test-safety.sh's guarded close.
+# tests/cmux-test-safety.sh's guarded close. The adapter turns those plain
+# labels into home-scoped cmux workspace titles internally.
 #
 # Skips cleanly when cmux (or jq) is not installed/reachable, so CI/dev
 # machines without cmux, or without the one-time password-mode setup
@@ -138,16 +139,16 @@ bs=$(fm_backend_busy_state cmux "$TARGET")
 [ "$bs" = unknown ] || fail "fm_backend_busy_state should report unknown for cmux (no native primitive), got '$bs'"
 pass "real cmux: fm_backend_busy_state reports unknown (watcher falls back to pane-regex, same as tmux/zellij/orca)"
 
-# --- kill: verified close-surface-refuses / close-workspace-fallback shape ---
+# --- kill: whole-workspace close ----------------------------------------------
 
 fm_backend_cmux_kill "$TARGET"
 sleep 0.5
 STILL_LIVE=$(fm_backend_cmux_cli workspace list --json --id-format uuids 2>/dev/null | jq -r --arg id "$WS1" '.workspaces[]? | select(.id == $id) | .id' 2>/dev/null)
-[ -z "$STILL_LIVE" ] || fail "kill did not remove the workspace (verified: close-surface refuses on the last surface, close-workspace must have run as the fallback)"
+[ -z "$STILL_LIVE" ] || fail "kill did not remove the whole task workspace"
 WS1=""
 # Best-effort contract: killing an already-gone target must not error.
 fm_backend_cmux_kill "$TARGET" || fail "kill on an already-dead target must stay best-effort (never fail)"
-pass "real cmux: kill removes the workspace (close-surface refusal -> close-workspace fallback) and is idempotent/best-effort"
+pass "real cmux: kill removes the whole workspace and is idempotent/best-effort"
 
 # --- list_live (title-based recovery discovery) ------------------------------
 
