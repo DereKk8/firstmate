@@ -27,6 +27,8 @@ Each adapter splits into mechanics and knowledge.
 The mechanics, including launch command, autonomy flag, and turn-end hook, live in `bin/fm-spawn.sh`.
 The supervision knowledge lives here: busy signature, exit command, interrupt, dialogs, resume behavior, skill invocation, and quirks.
 
+Load `crew-dispatch` for dispatch profile schema, precedence rules, best-fit selection algorithm, secondmate-harness model pinning, and config inheritance details.
+
 Never dispatch a crewmate or secondmate on an unverified adapter.
 If `config/crew-harness` or `config/secondmate-harness` names an unverified adapter, tell the captain and fall back to firstmate's own harness until that adapter is verified.
 If the captain asks for a new harness, propose verifying it first: spawn a trivial supervised task using `fm-spawn`'s raw-launch-command escape hatch, confirm every fact empirically, then record the mechanics in `fm-spawn`, the busy signature in `fm-watch.sh` and `fm-tmux-lib.sh` defaults, any needed `FM_COMPOSER_IDLE_RE` empty-composer override, and the verified knowledge here.
