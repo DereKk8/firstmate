@@ -447,11 +447,12 @@ fm_backend_cmux_send_text_line() {  # <target> <text> [expected-label]
 # otherwise silently get less than it asked for with no way to tell why.
 fm_backend_cmux_capture() {  # <target> <lines> [expected-label]
   fm_backend_cmux_target_ready "$1" "${3:-}" || return 1
-  local lines=${2:-200} fetch out
+  local lines=${2:-200} fetch raw out
   case "$lines" in ''|*[!0-9]*) lines=200 ;; esac
   fetch=$lines
   case "$fetch" in ''|*[!0-9]*) fetch=200 ;; *) [ "$fetch" -ge 200 ] || fetch=200 ;; esac
-  out=$(fm_backend_cmux_cli read-screen --workspace "$FM_BACKEND_CMUX_WORKSPACE" --surface "$FM_BACKEND_CMUX_SURFACE" --scrollback --lines "$fetch" --json 2>/dev/null | jq -r '.text // empty' 2>/dev/null) || return 1
+  raw=$(fm_backend_cmux_cli read-screen --workspace "$FM_BACKEND_CMUX_WORKSPACE" --surface "$FM_BACKEND_CMUX_SURFACE" --scrollback --lines "$fetch" --json 2>/dev/null) || return 1
+  out=$(printf '%s' "$raw" | jq -r '.text // empty' 2>/dev/null) || return 1
   printf '%s' "$out" | tail -n "$lines"
 }
 

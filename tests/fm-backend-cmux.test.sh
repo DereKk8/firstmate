@@ -408,6 +408,23 @@ test_capture_trims_locally() {
   pass "fm_backend_cmux_capture: fetches generously and trims to N lines locally"
 }
 
+test_capture_fails_when_read_screen_fails_empty() {
+  local dir fb status
+  dir="$TMP_ROOT/capture-read-fail"; mkdir -p "$dir/responses"
+  # 1: list-panes --json --id-format uuids (target_ready)
+  cmux_panes_response "$dir" 1 "bbbbbbbb-1111-1111-1111-111111111111"
+  # 2: read-screen exits nonzero with no stdout
+  printf '1' > "$dir/responses/2.exit"
+  fb=$(make_cmux_fakebin "$dir")
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_capture "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" 5' "$ROOT"
+  status=$?
+  [ "$status" -ne 0 ] || fail "capture should fail when read-screen exits nonzero with no stdout"
+  assert_contains "$(cat "$dir/log")" $'\x1f''read-screen' \
+    "capture should attempt read-screen after readiness succeeds"
+  pass "fm_backend_cmux_capture: propagates a read-screen failure even when stdout is empty"
+}
+
 test_capture_fails_when_target_not_ready() {
   local dir fb status
   dir="$TMP_ROOT/capture-not-ready"; mkdir -p "$dir/responses"
@@ -801,6 +818,7 @@ test_target_ready_fails_when_target_absent
 test_target_ready_checks_expected_label
 test_target_ready_rejects_label_mismatch
 test_capture_trims_locally
+test_capture_fails_when_read_screen_fails_empty
 test_capture_fails_when_target_not_ready
 test_send_key_normalizes_and_targets
 test_send_key_recovers_stale_target_by_label
