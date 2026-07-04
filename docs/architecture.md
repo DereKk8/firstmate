@@ -25,7 +25,7 @@ Optional X mode rides the same check path: the locked session-start bootstrap st
 
 Routine re-arms go through `bin/fm-watch-arm.sh`, which forks the watcher as a tracked child, verifies it is genuinely alive with a fresh liveness beacon, and prints exactly one honest status line (`started` / `healthy` / `FAILED`, the last exiting non-zero) - never a false `already running` off a dying process.
 Its `--restart` mode signals only the watcher recorded in the current home's `state/.watch.lock`, so restarting one home cannot kill sibling secondmate watchers.
-A pull-based guard (`bin/fm-guard.sh`) warns through supervision tool output if the primary checkout is tangled, or if tasks are in flight and that watcher stops running or queued wakes are waiting to be drained.
+A pull-based guard (`bin/fm-guard.sh`) warns through supervision tool output if the primary checkout is tangled (stranded on a feature branch or with uncommitted tracked-file changes), or if tasks are in flight and that watcher stops running or queued wakes are waiting to be drained.
 The drain script calls that guard after emptying the queue, which avoids repeating the queued-wakes warning for records it just consumed while still warning on stale watcher liveness.
 It leads with prominent bordered banners for the tangle and no-watcher cases so they cannot be skimmed past.
 
@@ -59,13 +59,13 @@ Crewmates never intentionally touch your project clone; [treehouse](https://gith
 For ship and scout work, `fm-spawn.sh` refuses to launch unless the resolved task path is a real git worktree root that is distinct from the project primary checkout.
 
 The firstmate repo has one extra exposure because it can dispatch crewmates to work on itself.
-Its operating checkout (`FM_ROOT`) and the disposable crewmate worktrees are all linked git worktrees of the same repository, so the valid discriminator is branch state, not whether the checkout is linked.
-The primary checkout is healthy on its default branch, and linked worktrees or secondmate homes are healthy at detached HEAD.
-Only a named non-default branch checked out in `FM_ROOT` is a worktree tangle.
+Its operating checkout (`FM_ROOT`) and the disposable crewmate worktrees are all linked git worktrees of the same repository, so the valid discriminators are branch state and tracked-file cleanliness, not whether the checkout is linked.
+The primary checkout is healthy on its default branch with no uncommitted changes to tracked files, and linked worktrees or secondmate homes are healthy at detached HEAD.
+A worktree tangle occurs when the primary checkout is either stranded on a named non-default branch OR has staged or unstaged changes to tracked files.
 
-`fm-tangle-lib.sh` resolves the default branch from `origin/HEAD`, then local `main` or `master`, and classifies that named non-default primary branch as the tangle.
-`fm-guard.sh` prints the repair command on the next mutable fleet action, while `bin/fm-session-start.sh` reports the same condition through bootstrap as a `TANGLE:` line at session start.
-If another live session holds the fleet lock, both surfaces keep the alarm but switch to read-only wording with no repair command.
+`fm-tangle-lib.sh` provides two detection helpers: `fm_primary_tangle_branch` resolves the default branch from `origin/HEAD`, then local `main` or `master`, and detects a named non-default primary branch; `fm_primary_tangle_dirty` detects staged or unstaged changes to tracked files on a named branch (detached HEAD and untracked-only changes never alarm).
+`fm-guard.sh` prints the precise tangle condition (branch name or dirty state description) and non-destructive remediations on the next mutable fleet action, while `bin/fm-session-start.sh` reports both conditions through bootstrap as `TANGLE:` lines at session start.
+If another live session holds the fleet lock, both surfaces keep the alarms but switch to read-only wording with no repair commands.
 Ship briefs also tell the crewmate to verify `pwd -P` and `git rev-parse --show-toplevel` before creating `fm/<id>`, then stop with a blocked status if it landed in the primary checkout.
 
 ## Two task shapes
