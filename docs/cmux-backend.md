@@ -24,7 +24,8 @@ Prerequisites:
 
 1. Open cmux's Settings > Automation (or edit `~/.config/cmux/cmux.json`'s `automation` block directly - back up the file first).
 2. Set **Socket Control Mode** to **Password**, and set a password there.
-3. Make that same password available to firstmate: either put it as the first line of a local, gitignored `config/cmux-socket-password` file in this firstmate home, or export `CMUX_SOCKET_PASSWORD` in the environment firstmate runs in. `config/cmux-socket-password` is the durable choice; the adapter reads it fresh on every call and passes it through without ever overriding an operator's own ambient `CMUX_SOCKET_PASSWORD` when the file is absent.
+3. Make that same password available to firstmate: either put it as the first line of a local, gitignored `config/cmux-socket-password` file under the effective config directory, or export `CMUX_SOCKET_PASSWORD` in the environment firstmate runs in.
+`config/cmux-socket-password` is the durable choice; the adapter reads it fresh on every call from `${FM_CONFIG_OVERRIDE:-$FM_HOME/config}` and passes it through without ever overriding an operator's own ambient `CMUX_SOCKET_PASSWORD` when the file is absent.
 
 Ask the firstmate crew to select cmux by putting `cmux` in a local `config/backend` file - the durable way to pick it - or by exporting `FM_BACKEND=cmux` for a one-off session; telling the first mate in chat to use cmux also works.
 cmux is **never** auto-detected, exactly like Orca - it always requires an explicit choice.

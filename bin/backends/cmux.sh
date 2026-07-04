@@ -131,11 +131,13 @@ fm_backend_cmux_tool_check() {
 
 # fm_backend_cmux_password: the optional socket password from
 # config/cmux-socket-password (first non-empty line), or empty. Read fresh
-# from FM_HOME on every call, mirroring herdr's per-home label resolution.
+# from the effective config dir on every call, mirroring the rest of backend
+# config resolution.
 # Never overrides an operator's own ambient CMUX_SOCKET_PASSWORD when the file
 # is absent - fm_backend_cmux_cli only exports this when it resolves non-empty.
 fm_backend_cmux_password() {
-  local f="$FM_HOME/config/cmux-socket-password" line
+  local config_dir="${FM_CONFIG_OVERRIDE:-$FM_HOME/config}" f line
+  f="$config_dir/cmux-socket-password"
   [ -f "$f" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
     if [ -n "$line" ]; then

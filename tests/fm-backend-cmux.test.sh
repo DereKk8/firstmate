@@ -171,6 +171,17 @@ test_password_preserves_config_file_whitespace() {
   pass "fm_backend_cmux_password: preserves spaces and tabs in config/cmux-socket-password"
 }
 
+test_password_respects_config_override() {
+  local dir home_cfg override_cfg out
+  dir="$TMP_ROOT/password-config-override"; home_cfg="$dir/home/config"; override_cfg="$dir/override-config"
+  mkdir -p "$home_cfg" "$override_cfg"
+  printf 'home-pw\n' > "$home_cfg/cmux-socket-password"
+  printf 'override-pw\n' > "$override_cfg/cmux-socket-password"
+  out=$( FM_HOME="$dir/home" FM_CONFIG_OVERRIDE="$override_cfg" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_password' "$ROOT" )
+  [ "$out" = "override-pw" ] || fail "password should be read from FM_CONFIG_OVERRIDE, got '$out'"
+  pass "fm_backend_cmux_password: respects FM_CONFIG_OVERRIDE"
+}
+
 test_password_empty_when_config_absent() {
   local dir out
   dir="$TMP_ROOT/password-absent"; mkdir -p "$dir/config"
@@ -801,6 +812,7 @@ test_version_check_refuses_old_version
 test_version_check_refuses_missing_cmux
 test_password_reads_from_config_file
 test_password_preserves_config_file_whitespace
+test_password_respects_config_override
 test_password_empty_when_config_absent
 test_cli_exports_password_only_when_configured
 test_parse_target
