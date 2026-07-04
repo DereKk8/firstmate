@@ -162,6 +162,15 @@ test_password_reads_from_config_file() {
   pass "fm_backend_cmux_password: reads the first non-empty line of config/cmux-socket-password"
 }
 
+test_password_preserves_config_file_whitespace() {
+  local dir out
+  dir="$TMP_ROOT/password-file-whitespace"; mkdir -p "$dir/config"
+  printf '\nsek ret\t pw  \n' > "$dir/config/cmux-socket-password"
+  out=$( FM_HOME="$dir" bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_password' "$ROOT" )
+  [ "$out" = $'sek ret\t pw  ' ] || fail "password should preserve spaces and tabs from config/cmux-socket-password, got '$out'"
+  pass "fm_backend_cmux_password: preserves spaces and tabs in config/cmux-socket-password"
+}
+
 test_password_empty_when_config_absent() {
   local dir out
   dir="$TMP_ROOT/password-absent"; mkdir -p "$dir/config"
@@ -428,6 +437,23 @@ test_send_key_normalizes_and_targets() {
   assert_contains "$(cat "$dir/log")" $'\x1f''send-key'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000'$'\x1f''--surface'$'\x1f''bbbbbbbb-1111-1111-1111-111111111111'$'\x1f''escape' \
     "send_key did not normalize Escape to escape and target the explicit workspace/surface"
   pass "fm_backend_cmux_send_key: normalizes the key (Escape -> escape) and targets the explicit workspace/surface"
+}
+
+test_send_key_recovers_stale_target_by_label() {
+  local dir fb
+  dir="$TMP_ROOT/sendkey-stale-target"; mkdir -p "$dir/responses"
+  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "fm-label"
+  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "fm-label"
+  cmux_panes_response "$dir" 3 "dddddddd-3333-3333-3333-333333333333"
+  fb=$(make_cmux_fakebin "$dir")
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_send_key "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" Enter fm-label' "$ROOT"
+  expect_code 0 $? "send_key should recover a stale cmux target when the expected label is live"
+  assert_contains "$(cat "$dir/log")" $'\x1f''send-key'$'\x1f''--workspace'$'\x1f''cccccccc-2222-2222-2222-222222222222'$'\x1f''--surface'$'\x1f''dddddddd-3333-3333-3333-333333333333'$'\x1f''enter' \
+    "send_key did not use the refreshed cmux workspace/surface ids"
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''send-key'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
+    "send_key should not target the stale cmux workspace id after label recovery"
+  pass "fm_backend_cmux_send_key: recovers stale workspace/surface ids by expected label"
 }
 
 test_send_literal_uses_separator_for_option_shaped_text() {
@@ -698,6 +724,23 @@ test_kill_is_best_effort_when_both_fail() {
   pass "fm_backend_cmux_kill: never fails even when both close-surface and close-workspace fail"
 }
 
+test_kill_recovers_stale_target_by_label() {
+  local dir fb
+  dir="$TMP_ROOT/kill-stale-target"; mkdir -p "$dir/responses"
+  cmux_workspace_list_response "$dir" 1 "cccccccc-2222-2222-2222-222222222222" "fm-label"
+  cmux_workspace_list_response "$dir" 2 "cccccccc-2222-2222-2222-222222222222" "fm-label"
+  cmux_panes_response "$dir" 3 "dddddddd-3333-3333-3333-333333333333"
+  fb=$(make_cmux_fakebin "$dir")
+  PATH="$fb:$PATH" FM_CMUX_LOG="$dir/log" FM_CMUX_RESPONSES="$dir/responses" \
+    bash -c '. "$0/bin/backends/cmux.sh"; fm_backend_cmux_kill "aaaaaaaa-0000-0000-0000-000000000000:bbbbbbbb-1111-1111-1111-111111111111" "" fm-label' "$ROOT"
+  expect_code 0 $? "kill should recover a stale cmux target when the expected label is live"
+  assert_contains "$(cat "$dir/log")" $'\x1f''close-surface'$'\x1f''--workspace'$'\x1f''cccccccc-2222-2222-2222-222222222222'$'\x1f''--surface'$'\x1f''dddddddd-3333-3333-3333-333333333333' \
+    "kill did not use the refreshed cmux workspace/surface ids"
+  assert_not_contains "$(cat "$dir/log")" $'\x1f''close-surface'$'\x1f''--workspace'$'\x1f''aaaaaaaa-0000-0000-0000-000000000000' \
+    "kill should not target the stale cmux workspace id after label recovery"
+  pass "fm_backend_cmux_kill: recovers stale workspace/surface ids by expected label"
+}
+
 # --- list_live: label-based orphan discovery ---------------------------------
 
 test_list_live_filters_by_title_prefix() {
@@ -739,6 +782,7 @@ test_version_check_accepts_newer_version
 test_version_check_refuses_old_version
 test_version_check_refuses_missing_cmux
 test_password_reads_from_config_file
+test_password_preserves_config_file_whitespace
 test_password_empty_when_config_absent
 test_cli_exports_password_only_when_configured
 test_parse_target
@@ -759,6 +803,7 @@ test_target_ready_rejects_label_mismatch
 test_capture_trims_locally
 test_capture_fails_when_target_not_ready
 test_send_key_normalizes_and_targets
+test_send_key_recovers_stale_target_by_label
 test_send_literal_uses_separator_for_option_shaped_text
 test_current_path_probes_with_marker
 test_composer_state_bare_prompt_is_empty
@@ -774,5 +819,6 @@ test_send_text_submit_send_failed_when_target_absent
 test_kill_succeeds_when_close_surface_works
 test_kill_falls_back_to_close_workspace_when_close_surface_refuses
 test_kill_is_best_effort_when_both_fail
+test_kill_recovers_stale_target_by_label
 test_list_live_filters_by_title_prefix
 test_secondmate_spawn_refuses_cmux_backend
