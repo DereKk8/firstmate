@@ -18,7 +18,7 @@ set -u
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-# shellcheck source=bin/fm-tangle-lib.sh
+# shellcheck source=bin/fm-tangle-lib.sh disable=SC2153
 . "$ROOT/bin/fm-tangle-lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-tangle-guard)
