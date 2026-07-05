@@ -10,12 +10,14 @@
 # committing in the primary checkout instead of its own disposable worktree,
 # stranding the primary on a feature branch (e.g. fm/readme-restructure-d3).
 #
-# fm_primary_tangle_branch detects exactly that and nothing else: a NAMED,
-# non-default branch checked out in the given root. It is deliberately silent for
-# every legitimate state - the primary on its default branch, and detached HEAD,
-# which is how every linked worktree and secondmate home legitimately sits on the
-# default branch. Detached HEAD on the default is fine; a feature branch in a
-# primary checkout is the alarm.
+# Two tangle variants are detected:
+#   fm_primary_tangle_branch - primary is on a NAMED non-default branch
+#   fm_primary_tangle_dirty  - primary has uncommitted changes to tracked files
+#                              (staged or unstaged; untracked files are ignored)
+# Both are deliberately silent for every legitimate state: the primary on its
+# default branch (clean), and detached HEAD (how every linked worktree and
+# secondmate home legitimately sits). Detached HEAD on the default is fine; a
+# feature branch or dirty tracked files in a primary checkout are the alarms.
 
 # Resolve the default branch name of the git repo at <dir>: prefer origin/HEAD,
 # then fall back to a local main/master. Echoes the name, or returns 1.
@@ -49,5 +51,25 @@ fm_primary_tangle_branch() {
   default=$(fm_default_branch "$root") || return 1
   [ "$cur" = "$default" ] && return 1
   printf '%s\n' "$cur"
+  return 0
+}
+
+# If the git checkout at <root> has uncommitted changes to tracked files (staged
+# or unstaged), echo "dirty" and return 0. Untracked files are deliberately
+# ignored: gitignored operational dirs and stray untracked files are normal.
+# Detached HEAD (the legitimate resting state of linked worktrees and secondmate
+# homes) is always silent, as is a clean checkout. Echo nothing and return 1 for
+# every healthy state. Call this ONLY on the primary checkout (FM_ROOT), never
+# on crewmate worktrees or secondmate homes.
+fm_primary_tangle_dirty() {
+  local root=$1 cur dirty
+  git -C "$root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+  # Only alarm on a named branch; detached HEAD is the legitimate state for
+  # linked worktrees and secondmate homes, so it is never checked for dirty state.
+  cur=$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+  [ -n "$cur" ] || return 1
+  dirty=$(git -C "$root" status --porcelain --untracked-files=no 2>/dev/null || true)
+  [ -n "$dirty" ] || return 1
+  printf 'dirty\n'
   return 0
 }

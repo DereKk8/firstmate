@@ -127,8 +127,8 @@ Unless `config/backlog-backend=manual`, bootstrap treats `tasks-axi` as the defa
 If compatible `tasks-axi` is already on `PATH`, bootstrap records it as `TASKS_AXI: available` and firstmate uses its verbs for routine backlog mutations.
 When it is absent or incompatible, bootstrap reports `MISSING: tasks-axi (install: npm install -g tasks-axi)` and firstmate keeps hand-editing `data/backlog.md` until installation is approved and completed.
 When `config/backlog-backend=manual`, bootstrap hand-edits and does not suggest installing `tasks-axi`.
-Bootstrap also reports a `TANGLE:` line when `FM_ROOT` is on a named non-default branch; follow the printed checkout remediation rather than treating it as an installable tool problem.
-In a read-only session that did not get the fleet lock, the same line is advisory and omits the checkout command.
+Bootstrap also reports `TANGLE:` lines when `FM_ROOT` is on a named non-default branch or has uncommitted changes to tracked files; follow the printed remediations rather than treating them as installable tool problems.
+In a read-only session that did not get the fleet lock, the same lines are advisory and omit repair commands.
 The locked session-start bootstrap step also runs a best-effort project clone refresh through `fm-fleet-sync.sh`.
 It emits `FLEET_SYNC:` for skipped refreshes that may matter, recovered self-heals, and `STUCK:` alarms; local-only and no-origin skips stay silent.
 The locked session-start bootstrap step also runs the guarded local secondmate sync for recorded live secondmate homes, then propagates declared inheritable local config into each validated live home.
