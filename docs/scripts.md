@@ -3,6 +3,13 @@
 The first mate drives these; interactive entrypoints work by hand too, while `*-lib.sh` files are sourced helpers.
 Each file also starts with a short header comment.
 
+## Cost telemetry
+
+`fm-cost-report.sh` produces a single markdown digest of the week's cost-relevant metrics:
+RTK token savings, headroom API utilization, no-mistakes run statistics, and per-run model assignments from the router log.
+Every data-source section is best-effort: missing tools print `unavailable` and never block the report.
+Use `--save` to persist the digest under `data/cost-reports/` for trend tracking.
+
 | Script                   | Description                                                                                                         |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
 | `fm-session-start.sh`    | The one command AGENTS.md sections 3 and 5 run at every session start: composes `fm-lock.sh`, `fm-bootstrap.sh` (its three mutating sweeps gated on holding the lock via `FM_BOOTSTRAP_DETECT_ONLY`), and `fm-wake-drain.sh`, then prints a full context digest (`data/projects.md`, `data/secondmates.md`, `data/captain.md`, `data/learnings.md`, each `ABSENT`-marked when missing) and fleet-state digest (`data/backlog.md`, every `state/*.meta`, a bounded `state/*.status` tail, `state/.afk`, and a cheap per-task endpoint-liveness read); prints a loud read-only banner and skips every mutating step when the lock is held elsewhere; never arms the watcher itself |
@@ -51,3 +58,4 @@ Each file also starts with a short header comment.
 | `fm-x-dismiss.sh`        | Dismiss or dry-run preview a skipped X mention without replying by sending `{request_id}` to the relay's `connector/dismiss` endpoint |
 | `fm-x-link.sh`           | Link a spawned task to its originating X mention by recording `x_request=`, `x_request_ts=`, and a follow-up counter `x_followups=` in `state/<id>.meta`; paired `--carry-count <n> --carry-ts <epoch>` preserves the original counter and timestamp when re-linking onto a successor task |
 | `fm-x-followup.sh`       | Detect, post, and manage up to three completion follow-ups (within a 7-day window) for an X-linked task, forwarding optional `--image <path>`, incrementing the counter on a non-final success, clearing the link on `--final`/cap/window/relay-rejection, and retrying only on a generic post failure |
+| `fm-cost-report.sh`      | Gather cost telemetry into a compact markdown digest: `rtk gain` summary, headroom 5h/7day utilization, no-mistakes stats, and the model-router log tail. Each section is best-effort. `--save` writes to `$FM_HOME/data/cost-reports/<date>.md` |
