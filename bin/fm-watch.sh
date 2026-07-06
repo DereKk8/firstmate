@@ -365,8 +365,12 @@ while :; do
   # down so the rightful singleton continues alone. The EXIT trap's release
   # no-ops because the lock pid is not ours, so the survivor's lock is untouched.
   # This makes any duplicate self-resolve within one poll instead of persisting
-  # and doubling every wake.
-  if [ "$(cat "$WATCH_LOCK/pid" 2>/dev/null || true)" != "$WATCHER_PID" ]; then
+  # and doubling every wake. Say so on stdout before exiting: a tracked arm task
+  # ending this way must be distinguishable in its output from an actual wake,
+  # not a silent zero-output exit 0.
+  holder_pid=$(cat "$WATCH_LOCK/pid" 2>/dev/null || true)
+  if [ "$holder_pid" != "$WATCHER_PID" ]; then
+    echo "watcher: superseded by pid ${holder_pid:-none}"
     exit 0
   fi
 

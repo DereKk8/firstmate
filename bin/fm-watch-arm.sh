@@ -24,9 +24,22 @@
 # It NEVER reports started/healthy off a stale beacon or a dead/reused pid: a
 # stale-beacon or dead-pid holder either self-heals (the fresh child steals the
 # dead lock per the singleton self-eviction/steal path and is confirmed) or this
-# returns the FAILED line. On started/healthy it exits zero; on FAILED it exits
-# non-zero so the failure is loud and a caller can react. A healthy line means a
-# live cycle already exists; do not churn extra no-op arms until that cycle fires.
+# returns the FAILED line. On FAILED it exits non-zero immediately so the failure
+# is loud and a caller can react.
+#
+# On started AND healthy this script then BLOCKS until the cycle ends. started
+# waits on its own child; healthy ATTACHES to the already-live watcher (polls
+# its pid + lock) and exits when that watcher fires a wake, dies, or is
+# superseded. "Process alive" is not the same as "harness-tracked": a live
+# watcher can be untracked (a prior arm hard-killed by SIGKILL orphans its
+# child; a directly-run bin/fm-watch.sh; a startup race whose loser was the
+# tracked one), and an arm that reported healthy and exited immediately would
+# leave that watcher's eventual wake with nobody listening. Attaching closes
+# that hole: every arm invocation is a live tracked notification channel for
+# the current cycle, whether it spawned the watcher or adopted it. A healthy
+# line still means a live cycle already exists; do not churn extra arms until
+# this one completes (two attached arms are harmless - the durable wake queue
+# dedupes - but pointless).
 #
 # --restart: stop ONLY this FM_HOME's watcher (the pid recorded in THIS home's
 # state/.watch.lock) and start a fresh one. It resolves and signals exactly that
@@ -94,6 +107,22 @@ report_healthy() {
   echo "watcher: healthy pid=$HEALTHY_PID (beacon ${age}s)"
 }
 
+# Attach to a live watcher this arm did NOT spawn: block while it remains the
+# live recorded lock holder, then exit 0 once it is gone (fired a wake, died,
+# or was superseded by another watcher). The adopted watcher is not our child,
+# so we poll instead of wait(2); its wake reason line went to whoever launched
+# it, but every wake path enqueues to the durable state/.wake-queue BEFORE
+# printing/exiting, so the drain on the next turn picks the reason up. Never
+# returns.
+attach_to_watcher() {
+  local pid=$1
+  while fm_pid_alive "$pid" && watch_lock_matches_pid "$pid"; do
+    sleep 2
+  done
+  echo "watcher: cycle ended - adopted watcher pid=$pid exited or was superseded; drain and re-arm"
+  exit 0
+}
+
 watch_output_has_wake() {
   local out=$1
   grep -Eq '^(signal:|stale:|check:|heartbeat($|:))' "$out" 2>/dev/null
@@ -132,11 +161,15 @@ if [ "$mode" = restart ]; then
 fi
 
 # If a genuinely live+fresh watcher already holds the lock, do not start a second
-# one - the singleton would no-op anyway. Report it honestly and return success.
+# one - the singleton would no-op anyway. Report it honestly, then ATTACH: block
+# on that watcher so this arm invocation is still a tracked notification channel
+# for the cycle, even though the watcher was launched elsewhere (or its original
+# arm is gone). Exiting here instead would leave the live watcher's eventual wake
+# with nobody listening - the supervision-blackout bug.
 # (--restart skips this: it just stopped this home's watcher and wants a fresh one.)
 if [ "$mode" = arm ] && healthy_watcher; then
   report_healthy
-  exit 0
+  attach_to_watcher "$HEALTHY_PID"
 fi
 
 # Start a watcher as a tracked child and confirm it before settling in. The child
@@ -178,11 +211,16 @@ while :; do
       rm -f "$child_out" 2>/dev/null || true
       exit "$rc"
     fi
-    # Another watcher won the singleton; our child stood down. Report the live one.
+    # Another watcher won the singleton; our child stood down. Report the live
+    # one and attach to it, so this arm stays a tracked channel for the cycle
+    # instead of silently ending while the winner runs on untracked.
     report_healthy
     wait "$child" 2>/dev/null || true
     rm -f "$child_out" 2>/dev/null || true
-    exit 0
+    child=
+    child_out=
+    trap - HUP TERM INT
+    attach_to_watcher "$HEALTHY_PID"
   fi
   if [ "$child_done" -eq 0 ] && ! fm_pid_alive "$child"; then
     wait "$child"

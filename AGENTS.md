@@ -240,13 +240,13 @@ Load `task-lifecycle` for full validate procedure, run-step states, PR-ready ste
 - While any task is in flight, keep exactly one live `bin/fm-watch-arm.sh` background task at all times — if no cycle is live, firstmate is blind.
 - **Never end a turn blind**: a text-only "holding" or "waiting" reply while crewmates are live and no cycle is running is a bug.
 - At the start of every wake-handling turn, run `bin/fm-wake-drain.sh` before peeking panes, reading status files beyond the reason line, or starting new work. (Session-start is the exception: `bin/fm-session-start.sh` already drained the queue.)
-- **Re-arm after each FIRE; do not churn on a no-op.** `bin/fm-watch-arm.sh` prints one honest status line: `started` (just launched) or `healthy` (already live) = cycle is live, do NOT start another; `FAILED` = no live cycle, arm now.
+- **Re-arm after each cycle end; do not churn extra arms while one is live.** `bin/fm-watch-arm.sh` prints one honest status line and then stays live for the whole cycle: `started` (spawned a fresh watcher) or `healthy` (attached to the already-live watcher) both mean THIS arm task is the tracked notification channel and will complete on the cycle's next wake — do NOT launch another; `FAILED` = no live cycle, arm now. `healthy` is not "already covered, nothing to do": the arm call itself blocks until the adopted watcher fires, dies, or is superseded.
 - **Standalone, never bundled**: run `bin/fm-watch-arm.sh` as its OWN background task — never tacked onto the tail of a multi-command call.
 - Never `pkill -f bin/fm-watch.sh`: that pattern kills sibling homes' watchers.
 - Arm or re-arm only through the harness's own tracked background mechanism.
 
 ```sh
-bin/fm-watch-arm.sh           # verified re-arm; standalone background; no-ops if healthy
+bin/fm-watch-arm.sh           # verified re-arm; standalone background; attaches to a live watcher instead of no-opping
 bin/fm-watch-arm.sh --restart # home-scoped forced restart; never a broad pkill
 bin/fm-watch.sh               # the watcher itself; exits with: signal|stale|check|heartbeat
 bin/fm-wake-drain.sh          # drain queued wakes at turn start; asserts guard after draining
