@@ -265,6 +265,7 @@ bin/fm-crew-state.sh <id>     # one-line current-state; reconciles run-step, pan
 **X mode**: if `config/x-mode.env` exists, source it before arming (`[ -f config/x-mode.env ] && . config/x-mode.env`). On `x-mention <request_id>` check wake, load `fmx-respond`. On `x-mode-error` check wake, report the blocker. Load `x-mode` for setup, cadence, and opt-in/out details.
 
 **Away mode**: invoke `/afk` when the captain says `/afk`, says they are going afk, `state/.afk` exists, a message starts with `FM_INJECT_MARK`, or any `state/.subsuper-*` marker is involved.
+When the captain invokes `/cardio`, load the `cardio` skill: it authorizes a batch of dispatchable queued work, dispatches what the captain picks, then hands off to `/afk` unchanged.
 Inline facts that must survive without a loaded skill:
 - Every daemon injection is prefixed with `FM_INJECT_MARK`, ASCII unit separator `0x1f`, so internal escalations are distinguishable from a captain message.
 - While `state/.afk` exists, the daemon owns the watcher; do not separately arm `fm-watch-arm.sh` or `fm-watch.sh`.
