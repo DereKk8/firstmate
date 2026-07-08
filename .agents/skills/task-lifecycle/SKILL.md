@@ -14,9 +14,9 @@ Load this reference for full spawn, validate, teardown, brief, and recovery mech
 
 ```sh
 bin/fm-spawn.sh <id> projects/<repo>                           # ship task; crewmate harness only when no crew-dispatch.json
-bin/fm-spawn.sh <id> projects/<repo> --harness codex           # explicit per-task harness override
-bin/fm-spawn.sh <id> projects/<repo> codex                     # positional harness override
-bin/fm-spawn.sh <id> projects/<repo> --harness codex --model gpt-5.5 --effort high   # explicit profile axes
+bin/fm-spawn.sh <id> projects/<repo> --harness <adapter>       # explicit per-task harness override
+bin/fm-spawn.sh <id> projects/<repo> <adapter>                 # positional harness override
+bin/fm-spawn.sh <id> projects/<repo> --harness <adapter> --model <model-id> --effort <effort>   # explicit profile axes
 bin/fm-spawn.sh <id> projects/<repo> --backend tmux            # explicit runtime backend (verified reference)
 bin/fm-spawn.sh <id> projects/<repo> --backend herdr           # experimental herdr backend; version-gates at spawn
 bin/fm-spawn.sh <id> projects/<repo> --backend zellij          # experimental zellij backend; version-gates at spawn

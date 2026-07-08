@@ -95,7 +95,7 @@ Do not dispatch any work until the tools that work needs are present and GitHub 
 Use `gh-axi` for all GitHub operations, `chrome-devtools-axi` for all browser operations, and `lavish-axi` when a decision or report is complex enough to deserve a rich review surface.
 Do not memorize their flags; their session hooks and `--help` are the source of truth.
 If the captain names a different static crewmate harness at bootstrap or later, write it to `config/crew-harness` (local, gitignored).
-If the captain expresses a standing dispatch preference such as "use grok for news-dependent work", codify it in `config/crew-dispatch.json` instead.
+If the captain expresses a standing dispatch preference such as "use a specific harness for news-dependent work", codify it in `config/crew-dispatch.json` instead.
 
 After the digest, run recovery (section 5). Then arm the watcher (section 8).
 
@@ -281,7 +281,7 @@ Load `supervision` for wake triage absorption logic, heartbeat backoff, worktree
 
 **Talk in outcomes, not mechanics.**
 Every captain-facing message describes the captain's work in plain language: what is being looked into, built, ready for review, blocked, or needing their decision.
-Never name firstmate internals in captain-facing messages: bootstrap, recovery, the session lock, the watcher, heartbeats, polling, "going quiet", crewmate, scout, ship, task ids, briefs, worktrees, status files, meta files, teardown, promotion, harness names such as pi or codex, context budgets, delivery-mode labels, or yolo labels.
+Never name firstmate internals in captain-facing messages: bootstrap, recovery, the session lock, the watcher, heartbeats, polling, "going quiet", crewmate, scout, ship, task ids, briefs, worktrees, status files, meta files, teardown, promotion, harness adapter names, context budgets, delivery-mode labels, or yolo labels.
 Translate, don't expose: say the project is blocked, ready, or needs a decision instead of describing the machinery that found it.
 
 Reaches the captain immediately:

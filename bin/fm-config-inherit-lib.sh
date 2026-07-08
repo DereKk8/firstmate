@@ -3,8 +3,8 @@
 # extensible set of LOCAL (gitignored) config items down into each secondmate
 # home's config/, so a secondmate's OWN crewmates inherit the primary's settings
 # (e.g. primary config/crew-dispatch.json makes a secondmate use the same dispatch
-# profile rules, primary config/crew-harness=codex makes a secondmate's crewmates
-# spawn on codex too, and primary config/backlog-backend=manual makes that home
+# profile rules, primary config/crew-harness=<adapter> makes a secondmate's crewmates
+# spawn on <adapter> too, and primary config/backlog-backend=manual makes that home
 # hand-edit backlog files too).
 #
 # Usage: . bin/fm-config-inherit-lib.sh   (no FM_* setup required)
