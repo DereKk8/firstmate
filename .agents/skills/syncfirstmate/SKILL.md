@@ -54,7 +54,7 @@ The captain decides whether to proceed to full sync.
 ### 2. Full-sync mode (captain-initiated)
 
 **Never enter full-sync mode without the captain's explicit go-ahead.**
-**Before triggering no-mistakes validation, ask the captain for pipeline-run approval AND which model to run no-mistakes with.**
+**Before triggering any validation, ask the captain for approval AND which model to use.**
 These are prime directive #2 and the captain's standing rule; they are not waivable.
 
 #### Dispatch a crewmate
@@ -91,10 +91,26 @@ You are integrating new upstream advances from `upstream/main` into this fork.
 
 5. **Never add any agent as co-author.**
 
-6. Gate through no-mistakes per the project's delivery mode.
-   Ask firstmate for pipeline-run approval and model choice before triggering validation.
+6. Ask firstmate for validation approval and model choice before running anything.
 
 ---
+
+#### Validate the seam, not the history
+
+Every commit that reaches `main` on either side — this fork and canonical upstream — already passed the no-mistakes gate at its origin.
+A sync is therefore mostly a fast-forward of pre-validated history; re-running a full pipeline over that history re-validates already-validated commits — overkill.
+
+The genuinely new, never-gated surface of a sync is exactly two things:
+1. **The merge seam** — the conflict resolutions and adaptation edits where custom features absorbed incoming upstream changes.
+2. **Net-new code** written on the integration branch (new skills, helpers, AGENTS.md hooks).
+
+Validation must target that surface, not the fast-forwarded history.
+
+**Required gate:** a focused code review of the seam (the reconciliation/conflict diff) plus all net-new code. This is where integration mistakes live.
+
+**Optional judgment:** run the test suite over the integrated whole to catch cross-feature interaction bugs between independently validated features. Treat pre-existing, environment-caused failures that reproduce on the untouched upstream tree (e.g. a CI runner auto-installing a missing dev package and polluting a test's expected output) as noise — record them in the report; they do not block the merge.
+
+Ask the captain for validation approval + model before running anything. Never merge without the captain's explicit word.
 
 After the crewmate reports `done:`, generate the sync changelog (next section), then follow the normal delivery-mode gate → PR → captain-merge flow.
 
