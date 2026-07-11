@@ -54,24 +54,24 @@ command -v treehouse >/dev/null 2>&1 || { echo "skip: treehouse not found (requi
 # shellcheck source=tests/herdr-test-safety.sh
 . "$ROOT/tests/herdr-test-safety.sh"
 
-# Physically-resolved TMP_ROOT (mktemp -d "$(pwd -P)"-relative), not the
-# logical ${TMPDIR:-/tmp} path - see tests/fm-backend-autodetect-smoke.test.sh
-# for why: fm-spawn.sh's worktree-discovery poll compares a logical cd&&pwd
-# against herdr's physically-resolved foreground_cwd, and a project rooted on
-# the logical side of a symlinked /tmp trips the isolation guard's false
-# refusal before treehouse ever moves the pane.
+# TMP_ROOT is physically resolved (mktemp -d "$(pwd -P)"-relative) for the same
+# low-noise scratch fixture shape used by
+# tests/fm-backend-autodetect-smoke.test.sh.
+# fm-spawn no longer needs this as a symlink workaround: fm-spawn-symlink-guard-s8
+# canonicalized project and backend cwd comparisons in the worktree-discovery
+# poll.
 TMP_ROOT=$(mktemp -d "$(cd "${TMPDIR:-/tmp}" && pwd -P)/fm-herdr-e2e.XXXXXX")
-SESSION="fm-herdr-e2e-$$"
+SESSION="fm-lab-herdr-e2e-$$"
 export HERDR_SESSION="$SESSION"
 WT1=; WT2=
-trap cleanup_all EXIT
-
 cleanup_all() {
   [ -n "$WT1" ] && command -v treehouse >/dev/null 2>&1 && treehouse return --force "$WT1" >/dev/null 2>&1
   [ -n "$WT2" ] && command -v treehouse >/dev/null 2>&1 && treehouse return --force "$WT2" >/dev/null 2>&1
   herdr_safe_stop_and_delete "$SESSION"
   rm -rf "$TMP_ROOT"
 }
+trap cleanup_all EXIT
+fm_herdr_lab_prepare "$SESSION" || fail "could not prepare isolated Herdr lab session"
 
 # shellcheck source=bin/fm-backend.sh
 . "$ROOT/bin/fm-backend.sh"

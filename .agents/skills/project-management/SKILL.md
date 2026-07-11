@@ -59,6 +59,7 @@ If `no-mistakes doctor` reports problems, fix the environment (auth, daemon) bef
 Firstmate's own not-yet-committed project knowledge lives in `data/` until a crewmate folds it into the project's `AGENTS.md`.
 
 Create a project's `AGENTS.md` lazily on first need: the first ship task touching a project that lacks one and has durable project-intrinsic knowledge should run `bin/fm-ensure-agents-md.sh`, add that knowledge, and commit both through the delivery pipeline. Do not eagerly backfill every project.
+The canonical self-governance wording for project `AGENTS.md` files lives in `bin/fm-ensure-agents-md.sh`.
 
 ## Knowledge routing
 
@@ -66,11 +67,11 @@ Route each piece of durable knowledge to its most specific home:
 
 | Kind of knowledge | Home |
 | --- | --- |
-| Captain preferences and working style | `data/captain.md` |
+| Captain preferences and working style | `data/captain.md`, inspected first and rewritten or pruned in place |
 | Project-intrinsic knowledge | that project's own `AGENTS.md`, via crewmate delivery, never hand-written by firstmate |
-| Fleet-local operational facts and gotchas | `data/learnings.md` |
+| Fleet-local operational facts and gotchas | `data/learnings.md`, inspected first and rewritten or pruned in place |
 | Knowledge generalizable to every firstmate user | the shared `AGENTS.md`, shipped via PR through the pipeline |
-| Task-scoped notes | backlog item notes (`tasks-axi update <id> --append "<note>"`, or hand-edit) |
+| Task-scoped notes | backlog item notes: inspect first with `tasks-axi show <id> --full`, then replace the body with `tasks-axi update <id> --body-file <path>` (add `--archive-body` when superseded state should stay recoverable), or hand-edit per the active backend |
 | Investigation findings | scout reports at `data/<id>/report.md` |
 
 When the captain invokes `/stow`, load the `stow` skill — it sweeps the current session for uncaptured durable knowledge and routes findings with this table.

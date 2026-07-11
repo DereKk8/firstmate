@@ -45,25 +45,25 @@ command -v treehouse >/dev/null 2>&1 || { echo "skip: treehouse not found (requi
 # shellcheck source=tests/herdr-test-safety.sh
 . "$ROOT/tests/herdr-test-safety.sh"
 
-# Physically-resolved (mktemp -d "$(pwd -P)"-relative), not the logical
-# ${TMPDIR:-/tmp} path: on macOS /tmp is a symlink to /private/tmp, and
-# fm-spawn.sh's PROJ_ABS uses a logical `cd && pwd` while herdr's own
-# foreground_cwd reports the OS-resolved physical path. A project rooted on
-# the logical side of that symlink makes the very first worktree-discovery
-# poll see two different STRINGS for the same directory and trip the
-# isolation guard's false-refusal before treehouse ever moves the pane.
+# TMP_ROOT is physically resolved (mktemp -d "$(pwd -P)"-relative) to keep this
+# real-herdr smoke fixture free of unrelated OS symlink noise.
+# The old fm-spawn bug that originally motivated this fixture shape was fixed in
+# fm-spawn-symlink-guard-s8: fm-spawn.sh now normalizes PROJ_ABS and observed
+# backend cwd reads before the worktree-discovery comparison.
+# The dedicated regression is
+# tests/fm-backend.test.sh:test_spawn_symlinked_project_prefix_avoids_false_refusal.
 TMP_ROOT=$(mktemp -d "$(cd "${TMPDIR:-/tmp}" && pwd -P)/fm-backend-autodetect-smoke.XXXXXX")
-SESSION="fm-autodetect-smoke-$$"
+SESSION="fm-lab-autodetect-smoke-$$"
 export HERDR_SESSION="$SESSION"
 ID="autodetectsmoke1"
 WT=
-trap cleanup_all EXIT
-
 cleanup_all() {
   [ -n "$WT" ] && command -v treehouse >/dev/null 2>&1 && treehouse return --force "$WT" >/dev/null 2>&1
   herdr_safe_stop_and_delete "$SESSION"
   rm -rf "$TMP_ROOT"
 }
+trap cleanup_all EXIT
+fm_herdr_lab_prepare "$SESSION" || fail "could not prepare isolated Herdr lab session"
 
 # --- scratch world: FM_HOME with NO backend config, one throwaway project ---
 

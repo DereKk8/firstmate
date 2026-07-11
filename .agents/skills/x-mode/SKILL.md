@@ -82,7 +82,8 @@ The public channel guardrail: anything destructive, irreversible, or security-se
 ## Length and threads
 
 Answer concisely — one tweet, two at most — and never hand-number a thread.
-`bin/fm-x-reply.sh` handles length: a reply that fits one tweet is posted as-is; a genuinely long reply is auto-split into a numbered `(k/n)` thread on word boundaries, each tweet within `FMX_X_REPLY_MAX_CHARS` (default 280) and capped at `FMX_X_THREAD_MAX` tweets (default 25). Those limits are optional environment or `.env` values; explicit environment values win over `.env`.
+`bin/fm-x-reply.sh` handles length: a reply that fits one message is posted as-is; a genuinely long reply is auto-split into a numbered `(k/n)` thread on word boundaries, each part within `FMX_X_REPLY_MAX_CHARS` (default 280) and capped at `FMX_X_THREAD_MAX` parts (default 25). Those limits are optional environment or `.env` values; explicit environment values win over `.env`.
+Replies are split per platform: the mention's platform rides in the inbox payload and is recorded on the task link as `x_platform=`/`x_reply_max_chars=`, so a longer-budget platform reply (e.g. Discord-relayed) keeps its own split budget instead of the X 280-char one. `bin/fm-x-link.sh` reads the platform from the still-present inbox payload — link before inbox cleanup — and `--carry-platform <x|discord> --carry-max <n>` preserves it when relinking onto a successor task. Follow-ups preserve the linked task's recorded platform limits.
 - Single tweet: sends `{request_id, text}`.
 - Thread: additionally sends `texts` — the ordered chunks — which the relay posts as chained replies (`text` stays the first chunk for relay compatibility).
 - With `--image <path>`, the image is attached to the first/opener tweet only; later chunks remain text-only.

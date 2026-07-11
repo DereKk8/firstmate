@@ -33,7 +33,9 @@ config/crew-harness       crewmate harness override; LOCAL; absent or "default" 
 config/crew-dispatch.json optional crewmate dispatch profiles; LOCAL; firstmate-maintained but human-editable JSON. Inherited by secondmate homes
 config/secondmate-harness harness the PRIMARY uses to launch SECONDMATE agents, optionally followed by model and effort tokens ("<harness> [<model>] [<effort>]"); LOCAL; absent or "default" falls back to config/crew-harness then firstmate's own. NOT inherited into secondmate homes
 config/backlog-backend    backlog backend override; LOCAL; absent or "tasks-axi" = default; "manual" = force hand-editing. Inherited by secondmate homes
-config/backend            runtime session-provider backend override; LOCAL; absent = runtime auto-detection then tmux
+config/backend            runtime session-provider backend override; LOCAL; absent = runtime auto-detection then tmux; herdr and cmux are auto-detectable, zellij and orca are always explicit, codex-app is not accepted
+config/cmux-socket-password  optional cmux control-socket password; LOCAL; read fresh on every cmux CLI call, never overrides an ambient CMUX_SOCKET_PASSWORD (docs/cmux-backend.md)
+config/wedge-alarm        optional away-mode wedge-alarm active-alert directives; LOCAL; absent means auto (docs/wedge-alarm.md)
 config/x-mode.env         generated X-mode watcher cadence (exports FM_CHECK_INTERVAL=30); LOCAL; source before arming when present
 
 data/                     personal fleet records; LOCAL, gitignored as a whole
@@ -76,6 +78,7 @@ Written by `fm-spawn.sh`:
 - `kind=secondmate` also records `home=` and `projects=`
 - Non-default backend records `backend=` (absent means tmux):
   - herdr: `herdr_session=`, `herdr_workspace_id=`, `herdr_tab_id=`, `herdr_pane_id=`
+  - cmux: `cmux_workspace_id=`, `cmux_surface_id=`
   - zellij: `zellij_session=`, `zellij_tab_id=`, `zellij_pane_id=`
   - orca: `orca_worktree_id=`, `terminal=`; keeps `window=fm-<id>` as the firstmate alias
 
@@ -90,6 +93,8 @@ Task ids are short kebab slugs with a random suffix, e.g. `fix-login-k3`.
 - herdr backend: task tab labeled `fm-<id>`; recorded `window=` target is `<herdr-session>:<pane-id>`. Tabs live in the current firstmate home's workspace: `firstmate` for the primary, `2ndmate-<secondmate-id>` for a secondmate home. A `--secondmate` spawn uses the target secondmate home's workspace.
 - zellij backend: task tab labeled `fm-<id>`; recorded `window=` is `<zellij-session>:<pane-id>`. Unlike herdr, all zellij tasks (primary and every secondmate) share one `firstmate` session's tab bar — no per-home workspace split.
 - Orca backend: ship/scout tasks record `window=fm-<id>` as the firstmate alias plus `terminal=<orca-terminal-handle>` and `orca_worktree_id=<orca-worktree-id>`; Orca owns the task worktree and terminal; `--secondmate` refuses Orca.
+- cmux backend: no session layer - one workspace per task; the caller-facing label stays `fm-<id>` but the actual workspace title is scoped as `fm-<home-label>-<id>` (readable FM_HOME label plus a short FM_ROOT hash). Never enumerate-and-close every workspace; use the guarded cleanup in docs/cmux-backend.md "Test safety".
+- Per-backend naming and workspace scoping details are owned by `docs/configuration.md` ("Runtime backend") and each backend's own doc under `docs/`.
 
 ## Backend docs
 
