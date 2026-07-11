@@ -96,7 +96,42 @@ You are integrating new upstream advances from `upstream/main` into this fork.
 
 ---
 
-After the crewmate reports `done:`, follow the normal delivery-mode gate → PR → captain-merge flow.
+After the crewmate reports `done:`, generate the sync changelog (next section), then follow the normal delivery-mode gate → PR → captain-merge flow.
+
+#### Generate the sync changelog
+
+After the merge crewmate finishes and the exact merged commit range is known, produce a markdown changelog at:
+
+```
+data/upstream-sync/<YYYY-MM-DD>-<short-merge-sha>.md
+```
+
+This is firstmate operational output - gitignored, never tracked.
+Create `data/upstream-sync/` if absent.
+`<short-merge-sha>` is the first 7 characters of the merge commit on the integration branch.
+
+**Content and ordering (captain-first):**
+
+1. **Header** - date, upstream repo (`kunchenguid/firstmate`), commit counts (N new features / M fixes / K docs), and how many commits behind the fork was.
+
+2. **"Most useful for your workflow" section** - the new features ranked most→least relevant to the captain's current workflow, each with a one-line "why it helps you".
+   Relevance is an agent judgment, not mechanical.
+   Base it on:
+   - `data/captain.md` - the captain's preferences, active projects, and standing pains.
+   - `data/projects.md` - the active project set.
+   - `data/learnings.md` - recent fleet pain points and recurring friction.
+   A feature that addresses a documented pain point ranks above a feature in an area the captain rarely touches.
+   Example: a supervision or watcher-reliability fix ranks high if firstmate supervision has been flagged as flaky.
+
+3. **Everything else, by category** - remaining new features (lower relevance), bug fixes grouped by theme, docs and internal changes.
+   Plain language throughout; translate internal mechanics into what the capability does for the captain.
+   A commit hash may trail a line as a reference, but never as the primary content.
+
+**This ranking and plain-language rewrite are an agent step in the skill, not the shell helper.**
+Use `bin/fm-upstream-check.sh`'s grouped output as raw input; apply judgment on top.
+The shell helper stays deterministic and read-only.
+
+After writing the changelog, tell the captain its path so they can open it.
 
 ## Weekly heartbeat
 
