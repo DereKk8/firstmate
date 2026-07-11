@@ -163,6 +163,8 @@ Some harnesses use the slash form shown here; others use the same names with `$`
 | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | `/afk`             | Enter away-mode supervision: the sub-supervisor self-handles routine wakes in bash, escalates captain-relevant events and bounded declared-external-wait rechecks as batched digests, and actively alerts if delivery wedges while you step away |
 | `/bearings`        | Generate a "pick up where I left off" status report from the read-only fleet snapshot - backlog, per-task crew state, open PRs, scout reports, pending decisions, and date-gated queued work - written to a dated file in `data/` and surfaced concisely in chat; read-mostly, mutates no task state |
+| `/cardio`          | Authorize a batch of dispatchable pending queued work, dispatch what you pick, then hand off to `/afk` for an away-mode stretch without monitoring |
+| `/syncfirstmate`   | Pull new features from canonical upstream into this fork: check mode reports the gap (default), full-sync mode dispatches a crewmate to merge, reconcile custom features, gate through no-mistakes, and land via PR |
 | `/updatefirstmate` | Self-update the running firstmate and its secondmates to the latest from origin with fast-forward-only pulls, then re-read instructions and nudge secondmates |
 | `/stow`            | Sweep the session for uncaptured durable knowledge, route each finding to its disk home per AGENTS.md, file undone next steps to the backlog, and report what is now safe to reset |
 
