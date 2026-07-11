@@ -386,12 +386,21 @@ Status-reporting protocol: crewmates append status only for supervisor-actionabl
 
 Load `task-lifecycle` for the full brief contract: worktree-isolation assertion, delivery-mode-shaped definition of done, no-mistakes escalation rules, project-memory step, and charter idle-by-default requirements.
 
-## 12. Self-update
+## 12. Self-update and upstream sync
 
-firstmate is its own repo behind the no-mistakes gate, so improvements to `AGENTS.md`, `bin/`, `.agents/skills/`, and public `skills/` reach `main` and then wait for each running firstmate to pull them.
-Only `AGENTS.md`, `bin/`, and `.agents/skills/` are a running firstmate instruction surface; public `skills/` is tracked for installers and is not loaded by firstmate.
+Two distinct update layers exist; keep them separate.
+
+**`/updatefirstmate`** - fast-forwards this fork's `main` into the running firstmate and secondmate homes.
 When the captain invokes `/updatefirstmate` or asks to update firstmate, load the `/updatefirstmate` skill.
-It performs only fast-forward self-updates of firstmate and registered secondmate homes, re-reads `AGENTS.md` when needed, nudges updated live secondmates, and never touches anything under `projects/`.
+It performs only fast-forward self-updates of firstmate and registered secondmate homes, re-reads `AGENTS.md` when needed, nudges updated live secondmates, and never touches the canonical upstream or anything under `projects/`.
+
+**`/syncfirstmate`** - pulls new features from the canonical upstream (`kunchenguid/firstmate`) into this fork via a real merge, reconciles custom features on the merits, gates through no-mistakes, and lands via PR + captain merge.
+When the captain invokes `/syncfirstmate` or asks to sync from upstream, load the `/syncfirstmate` skill.
+Check mode (the default and what the weekly heartbeat runs) only fetches and reports the gap; full sync dispatches a crewmate.
+Never merge the resulting PR without the captain's explicit word.
+Never trigger no-mistakes validation without asking the captain for pipeline-run approval and model choice first.
+
+Mental model: `upstream (canonical) → [/syncfirstmate] → origin/main → [/updatefirstmate] → running instances`.
 
 ## 13. Agent-only reference skills
 
