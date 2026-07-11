@@ -114,7 +114,7 @@ Create `data/upstream-sync/` if absent.
 
 1. **Header** - date, upstream repo (`kunchenguid/firstmate`), commit counts (N new features / M fixes / K docs), and how many commits behind the fork was.
 
-2. **"Most useful for your workflow" section** - the new features ranked most→least relevant to the captain's current workflow, each with a one-line "why it helps you".
+2. **"Most useful for your workflow" section** - the new features ranked most→least relevant to the captain's current workflow.
    Relevance is an agent judgment, not mechanical.
    Base it on:
    - `data/captain.md` - the captain's preferences, active projects, and standing pains.
@@ -123,11 +123,20 @@ Create `data/upstream-sync/` if absent.
    A feature that addresses a documented pain point ranks above a feature in an area the captain rarely touches.
    Example: a supervision or watcher-reliability fix ranks high if firstmate supervision has been flagged as flaky.
 
-3. **Everything else, by category** - remaining new features (lower relevance), bug fixes grouped by theme, docs and internal changes.
+   **Every new feature entry (in both this section and the lower-relevance section below) requires two concrete sub-parts:**
+   - **How to use it** - the actual command, skill name, flag, or invocation; where it lives; what it outputs.
+     This must be grounded in the real merged source - read the actual `.agents/skills/<name>/SKILL.md`, the `bin/*.sh` header comment or `--help`, and the relevant `AGENTS.md` section before writing.
+     If the concrete usage genuinely cannot be determined from the merged tree, write "usage: (not yet documented upstream)" rather than fabricate a command.
+     A made-up command is worse than an honest gap.
+   - **Real use case** - a concrete, realistic scenario from the captain's own multi-project fleet: when and why they'd reach for this feature (e.g., "You're watching 6 jobs and want a one-line overview → run `X`").
+     The "Most useful" features get the fullest treatment; lower-relevance features keep their sub-parts tight but still concrete.
+
+3. **Everything else, by category** - remaining new features (lower relevance, each still with "How to use it" and "Real use case"), bug fixes grouped by theme (one-liner each), docs and internal changes (one-liner each).
    Plain language throughout; translate internal mechanics into what the capability does for the captain.
    A commit hash may trail a line as a reference, but never as the primary content.
+   Bug fixes and docs entries remain brief one-liners - only new feature entries carry the two sub-parts.
 
-**This ranking and plain-language rewrite are an agent step in the skill, not the shell helper.**
+**This ranking, plain-language rewrite, and sub-part generation are agent steps in the skill, not the shell helper.**
 Use `bin/fm-upstream-check.sh`'s grouped output as raw input; apply judgment on top.
 The shell helper stays deterministic and read-only.
 
