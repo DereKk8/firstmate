@@ -83,7 +83,7 @@ test_pi_extension_reports_external_healthy_watcher() {
 printf 'watcher: healthy pid=1 (beacon 0s)\n'
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npx tsx --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npm_config_loglevel=error npx tsx --input-type=module 2>&1 <<'EOF'
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -140,6 +140,10 @@ if (!prompt.includes("watcher: healthy pid=1")) {
 EOF
 )
   status=$?
+  # npx may emit npm logger noise (e.g. "npm warn exec ... installing tsx") when the
+  # runner has no cached tsx; that is infrastructure noise, not output from the code
+  # under test. Strip npm's own logger lines before asserting the extension is silent.
+  out=$(printf '%s' "$out" | grep -v '^npm ' || true)
   expect_code 0 "$status" "Pi extension must surface an external healthy watcher as an owned-wake failure"
   [ -z "$out" ] || fail "Pi external-healthy test printed output: $out"
   pass "Pi extension reports external healthy watcher output"
@@ -157,7 +161,7 @@ test_pi_tool_returns_agent_tool_result() {
 exit 0
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npx tsx --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npm_config_loglevel=error npx tsx --input-type=module 2>&1 <<'EOF'
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -189,6 +193,7 @@ if (result.details?.ok !== true || result.details?.message !== result.content[0]
 EOF
 )
   status=$?
+  out=$(printf '%s' "$out" | grep -v '^npm ' || true)
   expect_code 0 "$status" "Pi custom tool must return Pi's AgentToolResult shape"
   [ -z "$out" ] || fail "Pi tool-result test printed output: $out"
   pass "Pi custom tool returns text content and structured details"
@@ -203,7 +208,7 @@ test_pi_process_exit_cleanup_listener_lifecycle() {
   plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
   : > "$repo/bin/fm-watch-arm.sh"
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npx tsx --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npm_config_loglevel=error npx tsx --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 
 const handlers = new Map();
@@ -228,6 +233,7 @@ if (process.listenerCount("exit") !== before) {
 EOF
 )
   status=$?
+  out=$(printf '%s' "$out" | grep -v '^npm ' || true)
   expect_code 0 "$status" "Pi cleanup fallback listener must install once and unregister on session shutdown"
   [ -z "$out" ] || fail "Pi listener-lifecycle test printed output: $out"
   pass "Pi process-exit cleanup listener has a bounded lifecycle"
