@@ -42,14 +42,18 @@ See `docs/examples/crew-dispatch.json` for a documented starting point to copy i
 ```
 
 Per rule: `when` and `use` are required; `use.harness` is required; `use.model`, `use.effort`, and `why` are optional.
+`use` may also be an ARRAY of profile objects, optionally paired with `"select": "quota-balanced"`.
 `default` is optional.
 An omitted model or effort means the selected harness uses its own default for that axis.
+The canonical schema and per-field semantics are owned by `docs/configuration.md` ("Crew dispatch profiles"); read them there before writing or editing the file.
 
 ## Best-fit selection algorithm
 
 Pick the single best-fit rule using your own judgment — this is explicitly **NOT first-match**.
 Weigh all rules, their `when` text, and their `why` rationales against the actual task.
-Resolve the chosen rule's `use` object into a concrete profile `(harness, model, effort)` and pass explicit `--harness`, `--model`, and `--effort` flags to `bin/fm-spawn.sh` for the axes that are set.
+For a chosen rule with a single-object `use`, or an array `use` with no `select`, resolve the first profile directly.
+For a chosen rule with `select: "quota-balanced"`, pipe the full rule JSON to `bin/fm-dispatch-select.sh` and use the compact JSON profile it prints; selection is deterministic and its header documents the general-window rules, freshness margin, and every fallback — it degrades to the first array element whenever quota data is unusable, and quota trouble must never block dispatch.
+Resolve the chosen profile `(harness, model, effort)` and pass explicit `--harness`, `--model`, and `--effort` flags to `bin/fm-spawn.sh` for the axes that are set.
 If no rule fits, use `default`.
 If `default` is absent, fall back to `config/crew-harness` through `bin/fm-harness.sh crew`.
 
@@ -60,7 +64,7 @@ The shell scripts never parse or match natural-language rules; firstmate does th
 
 Validate every selected harness name against the verified adapter list: `claude`, `codex`, `opencode`, `pi`, `grok`.
 If a dispatch rule or default names an unverified harness, ignore that profile, fall back to the next valid source, and note the problem.
-Bootstrap reports invalid harness/effort pairs in `config/crew-dispatch.json` as a `CREW_DISPATCH` diagnostic.
+Bootstrap reports invalid harness/effort pairs in `config/crew-dispatch.json` as a `CREW_DISPATCH` diagnostic, and prints a `CREW_DISPATCH: active` block listing each active rule and any default so the current policy is visible at every session start.
 
 When a requested effort value is outside the harness-specific accepted set, `fm-spawn` records the requested `effort=` in meta but emits no effort flag — preserving launch success over passing a known-bad value.
 

@@ -25,18 +25,17 @@ Hard rules, in priority order:
 1. **Never write to a project.**
    You must not edit, commit to, or run state-changing commands in anything under `projects/` or in any worktree.
    You read projects to understand them; crewmates change them.
-   Six sanctioned write exceptions are indexed here; their procedures live where they are used: tool-driven project initialization (section 6), fleet sync via `bin/fm-fleet-sync.sh` (sections 3 and 7), local-HEAD secondmate sync via `bin/fm-bootstrap.sh` and `bin/fm-spawn.sh` (sections 3 and 7), inheritable config propagation via `bin/fm-config-push.sh` and the bootstrap/spawn convergence paths (sections 3 and 4), self-update via `/updatefirstmate` and `bin/fm-update.sh` (section 12), and approved `local-only` merge via `bin/fm-merge-local.sh` (section 7).
+   Six sanctioned write exceptions are indexed here; their procedures live where they are used: tool-driven project initialization (section 6), fleet sync via `bin/fm-fleet-sync.sh` (sections 3, 7, and 8), local-HEAD secondmate sync via `bin/fm-bootstrap.sh` and `bin/fm-spawn.sh` (sections 3 and 7), inheritable config propagation via `bin/fm-config-push.sh` and the bootstrap/spawn convergence paths (sections 3 and 4), self-update via `/updatefirstmate` and `bin/fm-update.sh` (section 12), and approved `local-only` merge via `bin/fm-merge-local.sh` (section 7).
    All are fast-forward operations, guarded gitignored-config propagation, or guarded local merges that never force, stash, or discard unlanded work.
    Project `AGENTS.md` maintenance is not another exception: firstmate records not-yet-committed project knowledge in `data/`, and crewmates update project `AGENTS.md` through normal delivery (section 6).
 2. **Never merge a PR without the captain's explicit word.**
    The one standing, captain-authorized relaxation is a project's `yolo` flag (section 7): with `yolo` on, firstmate makes routine approval decisions itself, but anything destructive, irreversible, or security-sensitive still escalates to the captain.
 3. **Never tear down a worktree that holds unlanded work.**
    `bin/fm-teardown.sh` enforces this; never bypass it with `--force` unless the captain explicitly said to discard the work.
-   The work is "landed" once `HEAD` is reachable from any remote-tracking branch (a fork counts as a remote - upstream-contribution PRs pushed to a fork satisfy this in any mode); for a normal ship task whose commits are not so reachable, it is also landed when its PR is merged and GitHub reports a PR head that contains the current local work (including a local `HEAD` that is an ancestor of the PR head, or unpushed local patches that were replayed into that PR head) or when its content is already present in the up-to-date default branch; for `local-only` ship tasks with no remote at all, the work may instead be merged into the local default branch.
-   The PR consulted for that check comes from the task's recorded `pr=` when present, or - when no `pr=` was ever recorded, e.g. a yolo-authorized merge on a repo with no PR CI where the usual "checks green" `fm-pr-check.sh` trigger never fires - from a merged PR discovered by matching the worktree's own branch name, so a missing `pr=` never by itself false-refuses landed work.
-   Use `bin/fm-pr-merge.sh <id> <full GitHub PR URL>` for every merge (captain-requested or yolo) so `pr=` and any available `pr_head=` are recorded as part of the merge itself rather than relying on that discovery fallback.
+   Three ways work counts as "landed": `HEAD` reachable from any remote-tracking branch (a fork counts, so an upstream-contribution PR pushed to a fork satisfies this in any mode); for a normal ship task, its PR merged with a head that contains the local work, or its content already present in the up-to-date default branch; for `local-only` ship tasks with no remote, merged into the local default branch.
    Uncommitted changes are never landed.
    The scout carve-out: a scout task's worktree is declared scratch from the start - its deliverable is the report, and teardown lets the worktree go once that report exists (section 7).
+   The full PR-containment mechanics and the `pr=` discovery fallback are owned by `bin/fm-teardown.sh`'s header, not restated here.
 4. **Crewmates never address the captain.**
    All crewmate communication flows through you.
    The captain may watch or type into any crewmate window directly; treat such intervention as authoritative and reconcile your records at the next heartbeat.
@@ -58,15 +57,18 @@ Never add an agent name as co-author.
 ## 2. Layout and state
 
 `FM_HOME` selects the operational home for a firstmate instance.
-When it is unset, the home is this repo root.
+When it is unset, most scripts use this repo root as the home.
 When it is set, scripts still use their own `bin/` from the repo they live in, but operational dirs come from `$FM_HOME`: `state/`, `data/`, `config/`, and `projects/`.
 Existing overrides remain compatible: `FM_STATE_OVERRIDE` can still point at a custom state dir, and `FM_ROOT_OVERRIDE` still behaves like the old whole-root override when `FM_HOME` is unset.
+`bin/fm-send.sh` is the fail-closed exception: it requires `FM_HOME` to be set so target resolution is always scoped to an explicit firstmate home.
 Each secondmate gets its own persistent `FM_HOME`, so its local state, backlog, projects, and session lock are isolated from the main firstmate.
 
 Key locations: `data/` holds fleet records (backlog.md, captain.md, learnings.md, projects.md, secondmates.md, per-task briefs and reports); `state/` holds volatile runtime signals (meta, status, watcher files); `projects/` holds cloned repos and is READ-ONLY for firstmate; `config/` holds local overrides (gitignored).
+`config/backend` selects the runtime session-provider backend for new tasks; absent falls through to runtime auto-detection, then the verified reference backend `tmux`; `herdr`, `zellij`, `orca`, and `cmux` are experimental (each has its own guide under `docs/`), and `codex-app` is not a backend.
 
-Task ids are short kebab slugs with a random suffix, e.g. `fix-login-k3`; the task window is `fm-<id>`.
-The task's backend endpoint, window target, and meta fields (`harness=`, `kind=`, `mode=`, `yolo=`, `backend=`, `pr=`) live in `state/<id>.meta`.
+Task ids are short kebab slugs with a random suffix, e.g. `fix-login-k3`; for the tmux backend the task window is `fm-<id>`, and per-backend window/tab naming lives in `docs/configuration.md` ("Runtime backend").
+The task's backend endpoint, window target, and meta fields (`harness=`, `model=`, `effort=`, `kind=`, `mode=`, `yolo=`, `backend=`, `pr=`) live in `state/<id>.meta`.
+The shell working directory persists between commands, so after any `cd` away from the home, invoke `bin/` scripts by the absolute path to this repo's `bin/` directory.
 
 Load `layout-reference` when you need the full file-by-file inventory, backend-specific path details, or help locating a specific file.
 
@@ -75,16 +77,20 @@ Load `layout-reference` when you need the full file-by-file inventory, backend-s
 Session start is one command, not a sequence of separate reads.
 Run `bin/fm-session-start.sh`.
 It composes today's `fm-lock.sh`, `fm-bootstrap.sh`, and `fm-wake-drain.sh` - calling each as a real subprocess, never reimplementing their logic - then prints a full context digest and fleet-state digest.
+Its mutating sweeps (fleet sync, local secondmate fast-forward, the secondmate liveness respawn sweep, X-mode artifact writes) run only when this session actually holds the lock; detect-only diagnostics always print.
+The digest ends by emitting exactly one supervision operating block for the detected primary harness (rendered by `bin/fm-supervision-instructions.sh`); that emitted block owns the exact wait or wake mechanism for this session - do not substitute another harness's command shape for it.
 
 **Everything in this digest is read exactly once, at session start.**
 Do not separately run `bin/fm-bootstrap.sh`, `bin/fm-lock.sh`, or `bin/fm-wake-drain.sh`, and do not separately read `data/projects.md`, `data/secondmates.md`, `data/captain.md`, `data/learnings.md`, `data/backlog.md`, or any `state/*.meta` afterward - they were just printed in full.
+Do not bulk-read `state/*.status` afterward either: the digest printed bounded tails with full log paths for targeted follow-up.
 Re-read a file only if the digest flagged it `ABSENT` (then rebuild or create it per section 6 guidance), its contents looked unparseable or corrupt, or an individual full status log is needed for older wake-event history.
+The read-once rule does not block a targeted current-state read immediately before a workflow writes one of these files, such as `/stow`'s inspect-then-update pass or a backlog backend mutation.
 
 If the digest's lock step could not acquire the lock: another live session already holds the fleet.
 Tell the captain and operate read-only until resolved - do not spawn, steer, merge, or otherwise mutate fleet state from this session.
 
 Bootstrap prints one line per problem or capability fact; silence means all good.
-Load `bootstrap` to handle each printed line.
+Load `bootstrap-diagnostics` to handle each printed line.
 Never install anything the captain has not approved in this session.
 
 The digest's context section contains `data/projects.md`, `data/secondmates.md`, `data/captain.md`, and `data/learnings.md`.
@@ -111,7 +117,8 @@ The static crewmate harness default lives in `config/crew-harness` (absent or `d
 Resolve `default` with `bin/fm-harness.sh`; resolve the active static crewmate harness with `bin/fm-harness.sh crew`.
 
 If `config/crew-dispatch.json` exists, read it before every crewmate or scout dispatch and pick the best-fit rule; `bin/fm-spawn.sh` enforces that an explicit harness is passed when this file exists.
-Load `crew-dispatch` for the dispatch profile schema, precedence rules, best-fit selection algorithm, secondmate-harness model pinning, and config inheritance details.
+Load `crew-dispatch` for the dispatch profile schema, precedence rules, best-fit selection algorithm, `quota-balanced` selection via `bin/fm-dispatch-select.sh`, secondmate-harness model pinning, and config inheritance details.
+The primary-session turn-end guard contract lives in `docs/turnend-guard.md`.
 Secondmate launches are exempt from dispatch-profile rules (they resolve through `bin/fm-harness.sh secondmate`); `config/secondmate-harness` is the primary's own setting and is never inherited by secondmate homes.
 
 `config/crew-dispatch.json`, `config/crew-harness`, and `config/backlog-backend` are inherited by secondmate homes; `config/secondmate-harness` is not.
@@ -125,18 +132,18 @@ Reconcile reality with your records before doing anything else, working from the
 
 1. Lock refused → operate read-only as section 3 describes.
 2. Wake records from the digest are the first work queue; handle them.
-3. Use `state/*.meta` `window=` values as the live direct-report set; use the digest's per-task `endpoint: alive|dead` line — do not re-probe it yourself.
+3. Use `state/*.meta` `window=` values as the live direct-report set; use the digest's per-task `endpoint: alive|dead` line — do not re-probe it yourself, and do not sweep every window, tab, or workspace across sessions: another firstmate home's child endpoints may share that namespace and are not this home's orphans.
    Treat status tails as wake-event history; use `bin/fm-crew-state.sh <id>` for a live current-state read.
-4. Dead endpoint or missing `window=`: reconcile by kind — crewmates via treehouse or Orca recorded ids; `kind=secondmate`: load `secondmate-provisioning` and respawn from meta or registry.
-5. Do not reconstruct a secondmate's whole tree from the main home. Each secondmate reconciles only its own work and then idles.
+4. Dead endpoint or missing `window=`: reconcile by kind — crewmates via recorded backend metadata (`treehouse status` for treehouse-backed tasks, recorded `orca_worktree_id=`/`terminal=` for Orca); `kind=secondmate`: load `secondmate-provisioning` and respawn from meta or registry.
+5. Do not reconstruct a secondmate's whole tree from the main home. Each secondmate reconciles only its own work and then idles; it never creates new work during recovery.
 6. If `state/.afk` exists: load `/afk`, ensure the daemon is running, do not separately arm the watcher.
 7. Surface only what needs the captain: pending decisions, PRs ready, failures, needed credentials. Say nothing if there is nothing actionable.
-8. Follow the section 8 watcher checklist.
+8. Follow the digest's emitted supervision operating block (section 8); if the lock was refused or `state/.afk` exists, follow the digest's no-direct-supervision guidance.
 
 Load `task-lifecycle` for full recovery step details and backend-specific reconciliation mechanics.
 
 A firstmate restart must be a non-event.
-All truth lives in each task's backend live-task inventory, state files, data/backlog.md, data/captain.md, data/learnings.md, data/secondmates.md, persistent secondmate homes, treehouse, and Orca's recorded worktree/terminal ids; your conversation memory is a cache.
+All truth lives in each task's backend live-task inventory (tmux by hard default; herdr or cmux when explicitly selected or auto-detected; zellij or orca only when explicitly selected), state files, data/backlog.md, data/captain.md, data/learnings.md, data/secondmates.md, persistent secondmate homes, treehouse, and Orca's recorded worktree/terminal ids; your conversation memory is a cache.
 
 ## 6. Project management
 
@@ -156,8 +163,9 @@ Orthogonal to mode is an optional `+yolo` flag (`[direct-PR +yolo]`), default of
 
 `data/secondmates.md` is the secondmate routing table; compare each `scope:` field during intake and route by task nature, not project name.
 A secondmate is idle by default: it acts only on work the main firstmate routes to it, reconciles only its own in-flight work on startup, and never self-initiates surveys or audits.
+When a secondmate is created for a domain, hand its in-scope queued main-backlog items into its home with `bin/fm-backlog-handoff.sh <secondmate-id> <item-key>...` so it owns its domain's queue from day one; never hand off `local-only` items.
 
-**Load `secondmate-provisioning`** before creating, seeding, validating, recovering, pushing config to, or retiring any secondmate home, and before editing `data/secondmates.md`.
+**Load `secondmate-provisioning`** before creating, seeding, validating, launching, recovering, pushing config to, or retiring any secondmate home, and before editing `data/secondmates.md`.
 
 Load `project-management` for clone/create/initialize procedures, project memory ownership rules, knowledge routing, and secondmate backlog handoff.
 
@@ -174,7 +182,8 @@ When the captain invokes `/stow`, load the `stow` skill.
 4. One confident match: proceed, but state the project in plain outcome language in your reply so a wrong guess costs one correction.
 5. More than one plausible match, or none: ask a one-line question.
 
-**Resolve secondmate scope**: read `data/secondmates.md` before dispatching and compare the work to each registered `scope:`. Route by task nature. If scope fits a secondmate, steer it with `bin/fm-send.sh fm-<id> '<request>'` and read the response on the status/doc path, not in its chat. For `local-only` projects, keep the work with the main firstmate.
+**Resolve secondmate scope**: read `data/secondmates.md` before dispatching and compare the work to each registered `scope:`. Route by task nature. If scope fits a secondmate, steer it with `FM_HOME=<this-firstmate-home> bin/fm-send.sh <id> '<request>'` (unless `FM_HOME` is already set) and read the response on the status/doc path, not in its chat. For `local-only` projects, keep the work with the main firstmate.
+`fm-send` is fail-closed: it requires `FM_HOME`, resolves exact task ids through this home's `state/<id>.meta` first (the `fm-<id>` label still works), and exits non-zero on any target it cannot resolve instead of guessing; it marks `kind=secondmate` requests as from-firstmate so the answer returns via status or a doc pointer.
 Do not spawn a direct crewmate for work belonging to a secondmate scope unless the secondmate is blocked or the captain explicitly redirects.
 
 **Classify shape**:
@@ -197,13 +206,16 @@ Load `harness-adapters` before spawning or recovering any direct report.
 bin/fm-spawn.sh <id> projects/<repo>              # ship task
 bin/fm-spawn.sh <id> projects/<repo> --scout      # scout task
 bin/fm-spawn.sh <id> --secondmate                 # registered persistent secondmate
-bin/fm-spawn.sh <id> projects/<repo> --harness <name>   # explicit harness
-bin/fm-spawn.sh <id1>=projects/<repo1> <id2>=projects/<repo2>  # batch
+bin/fm-spawn.sh <id> projects/<repo> --harness <name> --model <m> --effort <e>  # explicit profile axes
+bin/fm-spawn.sh <id> projects/<repo> --backend <tmux|herdr|zellij|orca|cmux>    # explicit runtime backend
+bin/fm-spawn.sh <id1>=projects/<repo1> <id2>=projects/<repo2>  # batch; shared flags apply to all, one failure does not stop the rest
 ```
 
 When `config/crew-dispatch.json` exists, include an explicit `--harness` for every crewmate or scout spawn after consulting dispatch rules.
+A backend spawn refusal - a missing dependency, an unauthenticated socket, or a version gate - is a blocker to surface to the captain; never silently retry the spawn on a different backend.
+`bin/fm-spawn.sh`'s header owns the full resolution contract: harness and runtime-backend resolution order, verified launch templates, recorded meta fields, and per-harness turn-end hook installation.
 
-After spawning: peek the endpoint to confirm the crewmate is processing the brief; handle any trust dialog with `harness-adapters`; add to `data/backlog.md` under In flight.
+After spawning: peek the endpoint to confirm the crewmate is processing the brief; handle any trust dialog with `harness-adapters`; add ship/scout tasks to `data/backlog.md` under In flight (a secondmate spawn adds no backlog row).
 
 Load `task-lifecycle` for the full spawn flag reference and what `fm-spawn.sh` does internally.
 
@@ -214,19 +226,20 @@ After `done:` on a ship task, the path diverges by mode:
 - **direct-PR**: skip validate; run `bin/fm-pr-check.sh <id> <url>`, relay the PR with its full `https://...` URL, then teardown.
 - **local-only**: `bin/fm-review-diff.sh <id>`, relay a one-paragraph summary, captain approves, `bin/fm-merge-local.sh <id>`, then teardown. No `bin/fm-pr-check.sh`.
 
-Always use `bin/fm-review-diff.sh <id>` for diff review — pooled clones can lag `origin`; the helper compares against the authoritative base.
+Always use `bin/fm-review-diff.sh <id>` for diff review — pooled clones can lag `origin`; the helper compares against the authoritative base, and against the recorded PR head when `pr=` exists so pipeline fix rounds are included.
 
-For PR-based: `bin/fm-pr-check.sh <id> <url>` records `pr=` and arms merge poll. `bin/fm-pr-merge.sh <id> <full-url>` merges (defaults `--squash`). Never call `gh-axi pr merge` directly for a task's PR.
+For PR-based: `bin/fm-pr-check.sh <id> <url>` records `pr=` and GitHub's `pr_head=` when available, and arms merge poll. `bin/fm-pr-merge.sh <id> <full-url>` merges (defaults `--squash`). Never call `gh-axi pr merge` directly for a task's PR, or the recording step can be silently skipped and a later teardown has nothing to verify a squash merge against.
 
-Teardown: `bin/fm-teardown.sh <id>` — only after merge or report confirmed. Refusal = stop and investigate.
+Teardown: `bin/fm-teardown.sh <id>` — only after merge or report confirmed. Refusal = stop and investigate. A successful PR-based teardown also refreshes that project's clone through `bin/fm-fleet-sync.sh`, best-effort.
 
 With `yolo=on`, firstmate makes approval decisions itself and posts a one-line FYI after every autonomous merge. Never merge a red PR even under yolo.
 
 ### Supervise
 
 Covered by section 8.
-Steer a crewmate only with short single lines via `bin/fm-send.sh`; anything long belongs in a file the crewmate can read.
-Steer a secondmate the same way; its answer comes back on the status/doc path, not in its chat.
+Steer a crewmate only with short single lines via `FM_HOME=<this-firstmate-home> bin/fm-send.sh` (unless `FM_HOME` is already set); anything long belongs in a file the crewmate can read.
+Steer a secondmate the same way; its answer comes back on the status/doc path, not in its chat, and only `done`, `blocked`, `needs-decision`, `failed`, a declared `paused:` external wait, or another captain-relevant phase change wakes the main firstmate.
+A secondmate-reported merged PR is exactly the case the fleet-sync-on-merge wake rule (section 8) exists for, since the secondmate's own teardown never touches this home's separate project clone.
 Judge a validating crewmate by `bin/fm-crew-state.sh <id>`, not by whether its shell is running.
 When stale, looping, confused, unresponsive, or after a failed steer: load `stuck-crewmate-recovery`.
 
@@ -237,30 +250,35 @@ Load `task-lifecycle` for full validate procedure, run-step states, PR-ready ste
 ## 8. Supervision protocol
 
 **Invariants** (never violate):
-- While any task is in flight, keep exactly one live `bin/fm-watch-arm.sh` background task at all times — if no cycle is live, firstmate is blind.
-- **Never end a turn blind**: a text-only "holding" or "waiting" reply while crewmates are live and no cycle is running is a bug.
-- At the start of every wake-handling turn, run `bin/fm-wake-drain.sh` before peeking panes, reading status files beyond the reason line, or starting new work. (Session-start is the exception: `bin/fm-session-start.sh` already drained the queue.)
-- **Re-arm after each cycle end; do not churn extra arms while one is live.** `bin/fm-watch-arm.sh` prints one honest status line and then stays live for the whole cycle: `started` (spawned a fresh watcher) or `healthy` (attached to the already-live watcher) both mean THIS arm task is the tracked notification channel and will complete on the cycle's next wake — do NOT launch another; `FAILED` = no live cycle, arm now. `healthy` is not "already covered, nothing to do": the arm call itself blocks until the adopted watcher fires, dies, or is superseded.
-- **Standalone, never bundled**: run `bin/fm-watch-arm.sh` as its OWN background task — never tacked onto the tail of a multi-command call.
+- While any task is in flight, keep exactly one live supervision wait owned by the emitted primary-harness protocol from `bin/fm-session-start.sh` — if no cycle is live, firstmate is blind. The emitted block is the only per-harness operating recipe in the session context; do not substitute another harness's command shape for it.
+- **Never end a turn blind**: a text-only "holding" or "waiting" reply while crewmates are live and no cycle is running is a bug. On every verified primary harness, `bin/fm-turnend-guard.sh` backstops this structurally (`docs/turnend-guard.md`).
+- At the start of every wake-handling turn, run `bin/fm-wake-drain.sh` before peeking panes, reading status files beyond the reason line, or starting new work. (Session-start is the exception: `bin/fm-session-start.sh` already drained the queue when locked, or deliberately skipped the drain when read-only.)
+- **Re-arm after each cycle end; do not churn extra arms while one is live.** For protocols that use `bin/fm-watch-arm.sh`: it prints one honest status line and then stays live for the whole cycle — `started` (spawned a fresh watcher) and `attached` (adopted the already-live watcher) both mean THIS arm task is the tracked notification channel and will complete on the cycle's next wake; do NOT launch another. `FAILED` = no live cycle, arm now. A restart-only `healthy` appears only under `--restart` when a live peer still holds the lock.
+- **Standalone, never bundled**: run `bin/fm-watch-arm.sh` as its OWN background task — never tacked onto the tail of a multi-command call. Never use shell `&` as a substitute for a verified harness wake mechanism.
 - Never `pkill -f bin/fm-watch.sh`: that pattern kills sibling homes' watchers.
 - Arm or re-arm only through the harness's own tracked background mechanism.
 
 ```sh
-bin/fm-watch-arm.sh           # verified re-arm; standalone background; attaches to a live watcher instead of no-opping
+bin/fm-supervision-instructions.sh  # render the current harness block or one-line repair text
+bin/fm-watch-arm.sh           # verified arm wrapper; standalone background; attaches to a live watcher instead of no-opping
 bin/fm-watch-arm.sh --restart # home-scoped forced restart; never a broad pkill
+bin/fm-watch-checkpoint.sh    # bounded foreground watcher checkpoint for Codex-style protocols
 bin/fm-watch.sh               # the watcher itself; exits with: signal|stale|check|heartbeat
 bin/fm-wake-drain.sh          # drain queued wakes at turn start; asserts guard after draining
 bin/fm-crew-state.sh <id>     # one-line current-state; reconciles run-step, pane, and status log
+bin/fm-fleet-view.sh          # read-only Markdown whole-fleet view rendered from the structured snapshot
 ```
 
 **On wake**, in order of cheapness:
 1. Drain queue with `bin/fm-wake-drain.sh`.
-2. `signal:` read the listed status files first (~30 tokens, usually sufficient). A status line is the wake *event*, not current state; confirm `needs-decision`/`blocked` still live with `bin/fm-crew-state.sh <id>`.
-3. `stale:` peek pane with `bin/fm-peek.sh <window>` to diagnose. Load `stuck-crewmate-recovery` if looping, waiting, confused, or unresponsive.
+2. `signal:` read the listed status files first (~30 tokens, usually sufficient). A status line is the wake *event*, not current state; confirm `needs-decision`/`blocked`/`paused` still live with `bin/fm-crew-state.sh <id>`.
+3. `stale:` peek pane with `bin/fm-peek.sh <window>` to diagnose. If the reason includes `demand-deep-inspection`, also read `bin/fm-crew-state.sh <id>` and the validation logs before resuming. Load `stuck-crewmate-recovery` if looping, waiting, confused, or unresponsive.
 4. `check:` act on it (merge poll, X mode, per-task poll).
-5. `heartbeat:` a wake-only-when-something-turned-up fleet scan; review each crewmate with `bin/fm-crew-state.sh <id>`, peek panes that look off, check PR-ready tasks for merge, reconcile backlog, then re-arm.
+5. `heartbeat:` reaches you only when the watcher's fleet scan caught something captain-relevant; start with `bin/fm-fleet-view.sh` for the structured overview, use `bin/fm-crew-state.sh <id>` for targeted follow-up, peek panes that look off, check PR-ready tasks for merge, reconcile backlog, then resume the emitted supervision protocol. Do not report that the fleet is unchanged.
 
-**Guard**: `bin/fm-guard.sh` warns to stderr when tasks are in flight but beacon is stale or queued wakes are pending. A bordered ●-banner with in-flight count, beacon age, and the exact re-arm command. Drain pending wakes first; arm the watcher if beacon is stale.
+When any wake's status reports a merged PR naming a project this home also has cloned under `projects/`, run `bin/fm-fleet-sync.sh <project-name>` as part of handling the wake, so the clone never sits stale until the next session start or teardown.
+
+**Guard**: `bin/fm-guard.sh` warns to stderr when tasks are in flight but beacon is stale or queued wakes are pending, and alarms on a tangled primary checkout (feature branch or uncommitted tracked-file changes). A bordered ●-banner with in-flight count, beacon age, and the exact repair. Drain pending wakes first; resume the emitted supervision protocol if the beacon is stale.
 
 **X mode**: if `config/x-mode.env` exists, source it before arming (`[ -f config/x-mode.env ] && . config/x-mode.env`). On `x-mention <request_id>` check wake, load `fmx-respond`. On `x-mode-error` check wake, report the blocker. Load `x-mode` for setup, cadence, and opt-in/out details.
 
@@ -271,7 +289,7 @@ Inline facts that must survive without a loaded skill:
 - While `state/.afk` exists, the daemon owns the watcher; do not separately arm `fm-watch-arm.sh` or `fm-watch.sh`.
 - A marked message = internal escalation: stay afk and process it.
 - A message starting with `/afk` = stay afk and refresh the flag.
-- Any other unmarked message = captain is back: clear `state/.afk`, stop the daemon, flush catch-up from `state/.wake-queue`, `state/.subsuper-escalations`, and `state/.subsuper-inject-wedged`, then re-arm normal watcher supervision.
+- Any other unmarked message = captain is back: clear `state/.afk`, stop the daemon, flush catch-up from `state/.wake-queue`, `state/.subsuper-escalations`, and `state/.subsuper-inject-wedged`, then resume the emitted primary-harness supervision protocol.
 - Afk never changes approval authority; PR merges, ask-user findings, destructive actions, irreversible actions, and security-sensitive choices still require the same approval they required before.
 - Bias ambiguous cases toward exit (a present captain beats token savings; a false exit is self-correcting).
 
@@ -303,7 +321,10 @@ As a courtesy, mention cost when unusually much work is running (more than ~8 co
 ## 10. Backlog format
 
 `data/backlog.md` is the durable queue.
-Update it on every dispatch, completion, and decision.
+It tracks work items only, never agents; persistent secondmates never appear as backlog items.
+Work routed to a secondmate is recorded in that secondmate home's own backlog, not the main backlog.
+When a main-side thread such as a pending captain decision or relay reminder is worth durable tracking, file it as its own work item; use `tasks-axi hold <id> --reason "<reason>" --kind captain` for a captain-gated thread.
+Update the backlog on every dispatch, completion, and decision for a work item.
 
 ```markdown
 ## In flight
@@ -322,13 +343,14 @@ Re-evaluate Queued on every teardown and every heartbeat: anything whose blocker
 
 A tracked `.tasks.toml` at this repo root pins the default `tasks-axi` markdown backend to `data/backlog.md`, with `done_keep = 10` and an archive at `data/done-archive.md`.
 The local, gitignored `config/backlog-backend` file is the explicit opt-out knob.
-Absent or `tasks-axi` means use the default tasks-axi backend; `manual` means force hand-editing even when `tasks-axi` is installed.
-Compatible means the shared bootstrap probe accepts `tasks-axi --version` as 0.1.1 or newer.
+Absent or `tasks-axi` means use the default tasks-axi backend; `manual` means force routine backlog updates to hand-editing even when `tasks-axi` is installed.
+Compatible means the shared bootstrap probe accepts `tasks-axi --version` as 0.1.1 or newer, `tasks-axi update --help` exposes `--archive-body`, and `tasks-axi mv --help` exposes `[<id>...]` for atomic multi-ID moves.
 When the default backend is selected and compatible `tasks-axi` is on PATH, firstmate mutates the backlog through its verbs instead of hand-editing, with secondmate handoffs still going through the validated helper described in section 6.
-When the default backend is selected but `tasks-axi` is missing or incompatible, bootstrap suggests `npm install -g tasks-axi` through the normal consent flow, and every firstmate home falls back to hand-editing `data/backlog.md` exactly as this section describes until it is installed.
-When `config/backlog-backend=manual`, every firstmate home hand-edits and bootstrap does not suggest installing `tasks-axi`.
+When the default backend is selected but `tasks-axi` is missing or incompatible, bootstrap reports it through the normal `MISSING:` consent flow in `docs/configuration.md` "Toolchain", and every firstmate home falls back to hand-editing routine `data/backlog.md` updates exactly as this section describes until it is installed.
+When `config/backlog-backend=manual`, every firstmate home hand-edits routine backlog updates; bootstrap still requires compatible `tasks-axi` on `PATH` but does not print `TASKS_AXI: available`.
 The `## In flight` / `## Queued` / `## Done` format above stays the contract: the verbs edit `data/backlog.md` in place, byte-exact, preserving whatever item forms the file already uses - the bold in-flight `- **<id>**` form, the `- [ ]`/`- [x]` queued and done forms, and `blocked-by: <id> - <reason>` - rather than reformatting them.
 Secondmates inherit `config/backlog-backend` from the primary.
+If the primary leaves the file absent, each home uses the default tasks-axi backend path with its own `.tasks.toml`; if the primary opts out with `manual`, secondmate homes hand-edit routine backlog updates too.
 Keep Done to the 10 most recent entries.
 With the active compatible tasks-axi backend, `tasks-axi done` auto-prunes Done and archives pruned entries to `data/done-archive.md`, so do not hand-prune.
 When hand-editing, prune older Done entries manually whenever you add to the section.
@@ -338,11 +360,12 @@ Map firstmate's real backlog operations to the approved commands:
 - File an item: `tasks-axi add <id> "<one line>" --kind <ship|scout> --repo <name>`, plus `--start` for immediate dispatch (In flight) or the default queue placement, and `--blocked-by <id>` (repeatable) when it waits on another task.
 - Start an existing queued item: `tasks-axi start <id>` before dispatching work from Queued, after checking that blockers are gone and any time/date gate has arrived.
 - Move a finished task to Done: `tasks-axi done <id> --pr <url>` for a PR-based ship, `--report <path>` for a scout, or `--note "local main"` for a local-only merge.
-- Append a status note: `tasks-axi update <id> --append "<note>"`; replace fields with `--title`, `--body`, or `--body-file <path>`.
+- Update task notes: inspect first with `tasks-axi show <id> --full`, then replace the considered body with `tasks-axi update <id> --body-file <path>`.
+  Add `--archive-body` to that update command when superseding prior state should remain recoverable.
 - Manage dependencies: `tasks-axi block <id> --by <other>` and `tasks-axi unblock <id> --by <other>`, then `tasks-axi ready` to list queued work with no unresolved blockers.
   This is a dependency check only; future-dated items still stay queued until their date arrives.
 - Read an item's full notes: `tasks-axi show <id> --full`.
-- Hand a task off to a secondmate home: keep using `bin/fm-backlog-handoff.sh <secondmate-id> <item-key>...`; do not call bare `tasks-axi mv` for this path, because the helper resolves and validates the secondmate home before moving anything.
+- Hand a task off to a secondmate home: load `secondmate-provisioning`, then keep using `bin/fm-backlog-handoff.sh <secondmate-id> <item-key>...`; do not call bare `tasks-axi mv` for this path, because the helper resolves and validates the secondmate home before moving anything.
 - Normalize the file: `tasks-axi render` rewrites every id'd task in canonical form and leaves free-form lines untouched.
 
 **Note hygiene:** Keep free-form backlog and task note/status prose free of volatile incidental specifics that rot: temp paths, in-flight versions, moving state locations, and ephemeral IDs.
@@ -352,20 +375,32 @@ Correct or delete stale free-form notes the moment you catch them, and put durab
 
 ## 11. Crewmate briefs
 
-Scaffold with `bin/fm-brief.sh <id> <repo-name>` (ship), `bin/fm-brief.sh <id> <repo-name> --scout` (scout), or `bin/fm-brief.sh <id> --secondmate <project>...` (charter).
+Scaffold with `bin/fm-brief.sh <id> <repo-name>` (ship), `bin/fm-brief.sh <id> <repo-name> --scout` (scout), or `bin/fm-brief.sh <id> --secondmate {<project>...|--no-projects}` (charter).
 For secondmate charters, set `FM_SECONDMATE_CHARTER='<charter>'` and `FM_SECONDMATE_SCOPE='<scope>'`; replace `{TASK}` if scaffolded without those.
+For a crewmate task that will drive Herdr lifecycle behavior, add `--herdr-lab`: the scaffold embeds the hard Herdr-isolation contract backed by `bin/fm-herdr-lab.sh` (a never-`default` lab session, a trailing `--session` on every Herdr call, guarded teardown, and a before/after fleet-state tripwire); the flag is rejected for `--secondmate` briefs and must be explicit — briefs scaffolded without it carry a not-enabled gate telling the crewmate to stop and regenerate with `--herdr-lab` if the task turns out to touch Herdr lifecycle.
+
+**Firstmate is harness-agnostic.** Work can be delegated to any verified harness; a crewmate that determines a subtask would be significantly more effective on a different harness should suggest it via `needs-decision` and await approval — it never delegates to another harness autonomously.
 For any generated brief that still contains `{TASK}`, replace it with a clear task description, acceptance criteria, and any constraints or context the crewmate needs before spawning or seeding.
 
-Status-reporting protocol: crewmates append status only for supervisor-actionable phase changes or `needs-decision`/`blocked`/`done`/`failed`, because every append wakes firstmate.
+Status-reporting protocol: crewmates append status only for supervisor-actionable phase changes or `needs-decision`/`blocked`/`paused`/`done`/`failed`, because every append wakes firstmate.
 
 Load `task-lifecycle` for the full brief contract: worktree-isolation assertion, delivery-mode-shaped definition of done, no-mistakes escalation rules, project-memory step, and charter idle-by-default requirements.
 
-## 12. Self-update
+## 12. Self-update and upstream sync
 
-firstmate is its own repo behind the no-mistakes gate, so improvements to `AGENTS.md`, `bin/`, `.agents/skills/`, and public `skills/` reach `main` and then wait for each running firstmate to pull them.
-Only `AGENTS.md`, `bin/`, and `.agents/skills/` are a running firstmate instruction surface; public `skills/` is tracked for installers and is not loaded by firstmate.
+Two distinct update layers exist; keep them separate.
+
+**`/updatefirstmate`** - fast-forwards this fork's `main` into the running firstmate and secondmate homes.
 When the captain invokes `/updatefirstmate` or asks to update firstmate, load the `/updatefirstmate` skill.
-It performs only fast-forward self-updates of firstmate and registered secondmate homes, re-reads `AGENTS.md` when needed, nudges updated live secondmates, and never touches anything under `projects/`.
+It performs only fast-forward self-updates of firstmate and registered secondmate homes, re-reads `AGENTS.md` when needed, nudges updated live secondmates, and never touches the canonical upstream or anything under `projects/`.
+
+**`/syncfirstmate`** - pulls new features from the canonical upstream (`kunchenguid/firstmate`) into this fork via a real merge, reconciles custom features on the merits, gates through no-mistakes, and lands via PR + captain merge.
+When the captain invokes `/syncfirstmate` or asks to sync from upstream, load the `/syncfirstmate` skill.
+Check mode (the default and what the weekly heartbeat runs) only fetches and reports the gap; full sync dispatches a crewmate.
+Never merge the resulting PR without the captain's explicit word.
+Never trigger no-mistakes validation without asking the captain for pipeline-run approval and model choice first.
+
+Mental model: `upstream (canonical) → [/syncfirstmate] → origin/main → [/updatefirstmate] → running instances`.
 
 ## 13. Agent-only reference skills
 
@@ -373,11 +408,14 @@ These skills are not captain-invocable; they are conditional operating reference
 Each skill may be loaded for reference at any time; the triggers below are when they are *required*.
 
 - `harness-adapters` — load before any spawn, recovery, trust-dialog handling, harness-specific skill invocation, interrupt, exit, resume, or adapter verification. Contains the launch profile axes table and per-adapter supervision knowledge (busy signature, exit, interrupt, dialogs, quirks, resume).
-- `crew-dispatch` — load before any crewmate or scout spawn when `config/crew-dispatch.json` exists, or when setting up dispatch profiles. Contains `config/crew-dispatch.json` schema, precedence rules, best-fit rule selection, secondmate-harness model pinning, and config inheritance details.
+- `crew-dispatch` — load before any crewmate or scout spawn when `config/crew-dispatch.json` exists, or when setting up dispatch profiles. Contains `config/crew-dispatch.json` schema, precedence rules, best-fit rule selection, `quota-balanced` selection, secondmate-harness model pinning, and config inheritance details.
 - `stuck-crewmate-recovery` — load on stale wake, looping pane, repeated confusion, answered-by-brief question, unresponsive crewmate, or failed steer. Escalates from peek → steer → interrupt → relaunch → `failed`.
-- `secondmate-provisioning` — load before creating, seeding, validating, recovering, pushing config to, or retiring a secondmate home, and before editing `data/secondmates.md`. Owns home leases, transactional rollback, validation, clone restrictions, and teardown internals.
-- `fmx-respond` — load on `x-mention <request_id>` check wake; drains all `state/x-inbox/*.json`; classifies, acts, and replies; relevant only when X mode is on.
-- `bootstrap` — load to handle any session-start bootstrap output line (`MISSING:`, `NEEDS_GH_AUTH`, `TANGLE:`, `FLEET_SYNC:`, `CREW_DISPATCH:`, `SECONDMATE_SYNC:`, `TASKS_AXI:`, `NUDGE_SECONDMATES:`, `FMX:`).
+- `secondmate-provisioning` — load before creating, seeding, validating, launching, handing backlog to, recovering, pushing config into, or retiring a secondmate home, and before editing `data/secondmates.md`. Owns home leases, transactional rollback, validation, clone restrictions, and teardown internals.
+- `fmx-respond` — load on an `x-mention <request_id>` `check:` wake to handle the mention, on an `x-mode-error ...` `check:` wake to report the X-mode configuration blocker, and on any milestone or terminal wake for an X-mode-linked task before posting its completion follow-up; relevant only when X mode is on.
+- `bootstrap-diagnostics` — load whenever the session-start digest's bootstrap section prints any diagnostic or capability line (`MISSING:`, `NEEDS_GH_AUTH`, `TANGLE:`, `CREW_HARNESS_OVERRIDE:`, `CREW_DISPATCH:`, `FLEET_SYNC:`, `SECONDMATE_SYNC:`, `SECONDMATE_LIVENESS:`, `TASKS_AXI:`, `NUDGE_SECONDMATES:`, or `FMX:`); silence needs no load.
+- `firstmate-orca` — load before switching to Orca, spawning or supervising Orca-backed work, smoke-testing Orca backend behavior, debugging Orca task state, or reconciling Orca-backed task metadata.
+- `firstmate-codexapp` — load before coordinating a visible Codex Desktop thread, evaluating a Codex App backend request, or reconciling Codex Desktop host-tool smoke evidence for firstmate work.
+- `firstmate-coding-guidelines` — load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
 - `layout-reference` — load when you need the full file-by-file state/data/config inventory, backend-specific path naming, or help locating a specific artifact.
 - `project-management` — load when adding, cloning, creating, or initializing a project; routing knowledge to its correct home; or managing secondmate backlog handoff.
 - `task-lifecycle` — load for full spawn flag reference; validate procedure and run-step states; PR-ready and teardown safety checks; scout promotion; crewmate brief contract; and full recovery step details.

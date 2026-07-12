@@ -21,6 +21,7 @@ bin/fm-spawn.sh <id> projects/<repo> --backend tmux            # explicit runtim
 bin/fm-spawn.sh <id> projects/<repo> --backend herdr           # experimental herdr backend; version-gates at spawn
 bin/fm-spawn.sh <id> projects/<repo> --backend zellij          # experimental zellij backend; version-gates at spawn
 bin/fm-spawn.sh <id> projects/<repo> --backend orca            # Orca backend; Orca owns worktree + terminal; Escape unsupported
+bin/fm-spawn.sh <id> projects/<repo> --backend cmux            # experimental cmux backend; version-gates at spawn
 bin/fm-spawn.sh <id> projects/<repo> --scout                   # scout task; records kind=scout in meta
 bin/fm-spawn.sh <id> --secondmate                              # launch a registered persistent secondmate in its home
 bin/fm-spawn.sh <id> <firstmate-home> --secondmate             # launch or recover an explicit secondmate home
@@ -30,11 +31,15 @@ bin/fm-spawn.sh <id1>=projects/<repo1> <id2>=projects/<repo2> [--scout]   # batc
 For batch dispatch, pass `id=repo` pairs; shared `--scout`, `--harness`, `--model`, `--effort`, and `--backend` flags apply to all; one pair's failure does not stop the rest (batch exits non-zero).
 When `config/crew-dispatch.json` exists, include a shared `--harness` for every batch after consulting dispatch rules.
 
-What `fm-spawn.sh` does: resolves harness (`fm-harness.sh crew` for crewmate/scout when no dispatch file; `fm-harness.sh secondmate` for `--secondmate`); resolves backend (`--backend` > `FM_BACKEND` > `config/backend` > runtime auto-detection > tmux; auto-detected herdr prints a loud stderr notice; zellij/orca never auto-detected); validates backend; resolves delivery mode (`fm-project-mode.sh`); asserts the worktree is a genuine isolated worktree distinct from the primary checkout (aborts otherwise); installs the turn-end hook; records `state/<id>.meta` (`harness=`, `model=`, `effort=`, `kind=`, `mode=`, `yolo=`; non-default `backend=`); launches the agent with the brief.
+What `fm-spawn.sh` does: resolves harness (`fm-harness.sh crew` for crewmate/scout when no dispatch file; `fm-harness.sh secondmate` for `--secondmate`); resolves backend (`--backend` > `FM_BACKEND` > `config/backend` > runtime auto-detection > tmux; herdr and cmux can be auto-detected and print a loud stderr notice; zellij/orca never auto-detected; `codex-app` is rejected as a backend); validates backend; resolves delivery mode (`fm-project-mode.sh`); asserts the worktree is a genuine isolated worktree distinct from the primary checkout (aborts otherwise); installs the turn-end hook; records `state/<id>.meta` (`harness=`, `model=`, `effort=`, `kind=`, `mode=`, `yolo=`; non-default `backend=`); launches the agent with the brief.
 
 When `--model` or `--effort` is omitted, the meta value is `default` and no launch flag is passed for that axis; for `--secondmate`, the omitted axis can be filled from optional tokens in `config/secondmate-harness`.
 
 A non-flag third argument containing whitespace is treated as a raw launch command (only for verifying new adapters).
+
+A backend spawn refusal - a missing dependency, an unauthenticated socket, or a version gate - is a blocker to surface to the captain; never silently retry the spawn on a different backend.
+Herdr tasks land in the target home's per-home workspace; zellij tasks land as tabs in the selected shared session.
+`bin/fm-spawn.sh`'s header owns the full resolution contract, verified launch templates, and recorded meta fields.
 
 For `kind=secondmate`: fast-forwards the secondmate home worktree to firstmate's current default-branch commit (purely local fast-forward; never touches gitignored operational dirs); propagates inheritable config (`config/crew-dispatch.json`, `config/crew-harness`, `config/backlog-backend`) into the secondmate home; starts in the persistent home rather than a treehouse worktree.
 
@@ -52,7 +57,7 @@ Firstmate's wrapper rules:
 - Use chat for yes/no decisions; use lavish-axi for multiple findings or options.
 
 **Run-step states** (from `no-mistakes axi status`; read with `bin/fm-crew-state.sh <id>`):
-- `running`/`fixing`/`ci` — pipeline is actively working; quiet is normal for many minutes, leave it alone.
+- `running`/`fixing`/`ci` — pipeline is actively working; quiet is normal for many minutes, leave it alone. During the `ci` monitor phase, `fm-crew-state.sh` also reads the ci step log tail because `axi status` reports both "waiting on checks" and "checks green, waiting on merge" as `ci,running`; the most recent recognized marker wins.
 - `awaiting_approval`/`fix_review` — run parked waiting on the agent (shown as `awaiting_agent: parked <duration>` in `axi status`). Crewmate owes a response; if it is idle-waiting, steer it to follow no-mistakes' active-gate help.
 - `outcome: passed` or `checks-passed` — helper reports `done`; `passed` = PR merged/closed; `checks-passed` = ready for PR review.
 - `outcome: failed` or `cancelled` — helper reports `failed`; inspect run details and recover or report failure.
@@ -125,7 +130,10 @@ A scout task follows Intake, Spawn, and Supervise identically. After `done`:
 
 ## Crewmate brief contract
 
-Scaffold: `bin/fm-brief.sh <id> <repo-name>` (ship), `bin/fm-brief.sh <id> <repo-name> --scout` (scout), `bin/fm-brief.sh <id> --secondmate <project>...` (charter).
+Scaffold: `bin/fm-brief.sh <id> <repo-name>` (ship), `bin/fm-brief.sh <id> <repo-name> --scout` (scout), `bin/fm-brief.sh <id> --secondmate {<project>...|--no-projects}` (charter).
+
+For a crewmate task that will drive Herdr lifecycle behavior, add `--herdr-lab`: the scaffold embeds the hard Herdr-isolation contract backed by `bin/fm-herdr-lab.sh` - a never-`default` lab session, a trailing `--session` on every Herdr call, guarded teardown, and a before/after fleet-state tripwire.
+The flag is rejected for `--secondmate` briefs and must be explicit: the scaffold cannot read the `{TASK}` text it fills in later, so every ship or scout brief scaffolded without it carries a loud not-enabled gate telling the crewmate to stop and regenerate with `--herdr-lab` if the task turns out to touch Herdr lifecycle.
 
 The ship brief Setup section opens with a **worktree-isolation assertion**: the crewmate confirms it is in its own disposable task worktree (not the primary checkout) and stops with `blocked: launched in primary checkout, not an isolated worktree` if not.
 
@@ -144,7 +152,7 @@ For secondmate charters (`--secondmate`): set `FM_SECONDMATE_CHARTER='<charter>'
 
 For any generated brief still containing `{TASK}`, replace it with a clear task description, acceptance criteria, and constraints before spawning.
 
-Status-reporting protocol: crewmates append only for supervisor-actionable phase changes or `needs-decision`/`blocked`/`done`/`failed` — every append wakes firstmate.
+Status-reporting protocol: crewmates append only for supervisor-actionable phase changes or `needs-decision`/`blocked`/`paused`/`done`/`failed` — every append wakes firstmate. A `paused:` line declares a known external wait; the watcher absorbs it while idle and re-surfaces it on the bounded pause cadence.
 
 Harness-agnostic note: firstmate can delegate to any available harness (claude, codex, opencode, pi). If a crewmate determines a subtask would be significantly more effective in a different harness, it should suggest via `needs-decision` and await approval — never delegate autonomously.
 
@@ -161,4 +169,4 @@ Working from the `bin/fm-session-start.sh` digest — its lock step, wake-queue 
 5. Do not reconstruct a secondmate's whole tree from the main home. The main firstmate reconciles only direct reports. Each secondmate reconciles only its own work and then idles.
 6. If `state/.afk` exists: load `/afk`, ensure the daemon is running, do not separately arm the watcher.
 7. Surface only what needs the captain: pending decisions, PRs ready, failures, needed credentials. Say nothing if there is nothing actionable.
-8. Having handled drained wakes, follow the section 8 watcher checklist.
+8. Having handled drained wakes, follow the digest's emitted supervision operating block (section 8); if the lock was refused or `state/.afk` exists, follow the digest's no-direct-supervision guidance.

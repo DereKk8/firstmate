@@ -2,6 +2,7 @@
 
 Orca is an experimental runtime backend for firstmate.
 It is distinct from the crewmate harness: the harness is the agent process firstmate launches (`claude`, `codex`, `opencode`, `pi`, or `grok`), while Orca owns the task worktree and terminal endpoint underneath that process.
+Firstmate agents operating this backend should load the agent-only [`firstmate-orca`](../.agents/skills/firstmate-orca/SKILL.md) checklist before switching to Orca, spawning or supervising Orca-backed work, smoke-testing, debugging task state, or reconciling Orca metadata.
 
 ## Setup
 
@@ -13,18 +14,17 @@ Prerequisites:
 - The Orca app installed at `/Applications/Orca.app`, and **running**.
 - The `orca` CLI: `brew install orca`.
 - `node`, used by firstmate's adapter to parse Orca's JSON output and to gate spawns on runtime readiness.
-- `git` with GitHub auth, `no-mistakes`, `gh-axi`, `chrome-devtools-axi`, and `lavish-axi` - the same universal requirements as tmux, minus `tmux` and `treehouse` (Orca replaces both).
+- The universal firstmate prerequisites minus `tmux` and `treehouse` (Orca replaces both) - a verified crew harness plus the required toolchain, owned by [`docs/configuration.md`](configuration.md) ("Harness support", "Toolchain").
 
 Select Orca by putting `orca` in a local `config/backend` file - the durable way to pick it - or by exporting `FM_BACKEND=orca` when you launch your harness for a one-off session; telling the first mate in chat to use Orca also works.
 It is never auto-detected.
-When bootstrap resolves Orca from `FM_BACKEND=orca` or `config/backend=orca`, it checks for `orca`, keeps the universal `node` requirement, and skips `tmux` and `treehouse`.
 
 First run: before spawn mutates any repo or worktree state, firstmate runs `orca status --json` and requires the app to report `reachable=true` and `state="ready"` - start the Orca app and wait for it to finish loading before spawning.
 Spawn fails closed if the runtime is not ready.
 The first spawn against a given project also auto-registers that project's repo in Orca (`orca repo add --path`) if it is not already registered - no manual registration step is needed.
 
 Watching and attaching: Orca owns both the worktree and the terminal for its tasks, so there is nothing to attach to outside the Orca app itself - open the app and find the terminal for the task (recorded as `terminal=<handle>` in the task's meta, with `window=fm-<id>` as the shared firstmate alias).
-You do not need to open the app for routine supervision: `bin/fm-peek.sh fm-<id>` reads a task's terminal without opening Orca, and `bin/fm-send.sh fm-<id> "<text>"` steers it (Enter and Ctrl-C are supported; Escape is not).
+You do not need to open the app for routine supervision: from an active firstmate session, `bin/fm-peek.sh <id>` reads a task's terminal without opening Orca, and `FM_HOME=<this-firstmate-home> bin/fm-send.sh <id> "<text>"` steers it unless `FM_HOME` is already set to the active firstmate home (the stable `fm-<id>` alias also works; Enter and Ctrl-C are supported; Escape is not).
 
 Verify it works by spawning a trivial task with `--backend orca` and confirming the task's meta records `backend=orca`, `terminal=`, `orca_worktree_id=`, and `worktree=`; the Orca app should show a new terminal for the task.
 
@@ -43,7 +43,7 @@ Before spawn mutates any repo/worktree state, firstmate runs `orca status --json
 ## Task Shape
 
 An Orca task is one Orca-managed git worktree plus one Orca terminal.
-Unlike `tmux`, `herdr`, and `zellij`, Orca is not only a session provider; it also provides the task worktree, so `fm-spawn.sh` does not run `treehouse get` for Orca tasks.
+Unlike `tmux`, `herdr`, `zellij`, and `cmux`, Orca is not only a session provider; it also provides the task worktree, so `fm-spawn.sh` does not run `treehouse get` for Orca tasks.
 
 The normal firstmate invariant still applies: a ship or scout task must run outside the project primary checkout, and teardown must refuse to discard unlanded ship work.
 
@@ -59,7 +59,8 @@ orca_worktree_id=<orca worktree id>
 worktree=<absolute path to the Orca-created git worktree>
 ```
 
-`window=` remains the shared firstmate selector field used by `fm-peek.sh`, `fm-send.sh`, `fm-watch.sh`, `fm-crew-state.sh`, and `fm-teardown.sh`.
+`window=` remains the shared firstmate alias used by selector-driven supervision tools after a task selector has resolved through metadata.
+`fm-teardown.sh <id>` uses the same recorded fields after loading `state/<id>.meta`.
 For Orca, `window=` keeps the stable firstmate alias while `terminal=` carries the stable Orca terminal handle that backend operations use.
 The recorded `backend=orca` field tells shared call sites to route capture, send, interrupt, and close through `bin/backends/orca.sh` instead of tmux assumptions.
 
@@ -78,8 +79,9 @@ Operation routing:
 - `fm-peek.sh` captures with `orca terminal read`.
 - `fm-send.sh` types text with `orca terminal send --text ...`, submits with Enter, and verifies the composer row cleared before returning; when Orca reports a limited page, the verifier follows `oldestCursor` and preserves the current tail so older text cannot hide still-pending composer input.
   A slash-command popup that closes by filling an argument-hint placeholder still reads as pending, so the retry loop sends the required second Enter rather than treating the first Enter as a submission.
+  The bordered row is classified through the shared composer classifier; a bare shell prompt has no genuine composer row and reads `unknown`, not confirmed empty.
 - `fm-send.sh --key Enter` and `--key C-c` are supported.
-- `fm-watch.sh` treats Orca as a pull backend with no native busy-state primitive, so it falls back to the same terminal-tail busy regex used for tmux and zellij.
+- `fm-watch.sh` treats Orca as a pull backend with no native busy-state primitive, so it falls back to the same terminal-tail busy regex used for tmux, zellij, and cmux.
 - `fm-crew-state.sh` reads the recorded Orca terminal when no no-mistakes run-step applies.
 
 Teardown:
@@ -95,7 +97,7 @@ Teardown:
 - `--secondmate` spawns still refuse `backend=orca`; secondmate-home semantics need a separate design.
 - Escape is unsupported because the current Orca terminal send primitive exposes Enter and interrupt-style input but no verified Escape operation.
 - Orca is explicit-only and is not selected by runtime auto-detection.
-- Orca currently exposes no stable CLI version or protocol marker. Unlike the herdr/zellij docs, this backend intentionally gates spawn support on runtime reachability from `orca status --json` rather than a version floor.
+- Orca currently exposes no stable CLI version or protocol marker. Unlike the herdr/zellij/cmux docs, this backend intentionally gates spawn support on runtime reachability from `orca status --json` rather than a version floor.
 
 ## Verification
 

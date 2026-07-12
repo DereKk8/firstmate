@@ -25,15 +25,17 @@ The watcher classifies every wake in bash and absorbs the benign majority withou
 
 **Actionable wakes** (written to `state/.wake-queue` before advancing suppression markers, end the background task):
 - A `signal` carrying a captain-relevant verb: `needs-decision:`, `blocked:`, `failed:`, `done:`, `PR ready`, `checks green`, `ready in branch`, `merged`.
+- A `paused:` declared external wait surfaces its initial signal once, is then absorbed while the crew idles, and re-surfaces for one bounded recheck per pause window (a forgotten pause cannot stay invisible indefinitely); `paused` is a deliberate external wait, not `blocked`.
 - A no-verb `signal` whose crewmate is NOT provably working.
 - Any `check`.
 - A `stale` whose crewmate is NOT provably working (surfaced at once, never left to wait out a timer).
-- A provably-working `stale` that stays idle past the wedge threshold (`FM_STALE_ESCALATE_SECS`, default 240s).
+- A provably-working `stale` that stays idle past the wedge threshold (`FM_STALE_ESCALATE_SECS`, default 240s); repeated provably-working escalations on one unchanged pane eventually add `demand-deep-inspection` to the wake reason so it is not mistaken for another routine validation wait.
 - A heartbeat fleet-scan backstop catching a captain-relevant status the per-wake path missed.
 
 **Captain-relevant status + stale interaction**: a captain-relevant status-log line does not by itself make a stale pane terminal. A crewmate gets no new status entry once firstmate hands it to no-mistakes validation, so its last line can still read `done:` from BEFORE that validation started. A provably-working crew always wins over that stale line (with the wedge-escalation safety net); only a crewmate NOT provably working has its status log trusted to decide terminal vs non-terminal.
 
 The provably-working predicate (`crew_is_provably_working`) lives in `bin/fm-classify-lib.sh` and reuses `bin/fm-crew-state.sh`. It runs only on the no-verb signal and first-sighting stale paths, never on every wake.
+The watcher uses backend-native busy state when available before the shared regex fallback; for herdr, a native `busy` verdict is trusted outright while native `idle`/unknown verdicts are corroborated against the rendered busy signature before deciding the crew is not working.
 
 The classifier is shared: `bin/fm-classify-lib.sh` backs both the always-on watcher and the away-mode daemon, so the overlapping policy cannot drift.
 
@@ -41,7 +43,16 @@ The classifier is shared: `bin/fm-classify-lib.sh` backs both the always-on watc
 
 While `state/.afk` exists, the daemon owns supervision. The watcher reverts to one-shot — it surfaces every wake for the daemon to classify (skipping the provably-working read entirely) — and never double-triages. The daemon keeps its own bounded-latency stale backstop.
 
+The daemon also raises backend-independent wedge alerts when an escalation cannot be delivered; optional active-alert directives live in `config/wedge-alarm` (`docs/wedge-alarm.md`).
+
 Full daemon procedure: classification policy, batching, injection hardening, max-defer, verified submit, marker stripping, portable lock, dedupe, target discovery, reliability properties, and `FM_INJECT_SKIP` are owned by the `/afk` skill — load it for the complete specification.
+
+## Harness-aware supervision
+
+The live wait shape is per-harness and owned by the supervision operating block that `bin/fm-session-start.sh` emits (rendered by `bin/fm-supervision-instructions.sh` from `docs/supervision-protocols/`): background-notify cycles on some harnesses, bounded foreground checkpoints (`bin/fm-watch-checkpoint.sh`) on others, tracked extensions or a TUI plugin elsewhere.
+Never substitute one harness's command shape for another's; the emitted block is authoritative for this session.
+On every verified primary harness, `bin/fm-turnend-guard.sh` is the push-based backstop: it blocks turn end (or forces one bounded follow-up on passive harnesses) when tasks are in flight without a live identity-matched watcher lock and fresh beacon; `docs/turnend-guard.md` owns the per-harness hook mechanisms.
+For whole-fleet read-only review (heartbeats, bearings), `bin/fm-fleet-snapshot.sh --json` emits one structured contract and `bin/fm-fleet-view.sh` renders it as Markdown; prefer it over reparsing raw fleet files.
 
 ## Heartbeat backoff
 
@@ -63,7 +74,7 @@ The supervision scripts (`fm-peek`, `fm-send`, `fm-spawn`, `fm-teardown`, `fm-pr
 
 The no-watcher case leads with a prominent, bordered ●-marked banner (in-flight count, beacon age, and the exact one-line re-arm command) so it reads as an alarm rather than a buried stderr line.
 
-The grace window keeps normal handling (watcher briefly down between a wake and its re-arm) silent. If a guard warning says queued wakes are pending, drain them before doing anything else. If a guard warning says watcher liveness is stale, arm `bin/fm-watch-arm.sh` after draining any queued wakes.
+The grace window keeps normal handling (watcher briefly down between a wake and its re-arm) silent. If a guard warning says queued wakes are pending, drain them before doing anything else. If a guard warning says watcher liveness is stale, drain any queued wakes and then resume the emitted supervision protocol.
 
 ## Worktree-tangle guard details
 
