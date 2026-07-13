@@ -703,8 +703,57 @@ test_pid_identity_is_locale_invariant() {
   pass "fm_pid_identity is locale-invariant across LC_ALL/LC_TIME"
 }
 
+test_pid_identity_is_stable_across_calls() {
+  # Regression for WSL2 clock-drift: fm_pid_identity must return the same string
+  # on repeated calls for the same live pid.
+  # On Linux the fix uses /proc/<pid>/stat field 22 (starttime ticks), which is
+  # set at fork and never changes.
+  # On macOS lstart was already stable; this test still verifies the invariant.
+  local live id1 id2 id3
+  sleep 300 &
+  live=$!
+  id1=$(bash -c '. "$1"; fm_pid_identity "$2"' _ "$LIB" "$live" 2>/dev/null)
+  id2=$(bash -c '. "$1"; fm_pid_identity "$2"' _ "$LIB" "$live" 2>/dev/null)
+  id3=$(bash -c '. "$1"; fm_pid_identity "$2"' _ "$LIB" "$live" 2>/dev/null)
+  kill "$live" 2>/dev/null || true
+  wait "$live" 2>/dev/null || true
+  [ -n "$id1" ] || fail "fm_pid_identity produced empty identity for live pid"
+  [ "$id1" = "$id2" ] || fail "fm_pid_identity drifted between call 1 and 2 (got '$id2', want '$id1')"
+  [ "$id1" = "$id3" ] || fail "fm_pid_identity drifted between call 1 and 3 (got '$id3', want '$id1')"
+  pass "fm_pid_identity is stable across repeated calls for the same live pid"
+}
+
+test_pid_identity_recycled_pid_mismatches() {
+  # A process whose command differs from the stored identity must not match,
+  # even if the pid were later reused.
+  # We cannot reliably force pid reuse, so we verify the simpler invariant:
+  # two concurrently live processes with different commands produce different
+  # identity strings, so a stale stored identity for one will never match the other.
+  # Use "cat" (reading stdin) to keep it alive without a spin loop.
+  local pa pb id_a id_b
+  bash -c 'exec sleep 120' &
+  pa=$!
+  # cat with no args blocks on stdin; redirect from a fifo so it stays alive.
+  local fifo
+  fifo=$(mktemp -u)
+  mkfifo "$fifo"
+  cat "$fifo" &
+  pb=$!
+  id_a=$(bash -c '. "$1"; fm_pid_identity "$2"' _ "$LIB" "$pa" 2>/dev/null)
+  id_b=$(bash -c '. "$1"; fm_pid_identity "$2"' _ "$LIB" "$pb" 2>/dev/null)
+  kill "$pa" "$pb" 2>/dev/null || true
+  wait "$pa" "$pb" 2>/dev/null || true
+  rm -f "$fifo"
+  [ -n "$id_a" ] || fail "fm_pid_identity returned empty identity for sleep process"
+  [ -n "$id_b" ] || fail "fm_pid_identity returned empty identity for cat process"
+  [ "$id_a" != "$id_b" ] || fail "two distinct processes produced the same identity: '$id_a'"
+  pass "fm_pid_identity produces distinct identities for distinct processes"
+}
+
 test_singleton_start
 test_pid_identity_is_locale_invariant
+test_pid_identity_is_stable_across_calls
+test_pid_identity_recycled_pid_mismatches
 test_stale_watch_lock_reclaimed
 test_live_stale_watch_lock_is_actionable
 test_guard_warnings
