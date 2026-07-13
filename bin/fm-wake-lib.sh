@@ -24,16 +24,38 @@ fm_pid_alive() {
 }
 
 fm_pid_identity() {
-  local pid=$1 out
+  local pid=$1 out cmd
   case "$pid" in
     ''|*[!0-9]*) return 1 ;;
   esac
-  # Pin LC_ALL=C so lstart's date format is locale-invariant: the identity is
-  # written under one locale but re-read under the machine's ambient locale, which
-  # would otherwise mismatch on a non-C locale (e.g. ko_KR) and reject a live watcher.
-  out=$(LC_ALL=C ps -p "$pid" -o lstart= -o command= 2>/dev/null) || return 1
-  [ -n "$out" ] || return 1
-  printf '%s\n' "$out" | sed 's/^[[:space:]]*//'
+  if [ "$(uname)" = "Darwin" ]; then
+    # macOS: lstart is stable; no WSL2-style clock drift.
+    # Pin LC_ALL=C so lstart's date format is locale-invariant: the identity is
+    # written under one locale but re-read under the machine's ambient locale.
+    out=$(LC_ALL=C ps -p "$pid" -o lstart= -o command= 2>/dev/null) || return 1
+    [ -n "$out" ] || return 1
+    printf '%s\n' "$out" | sed 's/^[[:space:]]*//'
+  else
+    # Linux: lstart = boot_time + starttime_ticks; on WSL2, boot_time is
+    # re-derived per read and slews for minutes after host sleep/wake, so the
+    # same live pid renders a different lstart on successive calls.
+    # Fix: read the raw starttime tick directly from /proc/<pid>/stat (field 22).
+    # Parse after the last ")" to skip the comm field, which can contain parens.
+    # This value is set at fork and never changes while the process lives.
+    # Legacy identity files written with the old lstart format will mismatch on
+    # the first check after upgrade; fm-watch.sh re-records identity at startup,
+    # so the watcher self-heals on its next restart cycle.
+    local stat_content after_comm starttime
+    stat_content=$(cat "/proc/$pid/stat" 2>/dev/null) || return 1
+    [ -n "$stat_content" ] || return 1
+    after_comm="${stat_content##*)}"
+    starttime=$(printf '%s\n' "$after_comm" | awk '{print $20}')
+    [ -n "$starttime" ] || return 1
+    cmd=$(LC_ALL=C ps -p "$pid" -o command= 2>/dev/null) || return 1
+    [ -n "$cmd" ] || return 1
+    cmd=$(printf '%s' "$cmd" | sed 's/^[[:space:]]*//')
+    printf '%s %s\n' "$starttime" "$cmd"
+  fi
 }
 
 fm_path_mtime() {
