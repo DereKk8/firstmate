@@ -23,7 +23,12 @@
 #   (i) --force-ready bypasses checks, records pr_check_override=1, arms poll
 #   (j) existing pr-check bookkeeping (pr=, pr_head=, check.sh) still works
 #   (k) multiple violations all named in the refusal message
-#   (l) gh unavailable → skip content checks, arm poll (fail-open only when tooling is absent)
+#   (l) gh unavailable → REFUSED ("gh is not on PATH; cannot verify PR content")
+#   (l2) gh body fetch fails → REFUSED ("gh pr view failed")
+#   (l3) project= absent from task meta → REFUSED ("project= absent from task meta")
+#   (l4) project directory not found → REFUSED ("project directory not found")
+#   (l5) ls-remote exits non-zero → REFUSED ("ls-remote failed")
+#   (l6) ls-remote returns no symref line → REFUSED ("remote HEAD carries no symbolic ref")
 #   (m) false-positive guard: "skipped" alone in body without the emoji → pass
 #   (n) false-positive guard: "High" alone without the 🚨 emoji → pass
 set -u
@@ -352,6 +357,200 @@ Step was skipped." \
   pass "all violations are enumerated in a single refusal message"
 }
 
+# add_gh_fail_body_mock <case_dir>: gh stub that exits 1 on the body fetch,
+# simulating an auth failure, network error, or rate limit.
+add_gh_fail_body_mock() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/gh" <<'STUBEOF'
+#!/usr/bin/env bash
+case " $* " in
+  *"--json body "*"-q .body"*)
+    exit 1
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+STUBEOF
+  chmod +x "$case_dir/fakebin/gh"
+}
+
+# add_git_fail_lsremote_mock <case_dir>: git stub that exits 1 for ls-remote.
+add_git_fail_lsremote_mock() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/git" <<STUBEOF
+#!/usr/bin/env bash
+case " \$* " in
+  *"ls-remote --symref origin HEAD"*)
+    exit 1
+    ;;
+  *)
+    exec "$(command -v git)" "\$@"
+    ;;
+esac
+STUBEOF
+  chmod +x "$case_dir/fakebin/git"
+}
+
+# add_git_no_symref_mock <case_dir>: git stub returning a SHA-only ls-remote
+# response (no "ref: refs/heads/..." line), simulating a detached HEAD remote.
+# Uses an unquoted heredoc so $(command -v git) expands at write-time to the
+# real git binary, avoiding infinite recursion when the stub delegates other
+# git calls back to itself via the fakebin-prefixed PATH.
+add_git_no_symref_mock() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/git" <<STUBEOF
+#!/usr/bin/env bash
+case " \$* " in
+  *"ls-remote --symref origin HEAD"*)
+    printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\tHEAD\n'
+    ;;
+  *)
+    exec "$(command -v git)" "\$@"
+    ;;
+esac
+STUBEOF
+  chmod +x "$case_dir/fakebin/git"
+}
+
+# add_system_passthroughs <case_dir> <tool>...: create pass-through stubs
+# rooted in /bin so the isolated PATH test finds common tools without gh.
+add_system_passthroughs() {
+  local case_dir=$1; shift
+  local tool
+  for tool in "$@"; do
+    printf '#!/bin/bash\nexec /bin/%s "$@"\n' "$tool" > "$case_dir/fakebin/$tool"
+    chmod +x "$case_dir/fakebin/$tool"
+  done
+}
+
+# --- fail-closed gate tests (one per unverifiable code path) ----------------
+
+test_gh_unavailable_refused() {
+  local case_dir rc out
+  case_dir=$(make_case gh-unavailable)
+  # PATH is fakebin-only (no /bin or /usr/bin), so gh is absent from PATH.
+  # Passthroughs for tools used before the gh gate; guard call uses || true.
+  add_system_passthroughs "$case_dir" dirname grep tail cut
+  # No wt dir: inner headRefOid block is skipped; no gh call before gate.
+
+  set +e
+  out=$(FM_ROOT_OVERRIDE="$ROOT" \
+        FM_STATE_OVERRIDE="$case_dir/state" \
+        PATH="$case_dir/fakebin" \
+        /bin/bash "$PR_CHECK" task-x1 https://github.com/example/repo/pull/99 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gh-unavailable: should refuse"
+  assert_contains "$out" "REFUSED" "gh-unavailable: refusal message missing"
+  assert_contains "$out" "gh is not on PATH" "gh-unavailable: should name the cause"
+  assert_absent "$case_dir/state/task-x1.check.sh" "gh-unavailable: poll must not be armed"
+  pass "gh absent from PATH is refused with a named cause"
+}
+
+test_gh_body_fetch_fails_refused() {
+  local case_dir rc out
+  case_dir=$(make_case gh-body-fail)
+  add_gh_fail_body_mock "$case_dir"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/100 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gh-body-fail: should refuse"
+  assert_contains "$out" "REFUSED" "gh-body-fail: refusal message missing"
+  assert_contains "$out" "gh pr view failed" "gh-body-fail: should name the cause"
+  assert_absent "$case_dir/state/task-x1.check.sh" "gh-body-fail: poll must not be armed"
+  pass "gh body fetch failure is refused with a named cause"
+}
+
+test_project_missing_from_meta_refused() {
+  local case_dir rc out
+  case_dir=$(make_case no-project)
+  # Write meta without a project= line.
+  fm_write_meta "$case_dir/state/task-x1.meta" \
+    "window=fm-task-x1" \
+    "worktree=$case_dir/wt" \
+    "kind=ship" \
+    "mode=no-mistakes"
+  add_gh_mock "$case_dir" "Clean PR body." "CLEAN" "main"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/101 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "no-project: should refuse"
+  assert_contains "$out" "REFUSED" "no-project: refusal message missing"
+  assert_contains "$out" "project= absent from task meta" "no-project: should name the cause"
+  assert_absent "$case_dir/state/task-x1.check.sh" "no-project: poll must not be armed"
+  pass "missing project= in meta is refused with a named cause"
+}
+
+test_project_dir_not_found_refused() {
+  local case_dir rc out
+  case_dir=$(make_case missing-proj-dir)
+  fm_write_meta "$case_dir/state/task-x1.meta" \
+    "window=fm-task-x1" \
+    "worktree=$case_dir/wt" \
+    "project=/does/not/exist/at/all" \
+    "kind=ship" \
+    "mode=no-mistakes"
+  add_gh_mock "$case_dir" "Clean PR body." "CLEAN" "main"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/102 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "missing-proj-dir: should refuse"
+  assert_contains "$out" "REFUSED" "missing-proj-dir: refusal message missing"
+  assert_contains "$out" "project directory not found" "missing-proj-dir: should name the cause"
+  assert_absent "$case_dir/state/task-x1.check.sh" "missing-proj-dir: poll must not be armed"
+  pass "non-existent project directory is refused with a named cause"
+}
+
+test_ls_remote_fails_refused() {
+  local case_dir rc out
+  case_dir=$(make_case lsremote-fail)
+  add_gh_mock "$case_dir" "Clean PR body." "CLEAN" "main"
+  add_git_fail_lsremote_mock "$case_dir"
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/103 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "lsremote-fail: should refuse"
+  assert_contains "$out" "REFUSED" "lsremote-fail: refusal message missing"
+  assert_contains "$out" "ls-remote failed" "lsremote-fail: should name the cause"
+  assert_absent "$case_dir/state/task-x1.check.sh" "lsremote-fail: poll must not be armed"
+  pass "ls-remote failure is refused with a named cause"
+}
+
+test_ls_remote_no_symref_refused() {
+  local case_dir rc out
+  case_dir=$(make_case lsremote-no-symref)
+  add_gh_mock "$case_dir" "Clean PR body." "CLEAN" "main"
+  add_git_no_symref_mock "$case_dir"
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/104 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "lsremote-no-symref: should refuse"
+  assert_contains "$out" "REFUSED" "lsremote-no-symref: refusal message missing"
+  assert_contains "$out" "remote HEAD carries no symbolic ref" "lsremote-no-symref: should name the cause"
+  assert_absent "$case_dir/state/task-x1.check.sh" "lsremote-no-symref: poll must not be armed"
+  pass "ls-remote with no symref line is refused with a named cause"
+}
+
 test_false_positive_skipped_word_alone() {
   local case_dir rc out
   case_dir=$(make_case fp-skipped)
@@ -405,5 +604,11 @@ test_handwritten_pr_no_markers_armed
 test_force_ready_bypasses_checks
 test_bookkeeping_still_works
 test_multiple_violations_all_named
+test_gh_unavailable_refused
+test_gh_body_fetch_fails_refused
+test_project_missing_from_meta_refused
+test_project_dir_not_found_refused
+test_ls_remote_fails_refused
+test_ls_remote_no_symref_refused
 test_false_positive_skipped_word_alone
 test_false_positive_high_word_alone
