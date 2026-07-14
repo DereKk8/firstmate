@@ -114,6 +114,10 @@ default_branch() {
     echo "${ref#origin/}"
     return 0
   fi
+  # refs/remotes/origin/HEAD is absent or unset; this usually means it was never
+  # refreshed after the remote's default branch changed.
+  # Run 'git remote set-head origin --auto' on $PROJ to fix it permanently.
+  echo "$label: warning: refs/remotes/origin/HEAD absent or unset; falling back to main/master scan (fix: git -C $PROJ remote set-head origin --auto)" >&2
   for branch in main master; do
     if git -C "$PROJ" show-ref --verify --quiet "refs/heads/$branch"; then
       echo "$branch"
@@ -321,6 +325,13 @@ sync_project() {
     return 0
   fi
 
+  # Refresh origin/HEAD so default_branch() and treehouse both use the correct
+  # base branch.  A stale ref (e.g. the remote changed its default from main to dev
+  # but the local clone still has origin/HEAD -> main) silently produces wrong-base
+  # worktrees and fast-forwards the wrong branch.  Best-effort: ignore failure when
+  # offline or when the remote does not advertise a HEAD symref.
+  git -C "$PROJ" remote set-head origin --auto >/dev/null 2>&1 || true
+
   prune_gone_branches || true
 
   DEFAULT=$(default_branch) || {
@@ -359,6 +370,13 @@ sync_project() {
       cur=$DEFAULT
     else
       report_stuck "$(stuck_state)"
+      # When on a named non-default branch, give the one command to restore the
+      # clone to a state fleet-sync can fast-forward.  This is the expected
+      # situation after set-head --auto corrects origin/HEAD for a project whose
+      # remote changed its default branch (e.g. main -> dev).
+      if [ -n "$cur" ]; then
+        echo "$label: to fix: git -C $PROJ checkout $DEFAULT"
+      fi
       return 0
     fi
   elif [ "$dirty" = yes ]; then

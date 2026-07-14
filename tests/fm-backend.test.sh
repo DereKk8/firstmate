@@ -871,6 +871,108 @@ test_spawn_symlinked_project_prefix_avoids_false_refusal() {
   pass "fm-spawn.sh: a project reached through a symlinked prefix (e.g. macOS /tmp -> /private/tmp) does not trip the isolation guard's false refusal"
 }
 
+# --- validate_spawn_worktree: git-common-dir fail-closed paths ---------------
+#
+# When git rev-parse --git-common-dir returns empty (rev-parse failure) or a
+# path that cd cannot resolve, validate_spawn_worktree must refuse explicitly
+# (exit non-zero, naming the exact condition) rather than silently passing.
+#
+# make_spawn_git_stub_fakebin: tmux stub that reports $wt as pane CWD, plus a
+# git stub that intercepts --git-common-dir with the requested behaviour while
+# delegating every other git call to the real binary.
+# $3 = "fail" exits 1; "nonexistent" prints a non-existent path.
+make_spawn_git_stub_fakebin() {
+  local dir=$1 wt=$2 behavior=$3
+  local fb="$dir/fakebin"
+  mkdir -p "$fb"
+  cat > "$fb/tmux" <<SH
+#!/usr/bin/env bash
+set -u
+{ printf 'tmux'; for a in "\$@"; do printf '\\x1f%s' "\$a"; done; printf '\\n'; } >> "\${FM_TMUX_LOG:?}"
+case "\${1:-}" in
+  display-message)
+    for a in "\$@"; do case "\$a" in *pane_current_path*) printf '%s\\n' "$wt"; exit 0 ;; esac; done
+    printf 'firstmate\\n'; exit 0 ;;
+  list-windows) exit 0 ;;
+esac
+exit 0
+SH
+  chmod +x "$fb/tmux"
+  fm_fake_exit0 "$fb" treehouse
+  case "$behavior" in
+    fail)
+      cat > "$fb/git" <<STUBEOF
+#!/usr/bin/env bash
+case " \$* " in
+  *" rev-parse --git-common-dir"*)
+    exit 1
+    ;;
+  *)
+    exec "$(command -v git)" "\$@"
+    ;;
+esac
+STUBEOF
+      ;;
+    nonexistent)
+      cat > "$fb/git" <<STUBEOF
+#!/usr/bin/env bash
+case " \$* " in
+  *" rev-parse --git-common-dir"*)
+    printf '/nonexistent/git/objects/path/that/cannot/be/resolved\n'
+    ;;
+  *)
+    exec "$(command -v git)" "\$@"
+    ;;
+esac
+STUBEOF
+      ;;
+  esac
+  chmod +x "$fb/git"
+  printf '%s\n' "$fb"
+}
+
+test_spawn_git_common_dir_rev_parse_fails_refuses() {
+  local proj wt id fb data state config log out rc
+  proj="$TMP_ROOT/cdfail-proj"; wt="$TMP_ROOT/cdfail-wt"; id="cdfail1"
+  fm_git_worktree "$proj" "$wt" "fm/$id"
+  fb=$(make_spawn_git_stub_fakebin "$TMP_ROOT/cdfail-fake" "$wt" fail)
+  data="$TMP_ROOT/cdfail-data"; state="$TMP_ROOT/cdfail-state"; config="$TMP_ROOT/cdfail-config"
+  mkdir -p "$data/$id" "$state" "$config"
+  printf 'test brief\n' > "$data/$id/brief.md"
+  log="$TMP_ROOT/cdfail.log"
+
+  set +e
+  out=$(run_spawn_case "$ROOT" "$fb" "$log" "$state" "$data" "$config" "$proj" -- "$id" "$proj" claude 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "cdfail: spawn should refuse when git-common-dir rev-parse fails"
+  assert_contains "$out" "cannot verify worktree isolation" "cdfail: error must name the isolation check"
+  assert_contains "$out" "git rev-parse --git-common-dir" "cdfail: error must name the failing command"
+  pass "validate_spawn_worktree refuses when git rev-parse --git-common-dir fails (fail-closed, not silent skip)"
+}
+
+test_spawn_git_common_dir_unresolvable_refuses() {
+  local proj wt id fb data state config log out rc
+  proj="$TMP_ROOT/cdnopath-proj"; wt="$TMP_ROOT/cdnopath-wt"; id="cdnopath1"
+  fm_git_worktree "$proj" "$wt" "fm/$id"
+  fb=$(make_spawn_git_stub_fakebin "$TMP_ROOT/cdnopath-fake" "$wt" nonexistent)
+  data="$TMP_ROOT/cdnopath-data"; state="$TMP_ROOT/cdnopath-state"; config="$TMP_ROOT/cdnopath-config"
+  mkdir -p "$data/$id" "$state" "$config"
+  printf 'test brief\n' > "$data/$id/brief.md"
+  log="$TMP_ROOT/cdnopath.log"
+
+  set +e
+  out=$(run_spawn_case "$ROOT" "$fb" "$log" "$state" "$data" "$config" "$proj" -- "$id" "$proj" claude 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "cdnopath: spawn should refuse when git-common-dir path is unresolvable"
+  assert_contains "$out" "cannot verify worktree isolation" "cdnopath: error must name the isolation check"
+  assert_contains "$out" "cannot be resolved to an absolute path" "cdnopath: error must name the resolution failure"
+  pass "validate_spawn_worktree refuses when git-common-dir path cannot be resolved (fail-closed, not silent skip)"
+}
+
 # --- old vs new: fm-teardown.sh ----------------------------------------------
 
 make_teardown_fakebin() {  # <dir> -> echoes fakebin dir; logs tmux+treehouse calls
@@ -1082,6 +1184,8 @@ test_backend_of_selector_matches_explicit_target_meta
 test_send_conformance_old_vs_new
 test_peek_conformance_old_vs_new
 test_spawn_symlinked_project_prefix_avoids_false_refusal
+test_spawn_git_common_dir_rev_parse_fails_refuses
+test_spawn_git_common_dir_unresolvable_refuses
 test_teardown_conformance_old_vs_new
 test_spawn_refuses_unknown_backend_flag
 test_spawn_refuses_codex_app_backend_flag
