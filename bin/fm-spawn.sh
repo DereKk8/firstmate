@@ -692,20 +692,23 @@ validate_spawn_worktree() {  # <source> <inspect-target>
   # git-common-dir is the authoritative pointer; assert it resolves inside proj_real.
   local wt_common wt_common_real
   wt_common=$(git -C "$WT" rev-parse --git-common-dir 2>/dev/null || true)
+  if [ -z "$wt_common" ]; then
+    echo "error: $source cannot verify worktree isolation: 'git rev-parse --git-common-dir' failed or returned empty for '$WT'. Inspect target $inspect_target" >&2
+    exit 1
+  fi
   wt_common_real=
-  if [ -n "$wt_common" ]; then
-    wt_common_real=$(cd "$wt_common" 2>/dev/null && pwd -P || true)
+  if ! wt_common_real=$(cd "$wt_common" 2>/dev/null && pwd -P); then
+    echo "error: $source cannot verify worktree isolation: git-common-dir path '$wt_common' cannot be resolved to an absolute path. Inspect target $inspect_target" >&2
+    exit 1
   fi
-  if [ -n "$wt_common_real" ]; then
-    case "$wt_common_real" in
-      "$proj_real"/*)
-        : ;;
-      *)
-        echo "error: $source handed out a worktree whose git objects belong to a different clone (git-common-dir '$wt_common_real' is not inside '$proj_real'). Two local clones of the same remote share one treehouse pool. Remove the duplicate clone to resolve the collision. Inspect target $inspect_target" >&2
-        exit 1
-        ;;
-    esac
-  fi
+  case "$wt_common_real" in
+    "$proj_real"/*)
+      : ;;
+    *)
+      echo "error: $source handed out a worktree whose git objects belong to a different clone (git-common-dir '$wt_common_real' is not inside '$proj_real'). Two local clones of the same remote share one treehouse pool. Remove the duplicate clone to resolve the collision. Inspect target $inspect_target" >&2
+      exit 1
+      ;;
+  esac
 }
 
 W="fm-$ID"
