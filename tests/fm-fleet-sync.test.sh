@@ -603,6 +603,74 @@ test_non_signature_fetch_failure_is_not_retried() {
   pass "a non-packed-refs.lock fetch failure keeps today's behavior (no retry)"
 }
 
+# --- Fix 1.1 fixtures -------------------------------------------------------
+
+# build_pair_dev_default <home> <name>: create a pair where the remote's HEAD
+# initially points to main (so the clone lands on main and origin/HEAD -> main)
+# and is then switched to dev to simulate a project that changed its default
+# branch.  Echoes the clone path.
+build_pair_dev_default() {
+  local home=$1 name=$2 work remote clone remote_abs
+  work="$home/work-$name"
+  remote="$home/remotes/$name.git"
+  clone="$home/projects/$name"
+  mkdir -p "$home/remotes"
+
+  git init -q "$work"
+  git -C "$work" symbolic-ref HEAD refs/heads/main
+  commit_file "$work" file.txt v0 "C0-main"
+
+  git clone --quiet --bare "$work" "$remote"
+  remote_abs=$(cd "$remote" && pwd)
+  git -C "$work" remote add origin "file://$remote_abs"
+  git -C "$work" push -q -u origin main
+
+  git -C "$work" checkout -q -b dev
+  commit_file "$work" file.txt v1 "C0-dev"
+  git -C "$work" push -q origin dev
+
+  # Clone while remote HEAD still points to main so the clone is on main and
+  # origin/HEAD -> main (the stale state fleet-sync must correct).
+  git clone --quiet "file://$remote_abs" "$clone"
+
+  # Switch the remote's HEAD to dev to simulate the upstream default change.
+  git -C "$remote" symbolic-ref HEAD refs/heads/dev
+
+  printf '%s\n' "$clone"
+}
+
+# --- Fix 1.1 tests ----------------------------------------------------------
+
+test_set_head_auto_refreshes_stale_origin_head() {
+  local home clone ref
+  home=$(new_home)
+  clone=$(build_pair_dev_default "$home" refreshhead)
+
+  ref=$(git -C "$clone" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)
+  [ "$ref" = "refs/remotes/origin/main" ] \
+    || fail "set-head-refresh: precondition failed: expected stale origin/HEAD -> main, got '$ref'"
+
+  run_sync "$home" "$clone" >/dev/null
+
+  ref=$(git -C "$clone" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)
+  [ "$ref" = "refs/remotes/origin/dev" ] \
+    || fail "set-head-refresh: origin/HEAD not refreshed: still '$ref', expected refs/remotes/origin/dev"
+  pass "fleet-sync refreshes a stale origin/HEAD via set-head --auto"
+}
+
+test_non_default_branch_stuck_with_fix_hint() {
+  local home clone out
+  home=$(new_home)
+  clone=$(build_pair_dev_default "$home" stuckmain)
+
+  out=$(run_sync "$home" "$clone")
+
+  assert_contains "$out" "STUCK:" "stuck-main: expected STUCK warning for clone on old default"
+  assert_contains "$out" "to fix:" "stuck-main: expected actionable fix command"
+  assert_contains "$out" "checkout" "stuck-main: fix hint should name checkout"
+  pass "clone on a named non-default branch after origin/HEAD refresh reports STUCK with a fix hint"
+}
+
 test_detached_clean_ancestor_recovers
 test_detached_unique_commit_is_stuck_untouched
 test_detached_clean_ancestor_with_diverged_local_default_is_stuck_untouched
@@ -625,3 +693,5 @@ test_live_packed_refs_lock_is_never_removed
 test_live_git_cwd_in_clone_dir_blocks_removal
 test_transient_packed_refs_lock_self_clears
 test_non_signature_fetch_failure_is_not_retried
+test_set_head_auto_refreshes_stale_origin_head
+test_non_default_branch_stuck_with_fix_hint
