@@ -131,9 +131,12 @@ A scout task follows Intake, Spawn, and Supervise identically. After `done`:
 ## Crewmate brief contract
 
 Scaffold: `bin/fm-brief.sh <id> <repo-name>` (ship), `bin/fm-brief.sh <id> <repo-name> --scout` (scout), `bin/fm-brief.sh <id> --secondmate {<project>...|--no-projects}` (charter).
+Optional flags: `--herdr-lab` (ship and scout only) or `--harness <name>` (ship and scout only; claude, codex, opencode, pi, grok; renders skill-invocation syntax for the target harness).
 
 For a crewmate task that will drive Herdr lifecycle behavior, add `--herdr-lab`: the scaffold embeds the hard Herdr-isolation contract backed by `bin/fm-herdr-lab.sh` - a never-`default` lab session, a trailing `--session` on every Herdr call, guarded teardown, and a before/after fleet-state tripwire.
 The flag is rejected for `--secondmate` briefs and must be explicit: the scaffold cannot read the `{TASK}` text it fills in later, so every ship or scout brief scaffolded without it carries a loud not-enabled gate telling the crewmate to stop and regenerate with `--herdr-lab` if the task turns out to touch Herdr lifecycle.
+
+Add `--harness <name>` to render skill invocations with the correct syntax for the target crew harness (`/` for claude, opencode, pi, grok; `$` for codex).
 
 The ship brief Setup section opens with a **worktree-isolation assertion**: the crewmate confirms it is in its own disposable task worktree (not the primary checkout) and stops with `blocked: launched in primary checkout, not an isolated worktree` if not.
 

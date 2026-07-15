@@ -258,6 +258,44 @@ test_pause_verb_override_renders_all_brief_scaffolds() {
   pass "fm-brief.sh: custom pause verb renders in every scaffold"
 }
 
+test_harness_flag_defaults_to_claude_syntax() {
+  local home id brief
+  home="$TMP_ROOT/harness-default-home"
+  mkdir -p "$home/data"
+  id="brief-harness-default-e1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "default-harness brief was not scaffolded"
+  assert_grep "run /no-mistakes to validate and ship a PR" "$brief" \
+    "default harness should use / prefix for no-mistakes"
+  assert_grep "invoke /no-mistakes, and" "$brief" \
+    "default harness should use / prefix in invoke mention"
+  assert_grep "After /no-mistakes reports CI green" "$brief" \
+    "default harness should use / prefix in CI green mention"
+  assert_no_grep "run \$no-mistakes" "$brief" \
+    "default harness should not use $ prefix"
+  pass "fm-brief.sh: --harness defaults to claude (/ prefix)"
+}
+
+test_harness_flag_codex_syntax() {
+  local home id brief
+  home="$TMP_ROOT/harness-codex-home"
+  mkdir -p "$home/data"
+  id="brief-harness-codex-e2"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --harness codex >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "codex-harness brief was not scaffolded"
+  assert_grep "run \$no-mistakes to validate and ship a PR" "$brief" \
+    "codex harness should use $ prefix for no-mistakes"
+  assert_grep "invoke \$no-mistakes, and" "$brief" \
+    "codex harness should use $ prefix in invoke mention"
+  assert_grep "After \$no-mistakes reports CI green" "$brief" \
+    "codex harness should use $ prefix in CI green mention"
+  assert_no_grep "run /no-mistakes" "$brief" \
+    "codex harness should not use / prefix"
+  pass "fm-brief.sh: --harness codex uses $ prefix"
+}
+
 test_script_parses
 test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
@@ -269,3 +307,5 @@ test_herdr_lab_omission_is_loud_for_ship_and_scout
 test_herdr_lab_contract_applies_to_scouts_but_not_secondmates
 test_secondmate_no_projects_charter
 test_pause_verb_override_renders_all_brief_scaffolds
+test_harness_flag_defaults_to_claude_syntax
+test_harness_flag_codex_syntax
