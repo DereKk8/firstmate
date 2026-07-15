@@ -196,7 +196,7 @@ Do not spawn a direct crewmate for work belonging to a secondmate scope unless t
 
 Keep dependency judgment coarse: same repo plus overlapping area means serialize; everything else runs parallel.
 
-Write the brief with `bin/fm-brief.sh <id> <repo-name>` (add `--scout` for scouts; `--secondmate` for charters). Load `task-lifecycle` for the full brief contract.
+Write the brief with `bin/fm-brief.sh <id> <repo-name>` (add `--scout` for scouts; `--secondmate` for charters; optionally `--harness <name>` to select crew harness and render the correct skill-invocation syntax). Load `task-lifecycle` for the full brief contract.
 
 ### Spawn
 
@@ -378,6 +378,7 @@ Correct or delete stale free-form notes the moment you catch them, and put durab
 Scaffold with `bin/fm-brief.sh <id> <repo-name>` (ship), `bin/fm-brief.sh <id> <repo-name> --scout` (scout), or `bin/fm-brief.sh <id> --secondmate {<project>...|--no-projects}` (charter).
 For secondmate charters, set `FM_SECONDMATE_CHARTER='<charter>'` and `FM_SECONDMATE_SCOPE='<scope>'`; replace `{TASK}` if scaffolded without those.
 For a crewmate task that will drive Herdr lifecycle behavior, add `--herdr-lab`: the scaffold embeds the hard Herdr-isolation contract backed by `bin/fm-herdr-lab.sh` (a never-`default` lab session, a trailing `--session` on every Herdr call, guarded teardown, and a before/after fleet-state tripwire); the flag is rejected for `--secondmate` briefs and must be explicit — briefs scaffolded without it carry a not-enabled gate telling the crewmate to stop and regenerate with `--herdr-lab` if the task turns out to touch Herdr lifecycle.
+Add `--harness <name>` (claude, codex, opencode, pi, grok; absent = claude-compatible default) to render skill-invocation syntax for the target crew harness (`/` for most, `$` for codex); applies only to ship and scout briefs.
 
 **Firstmate is harness-agnostic.** Work can be delegated to any verified harness; a crewmate that determines a subtask would be significantly more effective on a different harness should suggest it via `needs-decision` and await approval — it never delegates to another harness autonomously.
 For any generated brief that still contains `{TASK}`, replace it with a clear task description, acceptance criteria, and any constraints or context the crewmate needs before spawning or seeding.

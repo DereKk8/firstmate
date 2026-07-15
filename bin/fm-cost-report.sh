@@ -8,6 +8,7 @@
 #   - headroom 5h/7day utilization from ~/.headroom/subscription_state.json
 #   - no-mistakes stats head
 #   - last 20 lines of ~/.no-mistakes/model-overrides/.router.log
+#   - quota-axi cross-service quota windows
 #
 # Usage: fm-cost-report.sh [--save]
 #   --save  Write digest to $FM_HOME/data/cost-reports/<date>.md
@@ -109,6 +110,15 @@ collect_router_log() {
   fi
 }
 
+collect_quota_axi() {
+  section 'Cross-Service Quota (quota-axi)'
+  if command -v quota-axi >/dev/null 2>&1; then
+    quota-axi 2>&1 | head -30
+  else
+    echo 'unavailable'
+  fi
+}
+
 # --- main -------------------------------------------------------------------
 
 digest=$(mktemp)
@@ -118,6 +128,7 @@ digest=$(mktemp)
   collect_headroom
   collect_nm_stats
   collect_router_log
+  collect_quota_axi
 } > "$digest"
 
 cat "$digest"

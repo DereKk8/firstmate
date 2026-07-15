@@ -6,7 +6,7 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab]
+# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab] [--harness <name>]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -26,6 +26,10 @@
 #   The flag must be explicit because {TASK} is filled after scaffolding and the
 #   caller-supplied repo string cannot reliably identify this repo. Briefs made
 #   without it carry a loud declaration so an omitted contract cannot be silent.
+#   --harness <name> selects the target crew harness (claude, codex, opencode, pi, grok;
+#   absent = claude-compatible default). Renders skill invocations with the correct
+#   prefix ($ for codex, / for others) in generated briefs. Applies only to ship and
+#   scout briefs; secondmate charters are harness-agnostic.
 # For ship tasks, the definition of done is shaped by the project's delivery mode
 # (data/projects.md via fm-project-mode.sh; see AGENTS.md project management
 # and task lifecycle):
@@ -73,14 +77,16 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 KIND=ship
 HERDR_LAB=0
 NO_PROJECTS=0
+HARNESS=claude
 POS=()
-for a in "$@"; do
-  case "$a" in
-    --scout) KIND=scout ;;
-    --secondmate) KIND=secondmate ;;
-    --herdr-lab) HERDR_LAB=1 ;;
-    --no-projects) NO_PROJECTS=1 ;;
-    *) POS+=("$a") ;;
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --scout) KIND=scout; shift ;;
+    --secondmate) KIND=secondmate; shift ;;
+    --herdr-lab) HERDR_LAB=1; shift ;;
+    --no-projects) NO_PROJECTS=1; shift ;;
+    --harness) HARNESS="$2"; shift 2 ;;
+    *) POS+=("$1"); shift ;;
   esac
 done
 ID=${POS[0]}
@@ -93,6 +99,20 @@ fi
 if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
   echo "error: --no-projects applies only to --secondmate charters" >&2
   exit 1
+fi
+
+case "$HARNESS" in
+  claude|codex|opencode|pi|grok) ;;
+  *)
+    echo "error: invalid harness '$HARNESS' (must be one of: claude, codex, opencode, pi, grok)" >&2
+    exit 1
+    ;;
+esac
+
+if [ "$HARNESS" = codex ]; then
+  SKILL_PREFIX='$'
+else
+  SKILL_PREFIX='/'
 fi
 
 BRIEF="$DATA/$ID/brief.md"
@@ -300,10 +320,10 @@ EOF
 # Definition of done
 The task is complete only when committed on your branch.
 When you believe it is complete, append \`done: {summary}\` to the status file and stop.
-Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
+Firstmate will then instruct you to run ${SKILL_PREFIX}no-mistakes to validate and ship a PR.
 
 You drive no-mistakes by responding to its gates, not by implementing fixes.
-Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
+Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke ${SKILL_PREFIX}no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
 Two firstmate-specific rules layer on top of that guidance:
@@ -311,7 +331,7 @@ Two firstmate-specific rules layer on top of that guidance:
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Avoid \`--yes\`: the captain, not you, owns the ask-user decisions it would silently auto-resolve.
 
-After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
+After ${SKILL_PREFIX}no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
 EOF
 )
     ;;
