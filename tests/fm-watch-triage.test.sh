@@ -362,6 +362,35 @@ test_terminal_stale_surfaced() {
   pass "a stale pane sitting on a terminal status is surfaced (queue + exit)"
 }
 
+# A recorded backend target is not proof that its runtime is still alive. This
+# models the observed Herdr-server-down case: metadata still names a pane, but
+# the server/socket rejects pane reads. The watcher must emit a durable,
+# actionable wake immediately instead of silently skipping the unreadable pane.
+test_unreachable_herdr_endpoint_surfaces_actionable_wake() {
+  local dir state fakebin out drain_out status_file window sig pid
+  dir=$(make_case herdr-endpoint-down); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; drain_out="$dir/drain.out"; status_file="$state/herdr-down.status"
+  window="default:w1:p9"
+  cat > "$fakebin/herdr" <<'SH'
+#!/usr/bin/env bash
+# A dead/unreachable selected Herdr server cannot serve pane reads.
+case "${1:-} ${2:-}" in "pane get") exit 1 ;; *) exit 1 ;; esac
+SH
+  chmod +x "$fakebin/herdr"
+  printf 'window=%s\nbackend=herdr\nkind=ship\n' "$window" > "$state/herdr-down.meta"
+  printf 'working: assigned\n' > "$status_file"
+  sig=$(seen_sig "$status_file"); printf '%s' "$sig" > "$state/.seen-herdr-down_status"
+  watch_bg "$state" "$fakebin" "$out"
+  pid=$!
+  wait_for_exit "$pid" 40 || fail "watcher did not wake for an unreachable Herdr endpoint"
+  grep -F "stale: $window (backend endpoint unreachable)" "$out" >/dev/null \
+    || fail "watcher did not report the unreachable Herdr endpoint: $(cat "$out")"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after unreachable Herdr endpoint failed"
+  grep "$(printf '\tstale\t')" "$drain_out" | grep -F "$window" | grep -F 'backend endpoint unreachable' >/dev/null \
+    || fail "unreachable Herdr endpoint wake was not queued durably"
+  pass "unreachable Herdr endpoints surface an actionable stale wake instead of being treated as healthy"
+}
+
 # --- stale pane, STALE terminal status overridden by an active run: absorbed ---
 # Regression for the 2026-07 herdr false-surface incidents: a crew's own status
 # log gets no new entry once firstmate hands it to a no-mistakes validation
@@ -1101,6 +1130,7 @@ test_turn_ended_not_working_surfaced
 test_working_note_not_working_surfaced
 test_actionable_signal_surfaced
 test_terminal_stale_surfaced
+test_unreachable_herdr_endpoint_surfaces_actionable_wake
 test_stale_terminal_status_overridden_by_active_run
 test_nonterminal_stale_provably_working_absorbed_then_escalated
 test_wedge_escalation_marks_demand_deep_inspection_after_threshold
