@@ -152,6 +152,9 @@ Directory trust dialog on first run per repo root: "Do you trust the contents of
 Accept with Enter.
 The decision persists for the repo, so later worktrees of the same project skip it.
 
+SessionStart hook-review overlay on codex-cli 0.144.x+: Codex gates on an interactive "SessionStart hooks need review" approval overlay when hooks exist in `~/.codex/hooks.json`.
+Firstmate launches crewmates and secondmates with `--dangerously-bypass-hook-trust` (via `fm-spawn.sh`) to skip it, since firstmate vets its own hook sources.
+
 Resume after exit with `codex resume <session-id>`.
 The session id is printed on quit.
 

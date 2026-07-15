@@ -364,6 +364,38 @@ test_active_dispatch_profile_does_not_block_secondmate_launch() {
   pass "active crew-dispatch profile does not block secondmate launches"
 }
 
+test_codex_includes_hook_trust_flag_in_crew() {
+  local rec id out status launch
+  id=codex-hook-trust-crew-z17
+  rec=$(make_spawn_case codex-hook-trust-crew codex "$id")
+  read_case_record "$rec"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model gpt-5 --effort high)
+  status=$?
+  expect_code 0 "$status" "codex crew spawn should succeed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust" \
+    "codex crew launch missing --dangerously-bypass-hook-trust flag after --dangerously-bypass-approvals-and-sandbox"
+  pass "codex crew launch includes --dangerously-bypass-hook-trust"
+}
+
+test_codex_includes_hook_trust_flag_in_secondmate() {
+  local rec id sm out status launch
+  id=codex-hook-trust-secondmate-z18
+  rec=$(make_spawn_case codex-hook-trust-secondmate codex "$id")
+  read_case_record "$rec"
+  sm="$CASE_DIR/secondmate-home"
+  make_seeded_secondmate_home "$sm" "$id"
+
+  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate)
+  status=$?
+  expect_code 0 "$status" "codex secondmate spawn should succeed"
+  launch=$(cat "$LAUNCH_LOG")
+  assert_contains "$launch" "--dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust" \
+    "codex secondmate launch missing --dangerously-bypass-hook-trust flag after --dangerously-bypass-approvals-and-sandbox"
+  pass "codex secondmate launch includes --dangerously-bypass-hook-trust"
+}
+
 test_no_profile_keeps_claude_launch_unchanged
 test_active_dispatch_profile_requires_explicit_harness_for_ship
 test_active_dispatch_profile_requires_explicit_harness_for_scout
@@ -379,5 +411,7 @@ test_opencode_threads_model_and_ignores_effort_axis
 test_pi_omits_invalid_max_effort
 test_batch_forwards_shared_profile_flags
 test_active_dispatch_profile_does_not_block_secondmate_launch
+test_codex_includes_hook_trust_flag_in_crew
+test_codex_includes_hook_trust_flag_in_secondmate
 
 echo "# all fm-spawn-dispatch-profile tests passed"
