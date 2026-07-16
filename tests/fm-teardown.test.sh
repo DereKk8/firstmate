@@ -222,12 +222,26 @@ exit 0
 SH
   cat > "$case_dir/fakebin/gh" <<SH
 #!/usr/bin/env bash
-case "\${1:-} \${2:-}" in
-  "pr view")
-    case " \$* " in
-      *"state,headRefOid"*) printf '%s\t%s\n' 'MERGED' '$head' ; exit 0 ;;
-      *"headRefOid"*) printf '%s\n' '$head' ; exit 0 ;;
-    esac
+case " \$* " in
+  *" pr view "*"--json body "*"-q .body "*)
+    printf '%s\n' 'clean body'
+    exit 0
+    ;;
+  *" pr view "*"--json mergeStateStatus "*"-q .mergeStateStatus "*)
+    printf '%s\n' 'CLEAN'
+    exit 0
+    ;;
+  *" pr view "*"--json baseRefName "*"-q .baseRefName "*)
+    printf '%s\n' 'main'
+    exit 0
+    ;;
+  *" pr view "*"--json state,headRefOid "*)
+    printf '%s\t%s\n' 'MERGED' '$head'
+    exit 0
+    ;;
+  *" pr view "*"--json headRefOid "*)
+    printf '%s\n' '$head'
+    exit 0
     ;;
 esac
 echo "error: pull request not found" >&2
