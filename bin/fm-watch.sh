@@ -598,6 +598,7 @@ EOF
         reason="stale: $w (backend endpoint unreachable)"
         fm_wake_append stale "$w" "$reason" || exit 1
         wake "$reason"
+        continue
       fi
       tail40=$(fm_backend_capture "$backend" "$w" 40 "$label" 2>/dev/null) || {
         reason="stale: $w (backend endpoint became unreadable)"
