@@ -149,7 +149,8 @@ An explicit `session:window` target has no meta, so its harness is unknown and t
 This is why the validation trigger (`$no-mistakes`) to a codex crew now lands on the first Enter instead of biting the popup.
 
 Directory trust dialog on first run per repo root: "Do you trust the contents of this directory?"
-Accept with Enter.
+`fm-spawn.sh` now auto-accepts this dialog during its spawn readiness step for isolated worktrees, so a firstmate-supervised crewmate never blocks on it.
+If driving a Codex crewmate by hand, accept with Enter.
 The decision persists for the repo, so later worktrees of the same project skip it.
 
 SessionStart hook-review overlay on codex-cli 0.144.x+: Codex gates on an interactive "SessionStart hooks need review" approval overlay when hooks exist in `~/.codex/hooks.json`.

@@ -325,6 +325,18 @@ Rather than add a second herdr classifier, `fm_backend_herdr_agent_alive` (`bin/
 No new empirical verification was needed for the mapping itself - `fm_backend_herdr_pane_agent_state`'s four states are already verified above (both at the unit level and, for `no-agent`, against the real binary via the respawn-idempotency e2e test); this wrapper only renames them for the generic `fm_backend_agent_alive` dispatcher (`bin/fm-backend.sh`) that also serves the tmux adapter (`docs/tmux-backend.md` "Agent liveness probe").
 Unlike tmux's probe, herdr's has no equivalent "which harness is running under a generic interpreter name" ambiguity: the classification comes from herdr's own registered-agent state, not a process name, so herdr correctly resolves every verified harness including `pi` (the one tmux cannot confidently classify - see `docs/tmux-backend.md` "Known gap").
 
+## Watcher endpoint liveness
+
+`fm-watch.sh`'s stale-pane detection now explicitly checks herdr endpoint reachability before attempting a pane capture.
+Previously, a recorded Herdr pane id whose server or socket was down produced a capture failure the watcher silently skipped, leaving a dead endpoint registered as healthy.
+Now the watcher calls `fm_backend_target_exists` first and, when the endpoint is unreachable, immediately queues a `stale: <window> (backend endpoint unreachable)` wake.
+A capture that fails after a reachable endpoint was confirmed also surfaces a `stale: <window> (backend endpoint became unreadable)` wake.
+Herder is the only backend with this explicit liveness gate because its pane metadata can outlive the selected server/socket; other backends rely on their established capture-failure behavior.
+
+`fm-spawn.sh` separately verifies that the backend endpoint is reachable before reporting a successful spawn, by polling `fm_backend_target_exists` and a passive capture read.
+If the endpoint stays unreachable across the poll window, the spawn writes a `blocked: spawn readiness failed: ...` status and retains the task metadata for recovery instead of printing `spawned`.
+The poll budget is controlled by `FM_SPAWN_READY_ATTEMPTS` (default 20) and `FM_SPAWN_READY_SLEEP` (default 0.25s), documented in [`docs/configuration.md`](configuration.md).
+
 ## End-to-end verification (spawn -> steer -> peek -> done -> merge -> teardown)
 
 Beyond the fake-CLI unit tests (`tests/fm-backend-herdr.test.sh`) and the real-CLI smoke tests (`tests/fm-backend-herdr-smoke.test.sh` and `tests/fm-backend-autodetect-smoke.test.sh`), the full firstmate lifecycle was driven end to end against a real `claude` crewmate through this branch's own scripts, in a scratch `FM_HOME`, a scratch `local-only` git project, and an isolated `HERDR_SESSION`:

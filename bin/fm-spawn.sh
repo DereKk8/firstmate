@@ -77,6 +77,9 @@
 # grok uses a firstmate-owned global hook under ${GROK_HOME:-$HOME/.grok}/hooks
 # plus a gitignored .fm-grok-turnend worktree pointer and a state token.
 # On success prints: spawned <id> harness=<name> kind=<ship|scout|secondmate> mode=<mode> yolo=<on|off> window=<backend-target> worktree=<path>
+# Before reporting success, verifies the backend endpoint is reachable (FM_SPAWN_READY_ATTEMPTS attempts,
+# FM_SPAWN_READY_SLEEP seconds apart). On failure, writes a blocked status line and retains task metadata.
+# For Codex harnesses on an isolated worktree, resolves the directory-trust prompt during this readiness window.
 # mode/yolo are resolved per-project from data/projects.md for ship/scout tasks;
 # secondmate spawns record mode=secondmate, yolo=off, home=, and projects=.
 set -eu

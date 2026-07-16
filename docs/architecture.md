@@ -81,7 +81,8 @@ Codex App support is recorded in `docs/codex-app-backend.md`; it is not selectab
 
 Crewmates never intentionally touch your project clone; [treehouse](https://github.com/kunchenguid/treehouse) pools clean worktrees for tmux, herdr, zellij, and cmux tasks, while Orca creates its own worktrees for `backend=orca`.
 For ship and scout work, `fm-spawn.sh` refuses to launch unless the resolved task path is a real git worktree root that is distinct from the project primary checkout.
-
+After launching the crewmate process, spawn also verifies the backend endpoint is reachable before reporting success; a dead endpoint writes a blocked status and retains task metadata for recovery instead of printing `spawned`.
+For Codex harnesses on an isolated worktree, spawn additionally resolves the documented directory-trust prompt during this readiness window.
 The firstmate repo has one extra exposure because it can dispatch crewmates to work on itself.
 Its operating checkout (`FM_ROOT`) and the disposable crewmate worktrees are all linked git worktrees of the same repository, so the valid discriminators are branch state and tracked-file cleanliness, not whether the checkout is linked.
 The primary checkout is healthy on its default branch with no uncommitted changes to tracked files, and linked worktrees or secondmate homes are healthy at detached HEAD.
