@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Perform the approved local merge for a local-only ship task: fast-forward the
-# project's default branch to the crewmate's fm/<id> branch.
+# Perform the approved local merge for a local-only ship task: squash-merge the
+# crewmate's fm/<id> branch into the project's default branch.
 #
 # This is firstmate's merge gate-action (the captain's merge authority applied
 # locally instead of via a GitHub PR). It is the one sanctioned exception to hard
 # rule #1 "never run state-changing git in projects/", and it is narrow: it only
 # runs for mode=local-only tasks, only after the captain approves (or yolo=on
-# auto-approves), and only as a clean fast-forward - it refuses a diverged branch
+# auto-approves), and only as a clean squash merge - it refuses a diverged branch
 # and tells you to have the crewmate rebase. See AGENTS.md prime directives,
 # project management, and task lifecycle.
 # Usage: fm-merge-local.sh <task-id>
@@ -55,14 +55,19 @@ if [ -n "$(git -C "$PROJ" status --porcelain 2>/dev/null | head -1)" ]; then
   exit 1
 fi
 
-# Clean fast-forward only: DEFAULT must be an ancestor of BRANCH.
+# Clean squash-merge only: DEFAULT must be an ancestor of BRANCH.
 if ! git -C "$PROJ" merge-base --is-ancestor "$DEFAULT" "$BRANCH"; then
-  echo "REFUSED: $BRANCH is not a fast-forward of $DEFAULT (it has diverged)." >&2
+  echo "REFUSED: $BRANCH is not based on $DEFAULT (it has diverged)." >&2
   echo "Have the crewmate rebase $BRANCH onto $DEFAULT, then retry." >&2
   exit 1
 fi
 
 before=$(git -C "$PROJ" rev-parse --short "$DEFAULT")
-git -C "$PROJ" merge --ff-only "$BRANCH" >/dev/null
+message=$(git -C "$PROJ" log --format=%s -n 1 "$BRANCH")
+if [ -z "$message" ]; then
+  message="local-only merge: $BRANCH"
+fi
+git -C "$PROJ" merge --squash --no-commit "$BRANCH" >/dev/null
+git -C "$PROJ" commit -m "$message" >/dev/null
 after=$(git -C "$PROJ" rev-parse --short "$DEFAULT")
 echo "merged $BRANCH into local $DEFAULT ($before -> $after) in $PROJ"

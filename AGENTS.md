@@ -197,6 +197,7 @@ Do not spawn a direct crewmate for work belonging to a secondmate scope unless t
 Keep dependency judgment coarse: same repo plus overlapping area means serialize; everything else runs parallel.
 
 Write the brief with `bin/fm-brief.sh <id> <repo-name>` (add `--scout` for scouts; `--secondmate` for charters; optionally `--harness <name>` to select crew harness and render the correct skill-invocation syntax). Load `task-lifecycle` for the full brief contract.
+Generated ship and scout briefs require crash-durable progress on disk, slice commits as work completes, and status appends only for supervisor-actionable phase changes.
 
 ### Spawn
 
@@ -225,6 +226,7 @@ After `done:` on a ship task, the path diverges by mode:
 - **no-mistakes**: trigger validation (load `harness-adapters` for invocation form), then PR ready, then merge, then teardown.
 - **direct-PR**: skip validate; run `bin/fm-pr-check.sh <id> <url>`, relay the PR with its full `https://...` URL, then teardown.
 - **local-only**: `bin/fm-review-diff.sh <id>`, relay a one-paragraph summary, captain approves, `bin/fm-merge-local.sh <id>`, then teardown. No `bin/fm-pr-check.sh`.
+  `bin/fm-merge-local.sh` squashes the task branch into local `main` so slice commits do not bloat the local history.
 
 Always use `bin/fm-review-diff.sh <id>` for diff review — pooled clones can lag `origin`; the helper compares against the authoritative base, and against the recorded PR head when `pr=` exists so pipeline fix rounds are included.
 

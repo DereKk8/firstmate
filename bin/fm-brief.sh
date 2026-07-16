@@ -39,6 +39,8 @@
 #                firstmate reviews, captain approves, firstmate merges to local main
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # Scout tasks ignore mode - their deliverable is a report, not a merge.
+# They still carry the same crash-durability rule: keep notes or scratch
+# artifacts current and commit each completed slice before moving on.
 # Every scaffold's status protocol distinguishes the configured
 # declared-external-wait verb (FM_CLASSIFY_PAUSED_VERB, default "paused") from
 # "blocked:": pause for a known external wait expected to clear on its own,
@@ -48,6 +50,11 @@
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
 # over copied detail) and has the crewmate add the fm-ensure-agents-md.sh
 # self-governance section when a touched project AGENTS.md lacks it.
+# Ship and scout tasks must keep crash-durable progress on disk as they work.
+# Status appends stay reserved for supervisor-actionable phase changes, while
+# the crewmate's own notes, scratch artifacts, and slice commits carry the work.
+# A committed slice is context you can safely forget, and trivial one-file work
+# should stay a single slice instead of being forced into artificial commits.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -251,6 +258,9 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 This is a SCOUT task: the deliverable is a written report, not a PR.
 The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
 The report is the only thing that survives, so anything worth keeping must be in it.
+Keep durable progress on disk as you work by updating notes or scratch artifacts and committing each completed slice on the task branch before moving on.
+Use status appends only for supervisor-actionable phase changes, not as a progress log.
+If the work is trivial, keep it to one slice instead of manufacturing artificial commits.
 
 # Rules
 1. Never push to any remote and never open a PR.
@@ -307,6 +317,8 @@ EOF
 This project ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$ID\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
+When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
+If the work is trivial, keep it as a single slice rather than inventing artificial commits.
 When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop.
 Firstmate then reviews your branch diff, the captain approves, and firstmate merges it into local \`main\`.
 EOF
