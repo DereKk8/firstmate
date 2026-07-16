@@ -331,6 +331,8 @@ EOF
     DOD=$(cat <<EOF
 # Definition of done
 The task is complete only when committed on your branch.
+When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
+If the work is trivial, keep it as a single slice rather than inventing artificial commits.
 When you believe it is complete, append \`done: {summary}\` to the status file and stop.
 Firstmate will then instruct you to run ${SKILL_PREFIX}no-mistakes to validate and ship a PR.
 
