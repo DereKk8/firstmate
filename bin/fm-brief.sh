@@ -304,6 +304,8 @@ case "$MODE" in
 # Definition of done
 This project ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
+When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
+If the work is trivial, keep it as a single slice rather than inventing artificial commits.
 When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
 Do NOT run /no-mistakes. The captain reviews and merges the PR; firstmate relays it.
 EOF
