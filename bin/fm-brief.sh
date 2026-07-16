@@ -318,7 +318,7 @@ EOF
 # Definition of done
 This project ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$ID\`. Do NOT push, do NOT open a PR, do NOT merge.
-Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
+Keep your branch rebased onto the current default branch so the eventual merge has a clean base.
 When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
 If the work is trivial, keep it as a single slice rather than inventing artificial commits.
 When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop.
