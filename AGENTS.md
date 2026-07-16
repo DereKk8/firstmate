@@ -422,3 +422,10 @@ Each skill may be loaded for reference at any time; the triggers below are when 
 - `task-lifecycle` — load for full spawn flag reference; validate procedure and run-step states; PR-ready and teardown safety checks; scout promotion; crewmate brief contract; and full recovery step details.
 - `supervision` — load for wake triage absorption logic, watcher mechanics, heartbeat backoff, worktree-tangle guard details, away-mode daemon specifics, and token discipline.
 - `x-mode` — load when `.env` has `FMX_PAIRING_TOKEN`, when bootstrap prints `FMX:`, or when a watcher cadence transition (opt-in or opt-out) is needed. Contains X mode setup, activation, cadence arm/restart, completion follow-up contract, conversation handling, and dry-run details.
+
+## Maintaining this file
+
+Keep this file for knowledge useful to almost every future agent session in this project.
+Do not repeat what the codebase already shows; point to the authoritative file or command instead.
+Prefer rewriting or pruning existing entries over appending new ones.
+When updating this file, preserve this bar for all agents and keep entries concise.

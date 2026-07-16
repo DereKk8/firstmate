@@ -77,6 +77,9 @@
 # grok uses a firstmate-owned global hook under ${GROK_HOME:-$HOME/.grok}/hooks
 # plus a gitignored .fm-grok-turnend worktree pointer and a state token.
 # On success prints: spawned <id> harness=<name> kind=<ship|scout|secondmate> mode=<mode> yolo=<on|off> window=<backend-target> worktree=<path>
+# Before reporting success, verifies the backend endpoint is reachable (FM_SPAWN_READY_ATTEMPTS attempts,
+# FM_SPAWN_READY_SLEEP seconds apart). On failure, writes a blocked status line and retains task metadata.
+# For Codex harnesses on an isolated worktree, resolves the directory-trust prompt during this readiness window.
 # mode/yolo are resolved per-project from data/projects.md for ship/scout tasks;
 # secondmate spawns record mode=secondmate, yolo=off, home=, and projects=.
 set -eu
@@ -668,6 +671,7 @@ real_path_or_raw() {  # <path>
 # herdr-sm-spaces-k4). Both branches converge on the same $T ("target") string
 # that every downstream operation (send/capture/kill) already treats as opaque
 # per-backend routing (fm_backend_resolve_selector).
+SPAWN_ISOLATED_WORKTREE=0
 validate_spawn_worktree() {  # <source> <inspect-target>
   local source=$1 inspect_target=$2 wt_real proj_real wt_top wt_top_real
   wt_real=
@@ -709,6 +713,7 @@ validate_spawn_worktree() {  # <source> <inspect-target>
       exit 1
       ;;
   esac
+  SPAWN_ISOLATED_WORKTREE=1
 }
 
 W="fm-$ID"
@@ -852,6 +857,56 @@ spawn_send_key() {  # <target> <key>
     orca) fm_backend_orca_send_key "$1" "$2" ;;
     cmux) fm_backend_cmux_send_key "$1" "$2" "$W" ;;
   esac
+}
+
+# A backend returning an endpoint id is not proof that the endpoint can still
+# receive input. In particular, Herdr can preserve a tab/pane record while the
+# selected server/socket is down. Keep the task metadata in place on a failure:
+# it gives recovery and the supervisor the exact target that needs attention.
+spawn_readiness_fail() {  # <reason>
+  local reason=$1
+  printf 'blocked: spawn readiness failed: %s\n' "$reason" >> "$STATE/$ID.status"
+  echo "error: spawn readiness failed for $ID: $reason; metadata retained at $STATE/$ID.meta" >&2
+  return 1
+}
+
+# Do not print "spawned" until the recorded endpoint answers a passive liveness
+# read. Codex additionally has one documented first-run dialog that is safe to
+# resolve here: its exact directory-trust prompt, and only for a worktree this
+# invocation already proved isolated. No other prompt receives input here.
+spawn_wait_ready() {  # <target>
+  local target=$1 attempts=${FM_SPAWN_READY_ATTEMPTS:-20} delay=${FM_SPAWN_READY_SLEEP:-0.25}
+  local i capture trust_seen=0
+  case "$attempts" in ''|*[!0-9]*|0) attempts=20 ;; esac
+  for i in $(seq 1 "$attempts"); do
+    if ! fm_backend_target_exists "$BACKEND" "$target" "$W"; then
+      sleep "$delay"
+      continue
+    fi
+    if [ "$HARNESS" != codex ] || [ "$SPAWN_ISOLATED_WORKTREE" -ne 1 ]; then
+      return 0
+    fi
+    capture=$(fm_backend_capture "$BACKEND" "$target" 80 "$W" 2>/dev/null || true)
+    case "$capture" in
+      *'Do you trust the contents of this directory?'*)
+        trust_seen=1
+        if ! spawn_send_key "$target" Enter; then
+          sleep "$delay"
+          continue
+        fi
+        ;;
+      *)
+        [ "$trust_seen" -eq 1 ] && return 0
+        [ -n "$capture" ] && return 0
+        ;;
+    esac
+    sleep "$delay"
+  done
+  if [ "$trust_seen" -eq 1 ]; then
+    spawn_readiness_fail "Codex directory-trust prompt did not clear within ${attempts} checks at endpoint $target"
+  else
+    spawn_readiness_fail "backend endpoint $target was unreachable within ${attempts} checks (backend=$BACKEND)"
+  fi
 }
 if [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   spawn_send_text_line "$WT_TARGET" 'treehouse get'
@@ -1076,5 +1131,6 @@ sleep 0.3
 spawn_send_literal "$T" "$LAUNCH"
 sleep 0.3
 spawn_send_key "$T" Enter
+spawn_wait_ready "$T"
 
 echo "spawned $ID harness=$HARNESS kind=$KIND mode=$MODE yolo=$YOLO window=$META_WINDOW worktree=$WT"

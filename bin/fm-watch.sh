@@ -587,7 +587,26 @@ EOF
     if [ "$kind" = secondmate ] && ! status_is_paused "$last"; then
       continue
     fi
-    tail40=$(fm_backend_capture "$(window_backend "$w")" "$w" 40 "$(window_label "$w")" 2>/dev/null) || continue
+    backend=$(window_backend "$w")
+    label=$(window_label "$w")
+    # A recorded Herdr pane id is not liveness: a server/socket outage leaves
+    # metadata intact while making the endpoint unreadable. Its old capture
+    # failure path silently skipped that task, so surface it immediately. Keep
+    # the established capture-only behavior for the other verified backends.
+    if [ "$backend" = herdr ]; then
+      if ! fm_backend_target_exists "$backend" "$w" "$label"; then
+        reason="stale: $w (backend endpoint unreachable)"
+        fm_wake_append stale "$w" "$reason" || exit 1
+        wake "$reason"
+      fi
+      tail40=$(fm_backend_capture "$backend" "$w" 40 "$label" 2>/dev/null) || {
+        reason="stale: $w (backend endpoint became unreadable)"
+        fm_wake_append stale "$w" "$reason" || exit 1
+        wake "$reason"
+      }
+    else
+      tail40=$(fm_backend_capture "$backend" "$w" 40 "$label" 2>/dev/null) || continue
+    fi
     h=$(printf '%s' "$tail40" | hash_pane)
     key=$(printf '%s' "$w" | tr ':/.' '___')
     hf="$STATE/.hash-$key"
