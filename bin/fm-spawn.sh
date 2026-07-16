@@ -893,9 +893,7 @@ spawn_wait_ready() {  # <target>
         fi
         ;;
       *)
-        [ "$trust_seen" -eq 0 ] || return 0
-        # The known trust text disappeared after our one safe Enter, proving
-        # that the dialog was accepted rather than merely typed into.
+        [ "$trust_seen" -eq 1 ] || continue
         return 0
         ;;
     esac
