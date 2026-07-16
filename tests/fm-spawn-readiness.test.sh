@@ -41,7 +41,9 @@ case "${1:-} ${2:-}" in
     printf '{"result":{"pane":{"pane_id":"p1","foreground_cwd":"%s"}}}\n' "${FM_FAKE_PANE_PATH:?}"
     ;;
   "pane read")
-    if [ -f "$state/trust-accepted" ]; then
+    if [ "$mode" = trusted-dir ]; then
+      printf 'Codex ready for the assigned brief\n'
+    elif [ -f "$state/trust-accepted" ]; then
       printf 'Codex ready for the assigned brief\n'
     else
       printf 'Do you trust the contents of this directory?\n'
@@ -122,7 +124,21 @@ EOF
   pass "fm-spawn: accepts only the known Codex directory-trust prompt before reporting success"
 }
 
+test_codex_already_trusted_directory_returns_ready() {
+  local rec out status dir home
+  rec=$(make_case codex-trusted-dir trusted-dir)
+  IFS='|' read -r dir home _ _ _ _ _ <<EOF
+$rec
+EOF
+  out=$(run_spawn "$rec"); status=$?
+  expect_code 0 "$status" "Codex spawn in an already-trusted directory should become ready"
+  assert_contains "$out" "spawned codex-trusted-dir-z1 harness=codex" "ready Codex spawn did not report success"
+  assert_grep "window=default:p1" "$home/state/codex-trusted-dir-z1.meta" "ready spawn did not retain recoverable endpoint metadata"
+  pass "fm-spawn: Codex in an already-trusted directory returns ready without trust-dialog interaction"
+}
+
 test_unreachable_herdr_endpoint_never_reports_spawned
 test_codex_trust_prompt_is_accepted_before_success
+test_codex_already_trusted_directory_returns_ready
 
 echo "# all fm-spawn-readiness tests passed"

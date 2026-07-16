@@ -893,8 +893,8 @@ spawn_wait_ready() {  # <target>
         fi
         ;;
       *)
-        [ "$trust_seen" -eq 1 ] || continue
-        return 0
+        [ "$trust_seen" -eq 1 ] && return 0
+        [ -n "$capture" ] && return 0
         ;;
     esac
     sleep "$delay"
