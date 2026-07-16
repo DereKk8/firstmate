@@ -63,7 +63,7 @@ if ! git -C "$PROJ" merge-base --is-ancestor "$DEFAULT" "$BRANCH"; then
 fi
 
 before=$(git -C "$PROJ" rev-parse --short "$DEFAULT")
-message=$(git -C "$PROJ" log --format=%s -n 1 "$BRANCH")
+message=$(git -C "$PROJ" log --format=%s --reverse "$BRANCH" --not "$DEFAULT" | sed -n '1p')
 if [ -z "$message" ]; then
   message="local-only merge: $BRANCH"
 fi

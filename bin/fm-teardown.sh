@@ -294,6 +294,19 @@ content_in_default() {
   [ "$merged_tree" = "$default_tree" ]
 }
 
+branch_has_nonempty_unpushed_content() {
+  local default_branch_ref=$1 commit
+  while IFS= read -r commit; do
+    [ -n "$commit" ] || continue
+    if [ -n "$(git -C "$WT" diff-tree --no-commit-id --name-only -r "$commit" 2>/dev/null | head -1)" ]; then
+      return 0
+    fi
+  done <<EOF
+$(git -C "$WT" log --format=%H HEAD --not "$default_branch_ref" -- 2>/dev/null)
+EOF
+  return 1
+}
+
 # Has the worktree's committed work actually LANDED, though its commits are not
 # reachable from any remote-tracking branch? True when a merged PR proves the
 # current local work is contained in the PR head, OR the content is already in the
@@ -589,7 +602,11 @@ validate_worktree_teardown_safety() {
       return 1
     fi
     unmerged=$(printf '%s\n' "$unmerged_raw" | head -5)
-    if [ -n "$dirty" ] || { [ -n "$unmerged" ] && ! content_in_default; }; then
+    if [ -n "$dirty" ] || {
+      [ -n "$unmerged" ] && ! content_in_default
+    } || {
+      [ -n "$unmerged" ] && content_in_default && ! branch_has_nonempty_unpushed_content "$DEFAULT"
+    }; then
       echo "REFUSED: local-only worktree $WT has work not yet landed in $DEFAULT and not on any remote." >&2
       [ -n "$dirty" ] && echo "uncommitted changes present" >&2
       [ -n "$unmerged" ] && printf 'commits not yet on %s:\n%s\n' "$DEFAULT" "$unmerged" >&2
