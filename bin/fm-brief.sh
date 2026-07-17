@@ -31,12 +31,12 @@
 #   prefix ($ for codex, / for others) in generated briefs. Applies only to ship and
 #   scout briefs; secondmate charters are harness-agnostic.
 # For ship tasks, the definition of done is shaped by the project's delivery mode
-# (data/projects.md via fm-project-mode.sh; see AGENTS.md project management
-# and task lifecycle):
+# (data/projects.md via fm-project-mode.sh; see the project-management skill
+# and AGENTS.md task lifecycle):
 #   no-mistakes  implement -> /no-mistakes pipeline -> PR -> captain merge (default)
 #   direct-PR    implement -> push + open PR via gh-axi (no pipeline) -> captain merge
 #   local-only   implement on branch, stop and report "ready in branch" (no push/PR);
-#                firstmate reviews, captain approves, firstmate merges to local main
+#                captain approves, firstmate merges to local main
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # Scout tasks ignore mode - their deliverable is a report, not a merge.
 # They still carry the same crash-durability rule: keep notes or scratch
@@ -183,6 +183,7 @@ A request relayed to you by the main firstmate (your supervisor) is tagged with 
 When a message carries that marker, do the work, then respond via the STATUS/ESCALATION path below, never only in this chat: the main firstmate does not read your chat, so a chat-only reply is lost.
 For a terse result, a status line is the whole answer.
 For a detailed answer (an investigation, a plan, an audit), write it to a doc under your home's \`data/\` and append a status line that points to that doc - the scout-report pattern - so the main firstmate is woken and can read it.
+Before treating an investigation or visual review as complete, load \`decision-hold-lifecycle\` from this home's \`.agents/skills/\` and pass its shared completion gate.
 A message with NO marker is the captain typing directly into your pane: treat it as authoritative captain intervention and stay conversational exactly as you would for any captain message; do not force it onto the status path.
 
 # Escalation to main firstmate
@@ -193,6 +194,9 @@ States: working, needs-decision, blocked, $PAUSED_VERB, done, failed.
 Use \`$PAUSED_VERB: {why}\` (distinct from \`blocked:\`) only when your domain is deliberately idling on a known external wait you expect to clear on its own; use \`blocked:\` when you are stuck and need firstmate to act.
 Use this only for material phase changes, a captain decision, a real blocker, a failure, or work ready for review.
 This is also how you return the answer to a marked from-firstmate request above.
+Give every routed-work phase a stable key: open it with \`working [key=<work-slug>]: {material phase}\`, and use the same key on its later \`$PAUSED_VERB\`, \`done\`, \`failed\`, \`needs-decision\`, or \`blocked\` event so the earlier working phase is superseded.
+When a keyed phase ends without another reportable state, append \`resolved [key=<work-slug>]: {why it is no longer active}\`.
+When a decision you escalated is answered or a blocker clears and your domain resumes, append \`resolved: {how it was decided or unblocked}\` (keyed with \`[key=<slug>]\` if you opened it with one) so it is durably closed instead of resurfacing behind later unrelated events.
 Routine internal supervision, heartbeats, retries, and crewmate churn stay inside your own home and must not touch that status file.
 
 # Definition of done
@@ -279,10 +283,15 @@ If the work is trivial, keep it to one slice instead of manufacturing artificial
 5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
 6. If a decision belongs to a human (product choices, destructive actions),
    append \`needs-decision: {summary of options}\` and stop. Firstmate will reply with the decision.
+   When firstmate replies or a blocker clears and you resume, append \`resolved: {how it was decided or unblocked}\` (add the same \`[key=<slug>]\` if you opened it with one) so the decision or blocker is durably closed and does not keep resurfacing.
+7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
+   daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
 
 # Definition of done
 Write your findings to \`$DATA/$ID/report.md\`.
 The report must stand alone: what you did, what you found, the evidence (commands run, output, file:line references), and what you recommend.
+Before reporting done, read and follow \`$FM_ROOT/.agents/skills/decision-hold-lifecycle/SKILL.md\` and pass its shared completion gate for the report and any visual review.
 When the report is complete, append \`done: {one-line conclusion}\` to the status file and stop.
 If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
 EOF
@@ -307,7 +316,7 @@ The task is complete only when committed on your branch.
 When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
 If the work is trivial, keep it as a single slice rather than inventing artificial commits.
 When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
-Do NOT run /no-mistakes. The captain reviews and merges the PR; firstmate relays it.
+Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
 )
     ;;
@@ -322,7 +331,7 @@ Keep your branch rebased onto the current default branch so the eventual squash 
 When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
 If the work is trivial, keep it as a single slice rather than inventing artificial commits.
 When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop.
-Firstmate then reviews your branch diff, the captain approves, and firstmate merges it into local \`main\`.
+The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
 )
     ;;
@@ -388,6 +397,10 @@ $RULE1
 5. If you hit the same obstacle twice, append \`blocked: {why}\` and stop; firstmate will help.
 6. If a decision belongs to a human (product choices, destructive actions, ask-user findings),
    append \`needs-decision: {summary of options}\` and stop. Firstmate will reply with the decision.
+   When firstmate replies or a blocker clears and you resume, append \`resolved: {how it was decided or unblocked}\` (add the same \`[key=<slug>]\` if you opened it with one) so the decision or blocker is durably closed and does not keep resurfacing.
+7. Never stop, restart, or update the shared \`no-mistakes\` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs. On ANY no-mistakes
+   daemon error, append \`blocked: {the daemon error}\` and stop; only firstmate manages the daemon.
 
 # Project memory
 If \`AGENTS.md\` or \`CLAUDE.md\` already exists, or if this task produced durable project-intrinsic knowledge, run \`$FM_ROOT/bin/fm-ensure-agents-md.sh .\` in the worktree.
