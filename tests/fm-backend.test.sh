@@ -944,7 +944,6 @@ test_spawn_git_common_dir_rev_parse_fails_refuses() {
   set +e
   out=$(run_spawn_case "$ROOT" "$fb" "$log" "$state" "$data" "$config" "$proj" -- "$id" "$proj" claude 2>&1)
   rc=$?
-  set -e
 
   expect_code 1 "$rc" "cdfail: spawn should refuse when git-common-dir rev-parse fails"
   assert_contains "$out" "cannot verify worktree isolation" "cdfail: error must name the isolation check"
@@ -965,7 +964,6 @@ test_spawn_git_common_dir_unresolvable_refuses() {
   set +e
   out=$(run_spawn_case "$ROOT" "$fb" "$log" "$state" "$data" "$config" "$proj" -- "$id" "$proj" claude 2>&1)
   rc=$?
-  set -e
 
   expect_code 1 "$rc" "cdnopath: spawn should refuse when git-common-dir path is unresolvable"
   assert_contains "$out" "cannot verify worktree isolation" "cdnopath: error must name the isolation check"
