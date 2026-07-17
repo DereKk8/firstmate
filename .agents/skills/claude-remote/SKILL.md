@@ -13,7 +13,7 @@ Deploy a visible Claude Code remote-control instance in a new tmux window.
 2. Create a new tmux window with the `ccrc` command running inside the firstmate repo:
 
 ```sh
-tmux new-window -t WoL -n <name> -d 'cd /home/dereklinux/firstmate && env -u ANTHROPIC_BASE_URL claude --dangerously-skip-permissions --permission-mode bypassPermissions --remote-control'
+tmux -S /tmp/wol-tmux/default new-window -t WoL -n <name> -d 'cd /home/dereklinux/firstmate && env -u ANTHROPIC_BASE_URL claude --dangerously-skip-permissions --permission-mode bypassPermissions --remote-control'
 ```
 
 3. The `<name>` defaults to `ccrc` unless the captain specified a custom name.
