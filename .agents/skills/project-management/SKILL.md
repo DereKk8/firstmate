@@ -1,6 +1,9 @@
 ---
 name: project-management
-description: Agent-only reference for project and secondmate management procedures — clone, create, initialize, knowledge routing, and secondmate backlog handoff. Load when adding, cloning, or initializing a project, routing knowledge to its correct home, or managing secondmate scope.
+description: >-
+  Agent-only procedure for Firstmate project management.
+  Use before adding, creating, removing, or initializing a project.
+  Owns project add, create, clone, remove, initialization, registry, delivery-mode, autonomy, and outward-consent decisions.
 user-invocable: false
 metadata:
   internal: true
@@ -8,91 +11,68 @@ metadata:
 
 # project-management
 
-Load this reference when adding, cloning, or creating a project; routing durable knowledge; or managing secondmate scope and backlog handoff.
+Use this procedure before adding, creating, removing, or initializing a project.
+This skill is the single owner of Firstmate's project-management procedure.
+It does not replace `secondmate-provisioning`, which owns project clones inside persistent secondmate homes.
 
-## Project registry
+## Preconditions and registry
 
-All projects live flat under `projects/`.
+Projects live flat under `projects/`, and `data/projects.md` is the private fleet registry.
+Use the registry format and parser contract owned by the header of `bin/fm-project-mode.sh`.
+Keep each registry description useful for identifying the project, but keep delivery posture, captain-private state, and detailed project knowledge in their existing designated homes.
+Do not turn the registry into project documentation.
 
-`data/projects.md` is firstmate's thin navigation registry. Every project has one line:
-```
-- <name> [<mode>] - <one-line description> (added <date>)
-```
-Record the project name, delivery mode, optional `+yolo` posture, and one-line description.
-Add the line when you clone or create; drop it if a project is removed.
-Do not turn the registry into a knowledge dump — durable detail belongs in the project's own `AGENTS.md`.
+Resolve the project name, destination, delivery mode, and autonomy posture before changing local or remote state.
+Keep a newly added clone and its registry entry consistent, and roll back only artifacts created by the incomplete operation when a later initialization step fails and that rollback is safe.
+Do not overwrite or repurpose an existing path.
 
-## Clone existing project
+## Delivery posture
 
-```sh
-git clone <url> projects/<name>
-```
-Add its registry line with the chosen mode, then initialize only if the mode is `no-mistakes`.
+Choose the delivery mode when adding or creating the project:
 
-## Create new project
+- `no-mistakes` runs the full validation pipeline before a PR and is the default when the captain does not specify a mode.
+- `direct-PR` pushes and opens a PR without the no-mistakes pipeline.
+- `local-only` has no required remote or PR and lands only through the approved local fast-forward path.
 
-For `no-mistakes` and `direct-PR` modes, a new project needs a GitHub repo first.
-Creating a GitHub repo is outward-facing: get the captain's consent before touching GitHub.
-Propose repo name, owner/org, visibility (default private), and delivery mode.
-Create with `gh-axi` only after the captain confirms, then clone into `projects/<name>`.
-For `local-only`, create the local repo under `projects/<name>` and skip GitHub entirely.
+The optional `+yolo` posture changes routine approval authority but does not change the delivery mode.
+Default it off, and enable it only on the captain's explicit instruction.
+Destructive, irreversible, and security-sensitive decisions still require captain approval when it is on.
 
-## Initialize (no-mistakes mode only)
+## Add or clone an existing project
+
+Confirm the source URL, local project name, delivery mode, and autonomy posture.
+Clone into `projects/<name>` and add the registry entry only after the destination is known to be unused.
+A `no-mistakes` project must have an `origin` remote and must complete the initialization procedure below.
+A `direct-PR` project needs an `origin` remote but skips no-mistakes initialization.
+A `local-only` project may have no remote and skips no-mistakes initialization.
+
+## Create a project
+
+Creating a GitHub repository is outward-facing.
+Before making that remote change, propose the repository name, owner or organization, visibility, and delivery mode, defaulting visibility to private and delivery mode to `no-mistakes`, then obtain the captain's explicit consent for those values.
+Use `gh-axi` for the approved GitHub operation and consult its current help rather than relying on remembered flags.
+After remote creation succeeds, clone it locally, add the registry entry, and initialize it according to its delivery mode.
+
+For a purely `local-only` project, create a local Git repository under its unused `projects/<name>` path, add the registry entry, and make no GitHub call.
+The captain's request to create that local project authorizes this local initialization, but it does not authorize an unmentioned remote repository.
+
+## Initialize
+
+Run no-mistakes initialization only for `no-mistakes` projects:
 
 ```sh
 cd projects/<name> && no-mistakes init && no-mistakes doctor
 ```
 
-`no-mistakes init` sets up the local gate: bare repo plus post-receive hook, the `no-mistakes` git remote, and a database record. It needs an `origin` remote.
-It does NOT vendor any skill — the no-mistakes skill is user-level, available to every crewmate.
-So init produces nothing to commit; it is a sanctioned exception to the never-write rule only in that it runs git remote/config setup inside the project.
-`direct-PR` and `local-only` projects skip init entirely.
+Initialization configures the local gate and does not vendor a no-mistakes skill into the project.
+Do not create a commit merely because initialization ran.
+If doctor reports an environment, authentication, or daemon problem, resolve that blocker before dispatching work and never restart the shared daemon from a project operation.
 
-If `no-mistakes doctor` reports problems, fix the environment (auth, daemon) before dispatching work.
+## Remove
 
-## Project memory ownership
-
-**Project-intrinsic knowledge** belongs to the project: build/test/release mechanics, architecture conventions, sharp edges ("needs Xcode 26", "releases via release-please with `homemux-v*` tags"). Lives in the project's committed `AGENTS.md` (a project's `CLAUDE.md` is a symlink to it). Crewmates create and update these files through normal delivery — firstmate never hand-writes them.
-
-**Fleet and captain-private knowledge** belongs to firstmate's `data/`: delivery mode, `+yolo` posture, in-flight work, captain product strategy, go-live state, the `data/projects.md` registry line and planning docs.
-
-Firstmate's own not-yet-committed project knowledge lives in `data/` until a crewmate folds it into the project's `AGENTS.md`.
-
-Create a project's `AGENTS.md` lazily on first need: the first ship task touching a project that lacks one and has durable project-intrinsic knowledge should run `bin/fm-ensure-agents-md.sh`, add that knowledge, and commit both through the delivery pipeline. Do not eagerly backfill every project.
-The canonical self-governance wording for project `AGENTS.md` files lives in `bin/fm-ensure-agents-md.sh`.
-
-## Knowledge routing
-
-Route each piece of durable knowledge to its most specific home:
-
-| Kind of knowledge | Home |
-| --- | --- |
-| Captain preferences and working style | `data/captain.md`, inspected first and rewritten or pruned in place |
-| Project-intrinsic knowledge | that project's own `AGENTS.md`, via crewmate delivery, never hand-written by firstmate |
-| Fleet-local operational facts and gotchas | `data/learnings.md`, inspected first and rewritten or pruned in place |
-| Knowledge generalizable to every firstmate user | the shared `AGENTS.md`, shipped via PR through the pipeline |
-| Task-scoped notes | backlog item notes: inspect first with `tasks-axi show <id> --full`, then replace the body with `tasks-axi update <id> --body-file <path>` (add `--archive-body` when superseded state should stay recoverable), or hand-edit per the active backend |
-| Investigation findings | scout reports at `data/<id>/report.md` |
-
-When the captain invokes `/stow`, load the `stow` skill — it sweeps the current session for uncaptured durable knowledge and routes findings with this table.
-
-## Secondmate scope and routing
-
-`data/secondmates.md` is the routing table. Every persistent secondmate has one line:
-```
-- <id> - <charter summary> (home: <absolute-home-path>; scope: <natural-language responsibility>; projects: <project-a>, <project-b>; added <date>)
-```
-
-The `scope:` field is used during intake; the `projects:` field is a non-exclusive clone list, not ownership.
-
-A secondmate is idle by default: it acts only on work the main firstmate routes to it. On startup it reconciles only its own in-flight work and then waits. It must never self-initiate surveys or audits; an empty queue is a healthy resting state.
-
-**Load `secondmate-provisioning`** before creating, seeding, validating, recovering, pushing config to, or retiring any secondmate home, and before editing `data/secondmates.md`. That reference owns home leases, transactional rollback, validation, project clone restrictions, handoff edge cases, charter copy rules, and teardown internals.
-
-## Secondmate backlog handoff on creation
-
-When creating a secondmate for a domain, move existing main-backlog items that fall under its scope:
-- Scope-matching is firstmate's judgment against the secondmate's natural-language scope, not a keyword rule.
-- Read `data/backlog.md`, pick queued items that fit, move them with `bin/fm-backlog-handoff.sh <secondmate-id> <item-key>...`.
-- Do not hand off `local-only` items; that work stays with the main firstmate.
-- For idempotence, destination validation, and refusal of `## In flight` entries, load `secondmate-provisioning`.
+Project removal is destructive and is not one of Firstmate's current direct-write exceptions under `projects/`.
+Never issue a raw removal command from Firstmate.
+First obtain the captain's explicit removal decision, then inspect the current digest and authoritative repositories for in-flight or queued work, registered secondmate clones, linked worktrees, dirty files, unpushed commits, and any other unlanded work.
+If any dependency or unlanded work exists, stop and report it before changing the registry.
+Until a guarded removal helper and corresponding prime-directive exception exist, report that implementation gap instead of bypassing the project-write boundary.
+When a clone has already been removed through an approved guarded path, or the registry is provably stale because no clone exists, remove its registry line so navigation matches reality.

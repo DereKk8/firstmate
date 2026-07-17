@@ -46,9 +46,9 @@
 #   the file governs the spawn, its model/effort tokens are re-resolved on every
 #   respawn exactly like the harness axis, and explicit --model/--effort flags
 #   still win over the file's tokens.
-#   A --secondmate spawn also propagates the primary's declared inheritable config
-#   into the secondmate home's config/, so the secondmate's OWN crewmates,
-#   dispatch profiles, and backlog backend inherit the primary's settings
+#   A --secondmate spawn also propagates the primary's declared inherited local
+#   material, so the secondmate's OWN crewmates inherit primary config and the
+#   secondmate receives the primary's read-only shared captain-preference file
 #   (fm-config-inherit-lib.sh).
 #   --scout records kind=scout in the task's meta (report deliverable, scratch worktree;
 #   see AGENTS.md task lifecycle); --secondmate records kind=secondmate and launches in a
@@ -107,6 +107,13 @@ SUB_HOME_MARKER=".fm-secondmate-home"
 . "$SCRIPT_DIR/fm-config-inherit-lib.sh"
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"
+# shellcheck source=bin/fm-gate-refuse-lib.sh
+. "$SCRIPT_DIR/fm-gate-refuse-lib.sh"
+# shellcheck source=bin/fm-pr-lib.sh
+. "$SCRIPT_DIR/fm-pr-lib.sh"
+# Fail closed before any fleet mutation: a no-mistakes gate agent must never spawn
+# a direct report (see bin/fm-gate-refuse-lib.sh).
+fm_refuse_if_gate_agent
 # Skip the watcher guard when re-exec'd for one pair of a batch (FM_SPAWN_NO_GUARD is
 # set by the batch loop below), so the guard runs once for the batch, not once per pair.
 [ -n "${FM_SPAWN_NO_GUARD:-}" ] || "$FM_ROOT/bin/fm-guard.sh" || true
@@ -276,6 +283,7 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   exit "$rc"
 fi
 ID=${POS[0]}
+fm_task_id_creation_valid "$ID" || { echo "error: invalid task id" >&2; exit 2; }
 PROJ=
 ARG3=
 FIRSTMATE_HOME=
@@ -455,17 +463,18 @@ effort_flag_for_harness() {
       ;;
     grok)
       # grok exposes both --effort and --reasoning-effort; firstmate's profile
-      # axis is the reasoning knob, and --reasoning-effort rejects max, so pass
-      # only its accepted shared vocabulary subset.
+      # axis is the reasoning knob. As of grok 0.2.99, --reasoning-effort accepts
+      # only low|medium|high and rejects both xhigh and max, so omit those rather
+      # than passing a known-bad value.
       case "$effort" in
-        low|medium|high|xhigh) printf -- '--reasoning-effort %s ' "$(shell_quote "$effort")" ;;
+        low|medium|high) printf -- '--reasoning-effort %s ' "$(shell_quote "$effort")" ;;
       esac
       ;;
     pi)
-      # pi accepts --thinking low|medium|high|xhigh. It warns and ignores max, so
-      # omit max rather than passing a flag the installed CLI will reject as invalid.
+      # Pi 0.80.6 accepts the full shared effort vocabulary, including max, through
+      # its --thinking flag.
       case "$effort" in
-        low|medium|high|xhigh) printf -- '--thinking %s ' "$(shell_quote "$effort")" ;;
+        low|medium|high|xhigh|max) printf -- '--thinking %s ' "$(shell_quote "$effort")" ;;
       esac
       ;;
     # opencode's interactive `opencode --prompt` launch has a verified --model
@@ -621,15 +630,10 @@ if [ "$KIND" = secondmate ]; then
   else
     echo "warning: secondmate $ID sync skipped before launch: primary default-branch commit cannot be resolved" >&2
   fi
-  # Inheritable-config propagation: push the primary's declared LOCAL config into
-  # this secondmate home's config/, so the secondmate's OWN crewmates and backlog
-  # backend inherit the primary's settings. config/ is gitignored, so this is a
-  # separate copy from the local-HEAD fast-forward above;
-  # primary-authoritative and re-pushed on every convergence. config/secondmate-harness
-  # is the primary's own knob and is deliberately NOT in the inheritable set
-  # (fm-config-inherit-lib.sh). A primary with no inheritable config set is a no-op.
-  propagate_inheritable_config "$CONFIG" "$PROJ_ABS/config" \
-    || echo "warning: secondmate $ID config inheritance failed for $PROJ_ABS/config" >&2
+  # Inheritance propagation: push the primary-authoritative local inheritance
+  # surface into this secondmate home (fm-config-inherit-lib.sh).
+  propagate_secondmate_inheritance "$FM_HOME" "$PROJ_ABS" "$CONFIG" "$DATA" \
+    || echo "warning: secondmate $ID inheritance failed for $PROJ_ABS" >&2
   if [ -f "$PROJ_ABS/data/charter.md" ]; then
     BRIEF="$PROJ_ABS/data/charter.md"
   else
@@ -1046,7 +1050,7 @@ EOF
   esac
 fi
 
-# Per-project delivery mode + yolo flag (bin/fm-project-mode.sh; AGENTS.md project management and task lifecycle).
+# Per-project delivery mode + yolo flag (bin/fm-project-mode.sh; the project-management skill and AGENTS.md task lifecycle).
 # Recorded in meta so fm-teardown's safety check and the validate/merge stages can
 # branch on them. Mode governs ship tasks; a scout's deliverable is a report, not a
 # merge, so scout teardown ignores mode.

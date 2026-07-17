@@ -7,12 +7,15 @@ set -u
 
 TMP_ROOT=$(fm_test_tmproot fm-pi-watch-extension)
 EXT="$ROOT/.pi/extensions/fm-primary-pi-watch.ts"
+# Node 24 warns when these test-only dynamic imports load tracked ESM plugins
+# from a clean checkout with no tracked .opencode/package.json. The warning is
+# unrelated to plugin output, which the assertions intentionally require empty.
+export NODE_NO_WARNINGS=1
 
 install_pi_watch_extension_fixture() {
   local repo=$1
   mkdir -p "$repo/.pi/extensions" "$repo/node_modules/typebox"
   cp "$EXT" "$repo/.pi/extensions/fm-primary-pi-watch.ts"
-  printf '{"type":"module"}\n' > "$repo/package.json"
   cat > "$repo/node_modules/typebox/package.json" <<'JSON'
 {"name":"typebox","type":"module","exports":"./index.js"}
 JSON
@@ -83,7 +86,7 @@ test_pi_extension_reports_external_healthy_watcher() {
 printf 'watcher: healthy pid=1 (beacon 0s)\n'
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npm_config_loglevel=error npx tsx --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" node --input-type=module 2>&1 <<'EOF'
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -122,7 +125,7 @@ if (!notification.includes("started Pi extension arm child")) {
   console.error(notification);
   process.exit(1);
 }
-for (let i = 0; i < 50 && !prompt; i += 1) {
+for (let i = 0; i < 250 && !prompt; i += 1) {
   await new Promise((resolve) => setTimeout(resolve, 20));
 }
 if (!prompt.includes("FIRSTMATE WATCHER WAKE")) {
@@ -140,10 +143,6 @@ if (!prompt.includes("watcher: healthy pid=1")) {
 EOF
 )
   status=$?
-  # npx may emit npm logger noise (e.g. "npm warn exec ... installing tsx") when the
-  # runner has no cached tsx; that is infrastructure noise, not output from the code
-  # under test. Strip npm's own logger lines before asserting the extension is silent.
-  out=$(printf '%s' "$out" | grep -v '^npm ' || true)
   expect_code 0 "$status" "Pi extension must surface an external healthy watcher as an owned-wake failure"
   [ -z "$out" ] || fail "Pi external-healthy test printed output: $out"
   pass "Pi extension reports external healthy watcher output"
@@ -161,7 +160,7 @@ test_pi_tool_returns_agent_tool_result() {
 exit 0
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npm_config_loglevel=error npx tsx --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" node --input-type=module 2>&1 <<'EOF'
 import { writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -193,7 +192,6 @@ if (result.details?.ok !== true || result.details?.message !== result.content[0]
 EOF
 )
   status=$?
-  out=$(printf '%s' "$out" | grep -v '^npm ' || true)
   expect_code 0 "$status" "Pi custom tool must return Pi's AgentToolResult shape"
   [ -z "$out" ] || fail "Pi tool-result test printed output: $out"
   pass "Pi custom tool returns text content and structured details"
@@ -208,7 +206,7 @@ test_pi_process_exit_cleanup_listener_lifecycle() {
   plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
   : > "$repo/bin/fm-watch-arm.sh"
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" npm_config_loglevel=error npx tsx --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" node --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 
 const handlers = new Map();
@@ -233,7 +231,6 @@ if (process.listenerCount("exit") !== before) {
 EOF
 )
   status=$?
-  out=$(printf '%s' "$out" | grep -v '^npm ' || true)
   expect_code 0 "$status" "Pi cleanup fallback listener must install once and unregister on session shutdown"
   [ -z "$out" ] || fail "Pi listener-lifecycle test printed output: $out"
   pass "Pi process-exit cleanup listener has a bounded lifecycle"
@@ -255,7 +252,7 @@ printf '%s\n' "$$" > "$FM_CHILD_PID_FILE"
 while :; do sleep 1; done
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_CLEANUP_LOG="$cleanup_log" FM_CHILD_PID_FILE="$pid_file" npx tsx --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_CLEANUP_LOG="$cleanup_log" FM_CHILD_PID_FILE="$pid_file" node --input-type=module 2>&1 <<'EOF'
 import { existsSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -297,9 +294,12 @@ EOF
 }
 
 test_opencode_primary_watch_plugin_static_wiring() {
-  local plugin text
+  local plugin module_boundary text
   plugin="$ROOT/.opencode/plugins/fm-primary-watch-arm.js"
+  module_boundary="$ROOT/.opencode/plugins/package.json"
   assert_present "$plugin" "OpenCode primary watch plugin missing"
+  assert_present "$module_boundary" "OpenCode plugin ESM package boundary missing"
+  assert_contains "$(cat "$module_boundary")" '"type": "module"' "OpenCode plugin package boundary is not explicitly ESM"
   text=$(cat "$plugin")
   assert_contains "$text" "session.idle" "OpenCode plugin does not listen for session.idle"
   assert_contains "$text" "fm-watch-arm.sh" "OpenCode plugin does not spawn the watcher arm"
@@ -310,6 +310,25 @@ test_opencode_primary_watch_plugin_static_wiring() {
   assert_contains "$text" 'fm-watch-arm.sh" --restart' "OpenCode plugin does not restart into its own watcher child"
   assert_contains "$text" 'setArmStatus("external")' "OpenCode plugin still treats an external healthy watcher as armed"
   pass "OpenCode primary watcher plugin has the verified TUI wake wiring"
+}
+
+test_opencode_plugin_package_boundary_is_explicit_esm() {
+  local fixture plugin out status
+  fixture="$TMP_ROOT/opencode-esm-boundary/.opencode"
+  plugin="$fixture/plugins/fm-primary-watch-arm.js"
+  mkdir -p "$fixture/plugins"
+  printf '%s\n' '{"dependencies":{}}' > "$fixture/package.json"
+  cp "$ROOT/.opencode/plugins/package.json" "$fixture/plugins/package.json"
+  cp "$ROOT/.opencode/plugins/fm-primary-watch-arm.js" "$plugin"
+  out=$(PLUGIN="$plugin" node --input-type=module 2>&1 <<'EOF'
+import { pathToFileURL } from "node:url";
+await import(pathToFileURL(process.env.PLUGIN).href);
+EOF
+)
+  status=$?
+  expect_code 0 "$status" "OpenCode plugin must import beneath an explicit ESM package boundary"
+  [ -z "$out" ] || fail "OpenCode ESM boundary import printed output: $out"
+  pass "OpenCode plugins have an explicit ESM boundary even under a typeless parent package"
 }
 
 test_opencode_primary_watch_plugin_uses_effective_state_home() {
@@ -723,6 +742,7 @@ test_pi_tool_returns_agent_tool_result
 test_pi_process_exit_cleanup_listener_lifecycle
 test_pi_process_exit_cleanup_stops_arm_child
 test_opencode_primary_watch_plugin_static_wiring
+test_opencode_plugin_package_boundary_is_explicit_esm
 test_opencode_primary_watch_plugin_uses_effective_state_home
 test_opencode_primary_watch_plugin_sources_effective_config
 test_opencode_primary_watch_plugin_requires_session_lock
