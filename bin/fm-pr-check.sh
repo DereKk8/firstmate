@@ -14,6 +14,8 @@
 #   - project= is absent from task meta or the directory does not exist
 #   - ls-remote fails or returns no symbolic ref (cannot determine true default)
 #   - the PR's base branch differs from the project's true remote default branch
+#   - the PR's base branch differs from the project's explicit base= registry value
+#     (the registry base wins over the repo default; used for repos targeting dev)
 # Absence of no-mistakes markers (hand-written PR, direct-PR mode) does NOT
 # trip the body checks; only the presence of specific markers refuses.
 # --force-ready: bypass all content checks and arm anyway.
@@ -137,8 +139,11 @@ if [ "$FORCE_READY" -eq 0 ]; then
     REASONS="${REASONS}${REASONS:+$'\n'}  - GitHub reports merge state DIRTY (PR likely needs a rebase)"
   fi
 
-  # Base branch check.  Every unresolvable step refuses: without the true
-  # remote default branch we cannot verify and must not silently arm the poll.
+  # Base branch check: registry base wins over repo default.
+  # The registry base=<branch> is the authoritative expected target for
+  # projects that do not accept PRs against the repo default (e.g. aide-*
+  # repos target dev, not main). When set it must match; when unset the
+  # repo's true remote default applies.
   PROJ=""
   if [ -f "$META" ]; then
     PROJ=$(grep '^project=' "$META" | tail -1 | cut -d= -f2- || true)
@@ -150,20 +155,26 @@ if [ "$FORCE_READY" -eq 0 ]; then
     REFUSE=1
     REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify PR base branch: project directory not found at ${PROJ}"
   else
-    LS_RC=0
-    LS_OUT=$(git -C "$PROJ" ls-remote --symref origin HEAD 2>/dev/null) || LS_RC=$?
-    if [ "$LS_RC" -ne 0 ]; then
+    EXPECTED_BASE=$("$FM_ROOT/bin/fm-project-base.sh" "$(basename "$PROJ")" 2>/dev/null || true)
+    if [ -n "$EXPECTED_BASE" ] && [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$EXPECTED_BASE" ]; then
       REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: ls-remote failed for project at ${PROJ}"
-    else
-      TRUE_DEFAULT=$(printf '%s\n' "$LS_OUT" \
-        | sed -n 's|^ref: refs/heads/\([^\t]*\)\tHEAD$|\1|p' | head -1)
-      if [ -z "$TRUE_DEFAULT" ]; then
+      REASONS="${REASONS}${REASONS:+$'\n'}  - WRONG BASE BRANCH: PR targets '${PR_BASE}' but project registry expects '${EXPECTED_BASE}' (this project does NOT accept PRs against '${PR_BASE}'; re-open the PR targeting '${EXPECTED_BASE}')"
+    elif [ -z "$EXPECTED_BASE" ]; then
+      LS_RC=0
+      LS_OUT=$(git -C "$PROJ" ls-remote --symref origin HEAD 2>/dev/null) || LS_RC=$?
+      if [ "$LS_RC" -ne 0 ]; then
         REFUSE=1
-        REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: remote HEAD carries no symbolic ref"
-      elif [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$TRUE_DEFAULT" ]; then
-        REFUSE=1
-        REASONS="${REASONS}${REASONS:+$'\n'}  - PR base '${PR_BASE}' differs from project's true remote default '${TRUE_DEFAULT}'"
+        REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: ls-remote failed for project at ${PROJ}"
+      else
+        TRUE_DEFAULT=$(printf '%s\n' "$LS_OUT" \
+          | sed -n 's|^ref: refs/heads/\([^\t]*\)\tHEAD$|\1|p' | head -1)
+        if [ -z "$TRUE_DEFAULT" ]; then
+          REFUSE=1
+          REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: remote HEAD carries no symbolic ref"
+        elif [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$TRUE_DEFAULT" ]; then
+          REFUSE=1
+          REASONS="${REASONS}${REASONS:+$'\n'}  - PR base '${PR_BASE}' differs from project's true remote default '${TRUE_DEFAULT}'"
+        fi
       fi
     fi
   fi

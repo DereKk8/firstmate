@@ -553,48 +553,6 @@ test_bootstrap_nudge_retry_refuses_changed_home() {
 # backend targets (default:w9:pY) that liveness respawn immediately replaced
 # (default:wA:p2), so fm-send with the printed target fell back to tmux and failed
 # while fm-<id> resolved through current meta.
-make_nudge_herdr_fake() {
-  local dir=$1 stale=$2 fresh=$3 fakebin
-  fakebin=$(fm_fakebin "$dir")
-  cat > "$fakebin/herdr" <<SH
-#!/usr/bin/env bash
-set -u
-cmd=\${1:-}; sub=\${2:-}; arg=\${3:-}
-case "\$cmd \$sub" in
-  "status --json")
-    printf '{"client":{"version":"0.7.1","protocol":14},"server":{"running":true}}\n'
-    ;;
-  "pane get")
-    if [ "\$arg" = "${stale#*:}" ]; then
-      printf '{"result":{"pane":{"pane_id":"${stale#*:}"}}}\n'
-    elif [ "\$arg" = "${fresh#*:}" ]; then
-      printf '{"result":{"pane":{"pane_id":"${fresh#*:}"}}}\n'
-    else
-      printf '{"error":{"code":"pane_not_found","message":"missing"}}\n' >&2
-      exit 0
-    fi
-    ;;
-  "agent get")
-    if [ "\$arg" = "${stale#*:}" ]; then
-      printf '{"error":{"code":"agent_not_found","message":"gone"}}\n' >&2
-    elif [ "\$arg" = "${fresh#*:}" ]; then
-      printf '{"result":{"agent":{"agent_status":"idle"}}}\n'
-    else
-      printf '{"error":{"code":"agent_not_found","message":"gone"}}\n' >&2
-    fi
-    ;;
-  "pane send-text"|"pane run"|"pane send-keys")
-    if [ "\$arg" = "${stale#*:}" ]; then
-      exit 1
-    fi
-    exit 0
-    ;;
-esac
-exit 0
-SH
-  chmod +x "$fakebin/herdr"
-  printf '%s\n' "$fakebin"
-}
 
 test_nudge_retry_uses_fresh_herdr_endpoint_after_respawn() {
   local w c1 stale fresh fakebin herdrfb toolchain out meta window resolved stale_send fresh_send spawn_stub marker

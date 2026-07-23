@@ -585,13 +585,6 @@ x_mode_setup() {
     printf '%s\n' "$out"
   }
 
-  x_mode_supervision_repair() {
-    local out
-    out=$("$SCRIPT_DIR/fm-supervision-instructions.sh" --repair-line 2>/dev/null) \
-      || out='resume supervision according to the session-start operating block.'
-    printf '%s\n' "$out"
-  }
-
   if [ -z "$token" ]; then
     # Opt-out (or never opted in): drop any X artifacts; stay silent unless we
     # actually removed something.
