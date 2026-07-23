@@ -98,4 +98,7 @@ fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
 
 $ git diff --check
 (no output)
+
+$ for t in tests/*.test.sh; do bash "$t"; done
+81 test scripts executed: 1370 assertions passed, 9 failed, 6 skipped
 ```
