@@ -305,6 +305,8 @@ read -r MODE _ <<EOF
 $("$FM_ROOT/bin/fm-project-mode.sh" "$REPO")
 EOF
 
+BASE=$("$FM_ROOT/bin/fm-project-base.sh" "$REPO" 2>/dev/null || true)
+
 case "$MODE" in
   direct-PR)
     SETUP2=""
@@ -362,6 +364,16 @@ EOF
     ;;
 esac
 
+if [ -n "$BASE" ]; then
+  STEP1="1. First action: create your branch from origin/$BASE: \`git checkout -b fm/$ID origin/$BASE\`"
+  BASE_NOTE="
+
+Important: the expected PR base for this project is \`$BASE\`. Use \`--base $BASE\` when opening a PR."
+else
+  STEP1="1. First action: create your branch: \`git checkout -b fm/$ID\`"
+  BASE_NOTE=""
+fi
+
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
 
@@ -377,7 +389,7 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
-1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
+$STEP1$SETUP2$BASE_NOTE
 
 # Rules
 $RULE1

@@ -346,6 +346,52 @@ test_scout_and_secondmate_load_decision_hold_policy() {
   pass "fm-brief.sh: investigation and visual-review completions load the shared decision policy"
 }
 
+# --- base injection tests ----------------------------------------------------
+
+test_ship_brief_injects_origin_base_when_set() {
+  local home id brief
+  home="$TMP_ROOT/base-inject-home"
+  mkdir -p "$home/data"
+  cat > "$home/data/projects.md" <<'EOF'
+- base-dev-proj [no-mistakes] base=dev - targets dev branch (added 2026-07-01)
+EOF
+  id="brief-base-dev-f1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" base-dev-proj >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "base injection brief was not scaffolded"
+  assert_grep "origin/dev" "$brief" \
+    "brief did not inject origin/dev in the branch-creation command"
+  assert_grep "git checkout -b fm/$id origin/dev" "$brief" \
+    "brief did not inject the full checkout-from-base command"
+  assert_grep "--base dev" "$brief" \
+    "brief did not inject the --base PR instruction"
+  assert_grep "the expected PR base for this project is \`dev\`" "$brief" \
+    "brief did not render the base-reminder note"
+  pass "fm-brief.sh: ship brief injects origin/<base> and --base <base> when base is set"
+}
+
+test_ship_brief_uses_default_when_base_unset() {
+  local home id brief
+  home="$TMP_ROOT/base-unset-home"
+  mkdir -p "$home/data"
+  cat > "$home/data/projects.md" <<'EOF'
+- no-base-proj [direct-PR] - no explicit base (added 2026-07-01)
+EOF
+  id="brief-no-base-g1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" no-base-proj >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "no-base brief was not scaffolded"
+  assert_grep "create your branch:" "$brief" \
+    "brief lost the default branch-creation instruction"
+  assert_no_grep "origin/" "$brief" \
+    "brief should NOT inject an origin base when none is set"
+  assert_no_grep "--base" "$brief" \
+    "brief should NOT inject a --base PR instruction when none is set"
+  assert_no_grep "expected PR base" "$brief" \
+    "brief should NOT render a base-reminder note when none is set"
+  pass "fm-brief.sh: ship brief uses default branch-creation when base is unset"
+}
+
 test_script_parses
 test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
@@ -361,3 +407,5 @@ test_pause_verb_override_renders_all_brief_scaffolds
 test_harness_flag_defaults_to_claude_syntax
 test_harness_flag_codex_syntax
 test_scout_and_secondmate_load_decision_hold_policy
+test_ship_brief_injects_origin_base_when_set
+test_ship_brief_uses_default_when_base_unset
