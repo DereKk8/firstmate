@@ -4,9 +4,11 @@
 # no-mistakes|direct-PR|local-only and yolo is on|off.
 #
 # Registry line format (data/projects.md):
-#   - <name> - <desc> (added <date>)                  -> no-mistakes off  (legacy default)
-#   - <name> [<mode>] - <desc> (added <date>)          -> <mode> off
-#   - <name> [<mode> +yolo] - <desc> (added <date>)    -> <mode> on
+#   - <name> - <desc> (added <date>)                          -> no-mistakes off  (legacy default)
+#   - <name> [<mode>] - <desc> (added <date>)                  -> <mode> off
+#   - <name> [<mode> +yolo] - <desc> (added <date>)            -> <mode> on
+# An optional base=<branch> field may appear between the mode bracket
+# and the description; fm-project-base.sh owns its parsing contract.
 #
 # mode = how a finished change reaches main:
 #   no-mistakes  full pipeline -> PR -> captain merge (default)
