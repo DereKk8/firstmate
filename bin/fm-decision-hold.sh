@@ -369,17 +369,55 @@ read_decision_file() {  # <path> -> decision text
   printf '%s' "$decision"
 }
 
-# Shared by resolve, attest, and amend: every routed dependent must either be
-# durably blocked by <hold-id>, appear as routed work in <hold-body> (an exact
-# retry), or be explicitly re-established by a repair command. Unblocks each
-# dependent that is still blocked by the hold.
+route_evidence_file() {  # <hold-id>
+  printf '%s/decision-hold-routes/%s.routes\n' "$DATA" "$1"
+}
+
+route_evidence_contains() {  # <hold-id> <task-id>
+  local id=$1 dep=$2 routes path
+  path=$(route_evidence_file "$id")
+  [ -f "$path" ] || return 1
+  routes=$(cat "$path") || return 1
+  case ",$routes," in
+    *",$dep,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+record_route_evidence() {  # <hold-id> <routed-csv>
+  local id=$1 routes=$2 path existing
+  path=$(route_evidence_file "$id")
+  mkdir -p "${path%/*}" || fail "could not create route-evidence directory"
+  if [ -f "$path" ]; then
+    existing=$(cat "$path") || fail "could not read route evidence for $id"
+    [ "$existing" = "$routes" ] || fail "hold $id records different routed evidence"
+  else
+    printf '%s\n' "$routes" > "$path" || fail "could not record route evidence for $id"
+  fi
+}
+
+dependency_edge_present() {  # <deps> <hold-id>
+  local deps=$1 id=$2
+  deps=${deps#\"}
+  deps=${deps%\"}
+  case ",$deps," in
+    *",blocked-by:$id,"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+# Shared by attest and amend: a repair may only route a dependent when a
+# pre-repair trace proves that this hold had been linked to it. The raw deps
+# edge survives an external `tasks-axi done`; route evidence preserves links
+# that resolve cleared after recording them.
 route_dependents() {  # <hold-id> <hold-body> <routed-tasks> [reestablish]
-  local id=$1 hold_body=$2 routed=$3 reestablish=${4:-0} dep show blocked state
+  local id=$1 hold_body=$2 routed=$3 reestablish=${4:-0} dep show blocked deps state
   [ -n "$routed" ] || fail "at least one --routed-to task is required"
   for dep in $routed; do
     show=$(task_show "$dep") || fail "routed task $dep does not exist in the active home"
     state=$(show_field "$show" state)
     blocked=$(show_field "$show" blocked_by | tr -d '[:space:]')
+    deps=$(show_field "$show" deps | tr -d '[:space:]')
     blocked=${blocked#\"}
     blocked=${blocked%\"}
     case ",$blocked," in
@@ -387,8 +425,14 @@ route_dependents() {  # <hold-id> <hold-body> <routed-tasks> [reestablish]
       *)
         if [ "$reestablish" = 1 ]; then
           [ "$state" != "done" ] || fail "routed task $dep is already done"
-          tasks_axi block "$dep" --by "$id" >/dev/null \
-            || fail "could not re-establish the routed dependency to $dep"
+          if dependency_edge_present "$deps" "$id"; then
+            :
+          elif route_evidence_contains "$id" "$dep"; then
+            tasks_axi block "$dep" --by "$id" >/dev/null \
+              || fail "could not re-establish the routed dependency to $dep"
+          else
+            fail "routed task $dep was not durably linked to $id before repair"
+          fi
         else
           case "$hold_body" in
             *"- $dep"*) : ;;
@@ -401,12 +445,21 @@ route_dependents() {  # <hold-id> <hold-body> <routed-tasks> [reestablish]
   for dep in $routed; do
     show=$(task_show "$dep") || fail "routed task $dep disappeared before routing"
     blocked=$(show_field "$show" blocked_by | tr -d '[:space:]')
+    deps=$(show_field "$show" deps | tr -d '[:space:]')
     blocked=${blocked#\"}
     blocked=${blocked%\"}
-    case ",$blocked," in
-      *",$id,"*)
+    case ",$deps," in
+      *",blocked-by:$id,"*)
         tasks_axi unblock "$dep" --by "$id" >/dev/null \
           || fail "could not route the recorded decision to $dep"
+        ;;
+      *)
+        case ",$blocked," in
+          *",$id,"*)
+            tasks_axi unblock "$dep" --by "$id" >/dev/null \
+              || fail "could not route the recorded decision to $dep"
+            ;;
+        esac
         ;;
     esac
   done
@@ -628,6 +681,7 @@ command_resolve() {
         ;;
     esac
   done
+  record_route_evidence "$id" "$routed_csv"
 
   body=$(printf 'Resolution recorded by fm-decision-hold.\nDecision digest: %s\nRouted identities: %s\n\nCaptain decision:\n%s\n\nRouted work:\n' "$decision_digest" "$routed_csv" "$decision")
   for dep in $routed; do
@@ -701,6 +755,7 @@ command_attest() {
   esac
   [ -n "$routed" ] || fail "at least one --routed-to task is required"
   route_dependents "$id" "$hold_body" "$routed" 1
+  record_route_evidence "$id" "$routed_csv"
   body=$(printf 'Resolution recorded by fm-decision-hold. (attested; hold closed outside fm-decision-hold prior to attest)\nDecision digest: %s\nRouted identities: %s\nAttestation note: %s\n\nCaptain decision:\n%s\n\nRouted work:\n' \
     "$decision_digest" "$routed_csv" "$note" "$decision")
   for dep in $routed; do
@@ -746,6 +801,7 @@ command_amend() {
   routed_csv=$(printf '%s\n' "$routed" | tr ' ' ',')
   [ -n "$routed" ] || fail "at least one --routed-to task is required"
   route_dependents "$id" "$hold_body" "$routed" 1
+  record_route_evidence "$id" "$routed_csv"
   body=$(printf 'Resolution recorded by fm-decision-hold. (amended)\nDecision digest: %s\nRouted identities: %s\nAmendment note: %s\n\nCaptain decision:\n%s\n\nRouted work:\n' \
     "$decision_digest" "$routed_csv" "$note" "$decision")
   for dep in $routed; do

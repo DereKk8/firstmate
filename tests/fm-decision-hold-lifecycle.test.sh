@@ -594,6 +594,65 @@ test_attest_repairs_a_hold_closed_outside_the_tool() {
   pass "attest repairs a hold closed outside the tool with an evidenced, distinguishable, idempotent record"
 }
 
+test_attest_requires_preexisting_route_evidence() {
+  local home id hold show
+  home=$(make_home attest-route-evidence)
+  id=sample-attest-route-evidence
+  mkdir -p "$home/data/$id"
+  write_origin_meta "$home" "$id"
+  printf 'needs-decision [key=answer]: pick an answer\n' > "$home/state/$id.status"
+  hold=$(run_decisions "$home" hold "$id" answer \
+    --title "Pick an answer" --reason "captain answer pending" --repo sample) \
+    || fail "could not register the route-evidence hold"
+  run_decisions "$home" complete "$id" answer >/dev/null \
+    || fail "could not complete the route-evidence inventory"
+  tasks_in "$home" "done" "$hold" >/dev/null \
+    || fail "could not close the unanswered hold outside the tool"
+  printf 'Invented approval.\n' > "$home/invented-decision.txt"
+  tasks_in "$home" add unrelated-route-work "Unrelated route work" --kind ship --repo sample >/dev/null
+  if run_decisions "$home" attest "$id" answer --decision-file "$home/invented-decision.txt" \
+    --note "invented repair" --routed-to unrelated-route-work \
+    > "$home/unrelated.out" 2> "$home/unrelated.err"; then
+    fail "attest accepted a routed task that was never linked before the hold closed"
+  fi
+  assert_grep "not durably linked to" "$home/unrelated.err" \
+    "unrelated route refusal did not identify missing pre-close evidence"
+  show=$(tasks_in "$home" show "$hold" --full)
+  assert_contains "$show" "state: done" "refused unrelated repair changed the hold state"
+  assert_no_grep "Resolution recorded by fm-decision-hold" "$home/data/backlog.md" \
+    "refused unrelated repair recorded a forged decision"
+  if run_decisions "$home" complete "$id" answer > "$home/unrelated-complete.out" 2> "$home/unrelated-complete.err"; then
+    fail "completion accepted the unanswered hold after unrelated attest refusal"
+  fi
+  if run_decisions "$home" verify "$id" > "$home/unrelated-verify.out" 2> "$home/unrelated-verify.err"; then
+    fail "verification accepted the unanswered hold after unrelated attest refusal"
+  fi
+
+  id=sample-attest-genuine-route
+  mkdir -p "$home/data/$id"
+  write_origin_meta "$home" "$id"
+  printf 'needs-decision [key=answer]: pick a genuine answer\n' > "$home/state/$id.status"
+  hold=$(run_decisions "$home" hold "$id" answer \
+    --title "Pick a genuine answer" --reason "captain genuine answer pending" --repo sample) \
+    || fail "could not register the genuine route-evidence hold"
+  tasks_in "$home" add genuine-route-work "Genuine route work" --kind ship --repo sample >/dev/null
+  tasks_in "$home" block genuine-route-work --by "$hold" >/dev/null \
+    || fail "could not create the genuine pre-close route edge"
+  run_decisions "$home" complete "$id" answer >/dev/null \
+    || fail "could not complete the genuine route inventory"
+  tasks_in "$home" "done" "$hold" >/dev/null \
+    || fail "could not close the genuinely routed hold outside the tool"
+  printf 'Genuine approval.\n' > "$home/genuine-decision.txt"
+  run_decisions "$home" attest "$id" answer --decision-file "$home/genuine-decision.txt" \
+    --note "pre-close blocked-by edge retained in task deps" --routed-to genuine-route-work >/dev/null \
+    || fail "attest rejected a dependent genuinely linked before the hold closed"
+  run_decisions "$home" complete "$id" answer >/dev/null \
+    || fail "completion failed after genuine attestation"
+  run_decisions "$home" verify "$id" >/dev/null \
+    || fail "verification failed after genuine attestation"
+  pass "attest rejects invented routes and accepts pre-existing route evidence"
+}
+
 test_supersede_retires_a_duplicate_against_a_durable_authoritative_hold() {
   local home auth_origin dup_origin auth_hold dup_hold
   home=$(make_home duplicate-holds)
@@ -906,6 +965,7 @@ test_none_attestation_covers_stale_default_status_decision
 test_none_attestation_never_creates_a_default_hold_or_masks_a_fresh_default_decision
 test_none_attestation_does_not_cover_a_later_default_event
 test_attest_repairs_a_hold_closed_outside_the_tool
+test_attest_requires_preexisting_route_evidence
 test_supersede_retires_a_duplicate_against_a_durable_authoritative_hold
 test_supersede_rejects_cycles_and_follows_superseded_peers
 test_repair_paths_preserve_and_reestablish_routed_identity
