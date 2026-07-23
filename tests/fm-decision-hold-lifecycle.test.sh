@@ -651,6 +651,43 @@ test_verify_accepts_a_hold_closed_outside_the_tool() {
   pass "verify accepts a hold closed outside the tool as durably resolved"
 }
 
+# tasks-axi show only reads the live backlog, so a captain hold that retention
+# has already archived to done-archive.md is otherwise invisible to this
+# script. This reproduces the real aideinf-tickets-final-review deadlock:
+# a hold answered and closed outside the tool, then archived by --keep 0.
+test_verify_accepts_a_hold_archived_after_closing_outside_the_tool() {
+  local home origin hold
+  home=$(make_home archived-outside-tool)
+  origin=sample-archived-review
+  mkdir -p "$home/data/$origin"
+  tasks_in "$home" add "$origin" "Archived sample review" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create archived-review origin"
+  write_origin_meta "$home" "$origin"
+  printf 'done: report complete\n' > "$home/state/$origin.status"
+  printf '# Archived sample review\n\nOne captain choice remains.\n' > "$home/data/$origin/report.md"
+  hold=$(run_decisions "$home" hold "$origin" answer \
+    --title "Pick a sample answer" --reason "captain answer pending" --repo sample) \
+    || fail "could not register archived-review hold"
+  tasks_in "$home" "done" "$hold" --keep 0 >/dev/null \
+    || fail "could not close and archive the hold directly, outside resolve"
+  ! tasks_in "$home" show "$hold" --full >/dev/null 2>&1 \
+    || fail "fixture did not actually archive the hold out of the live backlog"
+  assert_grep "- [x] $hold -" "$home/data/done-archive.md" \
+    "fixture must retain the archived hold line"
+  run_decisions "$home" complete "$origin" answer >/dev/null \
+    || fail "completion refused a decision archived after closing outside the tool"
+  run_decisions "$home" verify "$origin" >/dev/null \
+    || fail "verify refused a decision archived after closing outside the tool"
+  if run_decisions "$home" hold "$origin" answer \
+    --title "Pick a sample answer" --reason "captain answer pending" --repo sample \
+    > "$home/reopen.out" 2> "$home/reopen.err"; then
+    fail "hold recreated an archived, already-resolved decision instead of refusing"
+  fi
+  assert_grep "already durably resolved" "$home/reopen.err" \
+    "hold must refuse to reopen an archived, already-resolved decision key"
+  pass "verify accepts a hold archived after closing outside the tool"
+}
+
 test_uninventoried_report_decision_refuses_completion
 
 test_scout_teardown_always_requires_inventory_verification
@@ -665,3 +702,4 @@ test_verify_refuses_a_still_unresolved_registered_decision
 test_resolve_refuses_when_routing_reports_an_error
 test_resolve_refuses_a_routed_task_that_does_not_exist
 test_verify_accepts_a_hold_closed_outside_the_tool
+test_verify_accepts_a_hold_archived_after_closing_outside_the_tool

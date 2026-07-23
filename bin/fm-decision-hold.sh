@@ -120,6 +120,20 @@ origin_exists_here() {  # <origin-id>
   task_show "$1" >/dev/null 2>&1
 }
 
+hold_archived_done() {  # <hold-id>
+  # tasks-axi show only reads the live backlog, so a captain hold retention has
+  # already archived is otherwise invisible to this script. Its archive line
+  # keeps the same "(kind: captain)" marker a live Done item would have.
+  local id=$1 archive="$DATA/done-archive.md" line
+  [ -f "$archive" ] || return 1
+  line=$(grep -F -- "- [x] $id -" "$archive" | head -1)
+  [ -n "$line" ] || return 1
+  case "$line" in
+    *"(kind: captain)"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 list_has_key() {  # <comma-list> <key>
   case ",$1," in
     *",$2,"*) return 0 ;;
@@ -174,21 +188,24 @@ verify_hold_durable() {  # <hold-id>
   # or closed (Done), however it came to be closed. This is a state-machine
   # check, not a claim about who closed it or when.
   local id=$1 show state held kind hold_kind
-  show=$(task_show "$id") || fail "captain decision $id is absent from $FM_HOME/data/backlog.md"
-  state=$(show_field "$show" state)
-  kind=$(show_field "$show" kind)
-  [ "$kind" = captain ] || fail "backlog item $id is not kind captain"
-  case "$state" in
-    done) return 0 ;;
-    queued)
-      held=$(show_field "$show" held)
-      hold_kind=$(show_field "$show" hold_kind)
-      [ "$held" = yes ] && [ "$hold_kind" = captain ] \
-        || fail "captain decision $id is not actively held"
-      return 0
-      ;;
-    *) fail "captain decision $id is neither actively held nor resolved (state=$state)" ;;
-  esac
+  if show=$(task_show "$id"); then
+    state=$(show_field "$show" state)
+    kind=$(show_field "$show" kind)
+    [ "$kind" = captain ] || fail "backlog item $id is not kind captain"
+    case "$state" in
+      done) return 0 ;;
+      queued)
+        held=$(show_field "$show" held)
+        hold_kind=$(show_field "$show" hold_kind)
+        [ "$held" = yes ] && [ "$hold_kind" = captain ] \
+          || fail "captain decision $id is not actively held"
+        return 0
+        ;;
+      *) fail "captain decision $id is neither actively held nor resolved (state=$state)" ;;
+    esac
+  fi
+  hold_archived_done "$id" \
+    || fail "captain decision $id is absent from $FM_HOME/data/backlog.md"
 }
 
 command_id() {
@@ -224,6 +241,8 @@ command_hold() {
     [ "$state" != "done" ] || fail "captain decision $id is already durably resolved; use a new decision key for a new decision"
     [ "$kind" = captain ] || fail "existing backlog identity $id is not kind captain"
     [ "$existing_title" = "$title" ] || fail "existing captain hold $id has a different title"
+  elif hold_archived_done "$id"; then
+    fail "captain decision $id is already durably resolved; use a new decision key for a new decision"
   else
     if [ -z "$repo" ] && [ -f "$STATE/$origin.meta" ]; then
       repo=$(meta_value "$STATE/$origin.meta" project)

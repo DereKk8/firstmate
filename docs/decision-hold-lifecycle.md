@@ -23,10 +23,21 @@ For an open keyed status decision, it appends a `captain-held [key=<key>]: ...` 
 Scout teardown calls the script's read-only `verify` subcommand after checking for the report and before removing any source state.
 The `--force` path remains the explicit captain-approved discard escape hatch.
 
-The `resolve` subcommand requires a decision file and at least one existing dependent task whose structured `blocked-by` edge points to the hold.
-It records the decision digest and routed task identities as a retry identity in the hold body, clears each dependency edge through tasks-axi, and marks the hold Done only after those writes succeed.
-An exact retry can finish a partial routing operation, while a changed decision or routed-task set is rejected.
-A failed intermediate step leaves the hold open.
+The `resolve` subcommand requires a decision file and at least one existing dependent task whose structured `blocked-by` edge currently points to the hold, or that has already finished (treated as already routed by an earlier partial resolve at this same hold).
+It records the captain decision text and routed task identities in the hold body, clears each dependency edge through tasks-axi, and marks the hold Done only after those writes succeed.
+A failed intermediate step leaves the hold open, so a retry can resume a partial routing operation.
+Once the hold is Done, `resolve` is idempotent and returns success without re-checking the original decision text or routed set.
+
+## Trust boundary
+
+This mechanism trusts firstmate's own operating contract, not cryptographic or historical proof.
+Earlier revisions tried to prove provenance from records written inside the same worker-writable home - a resolution-body pattern, a decision digest, dependency-history bullets - and three independent review rounds each found a way to forge one of those records, because a self-authored local record cannot establish who wrote it or when.
+The captain settled this on 2026-07-23: trust firstmate explicitly rather than keep hardening self-attestation that cannot deliver the guarantee it implied.
+The gate now verifies only present, locally checkable state: whether a decision has a durable backlog identity, whether that identity is actively held or closed, whether a routing call reported an error, and whether a named routed task exists.
+It does not, and cannot, prove that the captain personally answered a given hold; a buggy or dishonest firstmate could close a hold without a real captain answer, and this mechanism does not defend against that.
+A hold closed outside this tool - for example a decision answered and closed directly in the backlog - is durably resolved on that basis alone, with no separate repair command needed to reconstruct evidence for it.
+`tasks-axi show` only reads the live backlog, so a captain hold that retention has already archived to `data/done-archive.md` is otherwise invisible to this script; `hold_archived_done` in `bin/fm-decision-hold.sh` checks that archive as a fallback, using the same `(kind: captain)` marker a live Done item carries.
+See `data/fm-attest-redesign-scout/report.md` for the design investigation and the rejected alternatives (an advisory-only gate, and an externally anchored decision authority).
 
 ## Structured read surfaces
 
@@ -41,11 +52,13 @@ The projection remains read-only and does not inspect historical prose.
 
 Verification date: 2026-07-14.
 Additional quoted `blocked_by` regression verification date: 2026-07-17.
+Trust-model rebuild verification date: 2026-07-23.
 
 The focused end-to-end regression uses only synthetic `sample` identities and decision text.
 It begins with a completed investigation and visual review whose genuine unresolved choice exists only in the report.
 The initial Bearings snapshot correctly has no open decision, and the new teardown gate refuses to erase the source.
 A later regression covers tasks-axi's quoted multi-entry `blocked_by` output so `resolve` matches the first, middle, and last ids and rejects a genuinely absent id.
+The 2026-07-23 regression covers the trust-firstmate rebuild: `verify` refuses a registered decision that is still genuinely unresolved, `resolve` refuses when routing reports an error and when a routed task does not exist, and `verify` accepts a hold the captain answered and closed directly in the backlog rather than through `resolve`.
 
 The final verification commands and their exact summarized outputs follow.
 
@@ -60,6 +73,11 @@ ok - resolved findings and decision-like prose do not create false holds
 ok - terminal single-owner stale status decisions do not block empty inventory
 ok - main-home and secondmate-home captain holds remain correctly routed
 ok - resolve matches first/middle/last in quoted blocked_by and rejects a genuinely absent id
+ok - verify refuses a still-unresolved registered decision with no durable identity
+ok - resolve refuses when routing reports an error
+ok - resolve refuses a routed task that does not exist
+ok - verify accepts a hold closed outside the tool as durably resolved
+ok - verify accepts a hold archived after closing outside the tool
 
 $ bash tests/fm-fleet-snapshot-view.test.sh
 ok - durable captain-held transfer closes the duplicate live status decision
@@ -80,7 +98,4 @@ fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
 
 $ git diff --check
 (no output)
-
-$ for test_script in tests/*.test.sh; do bash "$test_script"; done
-ALL 71 TEST SCRIPTS PASSED
 ```
