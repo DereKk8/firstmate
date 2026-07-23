@@ -366,9 +366,13 @@ esac
 
 if [ -n "$BASE" ]; then
   STEP1="1. First action: create your branch from origin/$BASE: \`git checkout -b fm/$ID origin/$BASE\`"
-  BASE_NOTE="
+  if [ "$MODE" != "local-only" ]; then
+    BASE_NOTE="
 
 Important: the expected PR base for this project is \`$BASE\`. Use \`--base $BASE\` when opening a PR."
+  else
+    BASE_NOTE=""
+  fi
 else
   STEP1="1. First action: create your branch: \`git checkout -b fm/$ID\`"
   BASE_NOTE=""

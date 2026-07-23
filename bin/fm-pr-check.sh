@@ -159,7 +159,7 @@ if [ "$FORCE_READY" -eq 0 ]; then
     if [ -n "$EXPECTED_BASE" ] && [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$EXPECTED_BASE" ]; then
       REFUSE=1
       REASONS="${REASONS}${REASONS:+$'\n'}  - WRONG BASE BRANCH: PR targets '${PR_BASE}' but project registry expects '${EXPECTED_BASE}' (this project does NOT accept PRs against '${PR_BASE}'; re-open the PR targeting '${EXPECTED_BASE}')"
-    else
+    elif [ -z "$EXPECTED_BASE" ]; then
       LS_RC=0
       LS_OUT=$(git -C "$PROJ" ls-remote --symref origin HEAD 2>/dev/null) || LS_RC=$?
       if [ "$LS_RC" -ne 0 ]; then
