@@ -28,6 +28,24 @@ It records the decision digest and routed task identities as a retry identity in
 An exact retry can finish a partial routing operation, while a changed decision or routed-task set is rejected.
 A failed intermediate step leaves the hold open.
 
+### Sticky `--none` coverage of the legacy unkeyed decision
+
+The legacy unkeyed status-line convention (`needs-decision: ...` with no `[key=...]` token) folds to the key `default`.
+Nothing in the lifecycle ever creates a captain hold for `default`, so an unkeyed decision can only be closed by an explicit `--none` attestation, never by `resolve`.
+`origin_open_decisions` masks a still-open `default` entry only while the status file's own last line has verb `done` or `failed`; `complete`'s own captain-held transfer event (`captain-held [key=<key>]: ...`) becomes the new last line on every later pass that completes a real key, which un-masks any leftover unkeyed decision with no hold left to satisfy it.
+`complete --none` now records a sticky `decision_none_ever=1` meta line the first time it runs; `key_is_covered` treats the `default` key as satisfied whenever that flag is set, in both `complete`'s and `verify`'s open-decision checks, regardless of what `decision_keys=` currently holds.
+The flag is set only by an explicit `--none` call and is never inferred, so a genuinely unreviewed `default` decision still refuses completion.
+
+### Repair paths: attest, amend, supersede
+
+`resolve` can only close a hold it is actively driving end to end; three ways a hold ends up outside that path each get an explicit, evidenced repair command, none of which can satisfy the gate without a real decision file (or an authoritative peer) and a `--note`:
+
+- `attest <origin-id> <decision-key> --decision-file <path> --note <text> [--routed-to <id>...]` records a resolution for a hold already `state: done`, `kind: captain`, closed outside this script (for example by a bare `tasks-axi done`). It refuses if a resolution record is already present, in which case `amend` owns the correction. The body marker is `Resolution recorded by fm-decision-hold. (attested; hold closed outside fm-decision-hold prior to attest)`.
+- `amend <origin-id> <decision-key> --decision-file <path> --note <text> [--routed-to <id>...]` (re)writes the resolution record for a hold already `state: done`, `kind: captain`, whether the record is missing (an ordinary `tasks-axi update --body` on a resolved hold silently strips it, since `resolve` only ever writes the attestation into that same mutable field) or present but wrong (the captain corrected an earlier ruling). It always overwrites and always requires `--note`. The body marker is `Resolution recorded by fm-decision-hold. (amended)`.
+- `supersede <origin-id> <decision-key> --duplicate-of <hold-id> --note <text>` retires a duplicate hold by pointing it at an already durable authoritative peer (`verify_hold_durable`: actively held or resolved), so two investigations that surface the same question do not require two resolutions. The body marker is `Superseded by fm-decision-hold.` with `Duplicate of: <hold-id>`.
+
+`verify_hold_durable` (the only check the completion gate and teardown actually run) accepts both the `Resolution recorded by fm-decision-hold.` family of markers (ordinary `resolve`, `attest`, and `amend` all match on the same `...Routed work:` substring, the suffix in parentheses is cosmetic and audit-only) and the `Superseded by fm-decision-hold.` marker.
+
 ## Structured read surfaces
 
 `bin/fm-fleet-snapshot.sh` parses canonical tasks-axi `(hold: ...)` and `(hold-kind: captain)` metadata alongside existing backlog fields.
@@ -41,6 +59,36 @@ The projection remains read-only and does not inspect historical prose.
 
 Verification date: 2026-07-14.
 Additional quoted `blocked_by` regression verification date: 2026-07-17.
+Retention-deadlock repair (sticky `--none` coverage, `attest`, `amend`, `supersede`) verification date: 2026-07-23.
+
+### Retention-deadlock repair regression
+
+The focused regression reproduces all three failure modes with synthetic `sample` identities before exercising the fix: a `--none` pass followed by a real-key pass that unmasks a stale unkeyed status decision (mode A); a hold closed with plain `tasks-axi done` instead of `resolve`, plus a duplicate hold closed the same way (mode B); and an ordinary `tasks-axi update --body` on an already-resolved hold that silently strips the attestation (mode C).
+Each regression also asserts the negative: an unattested fresh `default` decision still refuses `--none` completion, `attest` refuses a hold that already carries a resolution record, and `resolve` still cannot retry a hold that is no longer queued.
+
+The live `aideinf-tickets-final-review` case (both captain holds closed via `tasks-axi done`, exactly failure mode B) was additionally reproduced read-only: a scratch fixture recreated the two real holds' exact `state: done`, `kind: captain` shape with no attestation marker, `verify` failed identically to the real home, `attest` was run against the fixture for both keys, and `verify` then passed.
+No real fleet state was read for mutation and none was written.
+
+```text
+$ bash tests/fm-decision-hold-lifecycle.test.sh
+ok - report-only unresolved decision is reproduced and completion refuses before loss
+ok - non-forced scout teardown always requires durable inventory verification
+ok - captain holds are idempotent, distinct, teardown-safe, Bearings-visible, and durably routed before close
+ok - completion and verification validate origins before constructing paths
+ok - ended visual review follows the same decision-hold completion owner
+ok - resolved findings and decision-like prose do not create false holds
+ok - terminal single-owner stale status decisions do not block empty inventory
+ok - main-home and secondmate-home captain holds remain correctly routed
+ok - resolve matches first/middle/last in quoted blocked_by and rejects a genuinely absent id
+ok - a durable --none attestation covers a stale unkeyed status decision across later real-key passes
+ok - an unreviewed default decision still refuses --none completion; the sticky marker is not a blanket bypass
+ok - attest repairs a hold closed outside the tool with an evidenced, distinguishable, non-repeatable record
+ok - supersede retires a duplicate hold against a durable authoritative peer, active or resolved
+ok - amend repairs a resolved hold whose body an ordinary update silently stripped its attestation from
+
+$ bin/fm-lint.sh bin/fm-decision-hold.sh tests/fm-decision-hold-lifecycle.test.sh
+fm-lint.sh: ShellCheck 0.11.0 (pinned 0.11.0)
+```
 
 The focused end-to-end regression uses only synthetic `sample` identities and decision text.
 It begins with a completed investigation and visual review whose genuine unresolved choice exists only in the report.
