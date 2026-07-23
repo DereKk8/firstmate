@@ -455,6 +455,210 @@ EOF
   pass "main-home and secondmate-home captain holds remain correctly routed"
 }
 
+# Reproduces the retention deadlock's failure mode A: an early --none pass leaves
+# an informal unkeyed status decision permanently open in the fold (there is no
+# hold to close it against), masked only by luck while "done" is the last status
+# line. A later pass registers and completes a genuinely distinct real decision;
+# its captain-held transfer event becomes the new last line, unmasking the
+# never-closable "default" entry and refusing verify forever without the fix.
+test_none_attestation_covers_stale_default_status_decision() {
+  local home id
+  home=$(make_home stale-default-attestation)
+  id=sample-stale-default
+  mkdir -p "$home/data/$id"
+  tasks_in "$home" add "$id" "Investigate stale default" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create stale-default origin fixture"
+  write_origin_meta "$home" "$id"
+  printf 'needs-decision: informal early question\ndone: report complete\n' > "$home/state/$id.status"
+  run_decisions "$home" complete "$id" --none >/dev/null \
+    || fail "initial --none attestation should succeed despite a status-masked stale decision"
+  assert_grep "decision_none_ever=1" "$home/state/$id.meta" \
+    "--none attestation did not record the sticky default-coverage marker"
+
+  printf 'needs-decision [key=real-choice]: pick the real thing\n' >> "$home/state/$id.status"
+  run_decisions "$home" hold "$id" real-choice \
+    --title "Pick the real thing" --reason "captain choice pending" --repo sample >/dev/null \
+    || fail "could not register the later real decision hold"
+  printf 'Pick north.\n' > "$home/real-choice-decision.txt"
+  tasks_in "$home" add sample-real-impl "Apply the real choice" --kind ship --repo sample >/dev/null \
+    || fail "could not create dependent work fixture"
+  tasks_in "$home" block sample-real-impl --by sample-stale-default-decision-real-choice >/dev/null \
+    || fail "could not route dependent work behind the real decision"
+  run_decisions "$home" resolve "$id" real-choice --decision-file "$home/real-choice-decision.txt" \
+    --routed-to sample-real-impl >/dev/null \
+    || fail "could not resolve the later real decision"
+  printf 'done: report complete\n' >> "$home/state/$id.status"
+  run_decisions "$home" complete "$id" real-choice > "$home/complete.out" 2> "$home/complete.err" \
+    || fail "completion of the real decision failed: $(cat "$home/complete.err")"
+  assert_grep "captain-held [key=real-choice]" "$home/state/$id.status" \
+    "completion did not append the transfer event that unmasks the stale default entry"
+
+  run_decisions "$home" verify "$id" > "$home/verify.out" 2> "$home/verify.err" \
+    || fail "verify refused despite a durably --none-attested stale default decision: $(cat "$home/verify.err")"
+  pass "a durable --none attestation covers a stale unkeyed status decision across later real-key passes"
+}
+
+test_none_attestation_never_creates_a_default_hold_or_masks_a_fresh_default_decision() {
+  local home id
+  home=$(make_home fresh-default-still-blocks)
+  id=sample-fresh-default
+  mkdir -p "$home/data/$id"
+  write_origin_meta "$home" "$id"
+  printf 'needs-decision: a genuinely new unreviewed question\n' > "$home/state/$id.status"
+  if run_decisions "$home" complete "$id" --none \
+    > "$home/fresh-complete.out" 2> "$home/fresh-complete.err"; then
+    fail "an unattested fresh default decision must still block --none completion"
+  fi
+  assert_no_grep "decision_none_ever=1" "$home/state/$id.meta" \
+    "a refused completion must not record the sticky none-attestation marker"
+  pass "an unreviewed default decision still refuses --none completion; the sticky marker is not a blanket bypass"
+}
+
+# Reproduces failure mode B: a captain hold answered in the field but closed with
+# tasks-axi done (or as a duplicate) rather than through resolve. attest and
+# supersede are the explicit, evidenced repair paths.
+test_attest_repairs_a_hold_closed_outside_the_tool() {
+  local home id hold show
+  home=$(make_home closed-outside-tool)
+  id=sample-closed-outside
+  mkdir -p "$home/data/$id"
+  tasks_in "$home" add "$id" "Investigate closed outside" --kind scout --repo sample --start >/dev/null
+  write_origin_meta "$home" "$id"
+  printf 'needs-decision [key=thing]: pick a thing\n' > "$home/state/$id.status"
+  hold=$(run_decisions "$home" hold "$id" thing \
+    --title "Pick a thing" --reason "captain thing pending" --repo sample) \
+    || fail "could not register the hold to be closed outside the tool"
+  tasks_in "$home" update "$hold" --body "Captain 2026-07-23: pick north." >/dev/null \
+    || fail "could not simulate a hand-written answer"
+  tasks_in "$home" "done" "$hold" >/dev/null \
+    || fail "could not simulate closing the hold with plain tasks-axi done"
+  printf 'done: report complete\n' >> "$home/state/$id.status"
+
+  if run_decisions "$home" complete "$id" thing \
+    > "$home/precomplete.out" 2> "$home/precomplete.err"; then
+    fail "completion must not succeed before the closed-outside-tool hold is attested"
+  fi
+
+  printf 'Pick north.\n' > "$home/thing-decision.txt"
+  if run_decisions "$home" attest "$id" thing --decision-file "$home/thing-decision.txt" \
+    > "$home/no-note.out" 2> "$home/no-note.err"; then
+    fail "attest must require a --note explaining the repair evidence"
+  fi
+  run_decisions "$home" attest "$id" thing --decision-file "$home/thing-decision.txt" \
+    --note "closed via tasks-axi done on 2026-07-23; answer verified in hand-written body" >/dev/null \
+    || fail "attest could not repair a hold closed outside the tool"
+  show=$(tasks_in "$home" show "$hold" --full)
+  assert_contains "$show" "attested; hold closed outside fm-decision-hold" \
+    "attested body must be distinguishable from an ordinary resolve"
+
+  if run_decisions "$home" attest "$id" thing --decision-file "$home/thing-decision.txt" \
+    --note "retry" > "$home/reattest.out" 2> "$home/reattest.err"; then
+    fail "attest must refuse a hold that already carries a resolution record"
+  fi
+  assert_grep "already carries a resolution record" "$home/reattest.err" \
+    "attest refusal must point the operator at amend"
+
+  run_decisions "$home" complete "$id" thing >/dev/null \
+    || fail "completion should succeed once the closed-outside-tool hold is attested"
+  run_decisions "$home" verify "$id" >/dev/null \
+    || fail "verify should succeed once the closed-outside-tool hold is attested"
+  pass "attest repairs a hold closed outside the tool with an evidenced, distinguishable, non-repeatable record"
+}
+
+test_supersede_retires_a_duplicate_against_a_durable_authoritative_hold() {
+  local home auth_origin dup_origin auth_hold dup_hold
+  home=$(make_home duplicate-holds)
+  auth_origin=sample-authoritative
+  dup_origin=sample-duplicate
+  mkdir -p "$home/data/$auth_origin" "$home/data/$dup_origin"
+  write_origin_meta "$home" "$auth_origin"
+  write_origin_meta "$home" "$dup_origin"
+  printf 'needs-decision [key=route]: choose a route\n' > "$home/state/$auth_origin.status"
+  auth_hold=$(run_decisions "$home" hold "$auth_origin" route \
+    --title "Choose a route" --reason "captain route pending" --repo sample) \
+    || fail "could not register the authoritative hold"
+
+  printf 'needs-decision [key=route]: choose a route (dup)\n' > "$home/state/$dup_origin.status"
+  dup_hold=$(run_decisions "$home" hold "$dup_origin" route \
+    --title "Choose a route" --reason "captain route pending dup" --repo sample) \
+    || fail "could not register the duplicate hold"
+  if run_decisions "$home" supersede "$dup_origin" route --duplicate-of "sample-nonexistent-decision-route" \
+    --note "same question" > "$home/premature.out" 2> "$home/premature.err"; then
+    fail "supersede must refuse against an authoritative hold that is not durable (absent)"
+  fi
+
+  tasks_in "$home" update "$dup_hold" --body "duplicate, see $auth_origin" >/dev/null
+  tasks_in "$home" "done" "$dup_hold" >/dev/null
+  printf 'done: report complete\n' >> "$home/state/$dup_origin.status"
+  if run_decisions "$home" verify "$dup_origin" \
+    > "$home/preverify.out" 2> "$home/preverify.err"; then
+    fail "the duplicate hold must not verify before supersede runs"
+  fi
+
+  run_decisions "$home" supersede "$dup_origin" route --duplicate-of "$auth_hold" \
+    --note "same question already asked under $auth_origin" >/dev/null \
+    || fail "supersede should succeed against an actively held (not yet resolved) authoritative hold"
+
+  run_decisions "$home" complete "$dup_origin" route >/dev/null \
+    || fail "completion should succeed once the duplicate is superseded"
+  run_decisions "$home" verify "$dup_origin" >/dev/null \
+    || fail "verify should succeed once the duplicate is superseded against a durable held peer"
+  pass "supersede retires a duplicate hold against a durable authoritative peer, active or resolved"
+}
+
+# Reproduces failure mode C: an ordinary tasks-axi update on a resolved hold's
+# body silently strips the resolution attestation, and resolve cannot retry
+# because the hold is no longer queued. amend is the explicit repair path.
+test_amend_repairs_a_resolved_hold_whose_body_was_overwritten() {
+  local home id hold show
+  home=$(make_home corrected-ruling)
+  id=sample-corrected-ruling
+  mkdir -p "$home/data/$id"
+  tasks_in "$home" add "$id" "Investigate corrected ruling" --kind scout --repo sample --start >/dev/null
+  write_origin_meta "$home" "$id"
+  printf 'needs-decision [key=scope]: choose credential scope\n' > "$home/state/$id.status"
+  hold=$(run_decisions "$home" hold "$id" scope \
+    --title "Choose credential scope" --reason "captain scope pending" --repo sample) \
+    || fail "could not register the hold"
+  tasks_in "$home" add sample-scope-impl "Apply the scope choice" --kind ship --repo sample >/dev/null
+  tasks_in "$home" block sample-scope-impl --by "$hold" >/dev/null
+  printf 'Use narrow scope.\n' > "$home/scope-decision.txt"
+  run_decisions "$home" resolve "$id" scope --decision-file "$home/scope-decision.txt" \
+    --routed-to sample-scope-impl >/dev/null \
+    || fail "could not resolve the original ruling"
+  show=$(tasks_in "$home" show "$hold" --full)
+  assert_contains "$show" "Resolution recorded by fm-decision-hold." "original resolution missing before the corruption step"
+
+  tasks_in "$home" update "$hold" --body "Captain corrected 2026-07-23: use broad scope instead." >/dev/null \
+    || fail "could not simulate an ordinary body update wiping the attestation"
+  show=$(tasks_in "$home" show "$hold" --full)
+  case "$show" in
+    *"Resolution recorded by fm-decision-hold."*) fail "corruption fixture did not actually strip the attestation" ;;
+  esac
+  if run_decisions "$home" resolve "$id" scope --decision-file "$home/scope-decision.txt" \
+    --routed-to sample-scope-impl > "$home/broken-resolve.out" 2> "$home/broken-resolve.err"; then
+    fail "resolve must not be able to retry a hold that is no longer queued"
+  fi
+
+  printf 'Use broad scope.\n' > "$home/broad-scope-decision.txt"
+  if run_decisions "$home" amend "$id" scope --decision-file "$home/broad-scope-decision.txt" \
+    > "$home/no-note.out" 2> "$home/no-note.err"; then
+    fail "amend must require a --note explaining the correction"
+  fi
+  run_decisions "$home" amend "$id" scope --decision-file "$home/broad-scope-decision.txt" \
+    --note "captain corrected the ruling on 2026-07-23 from narrow to broad scope" >/dev/null \
+    || fail "amend could not repair the wiped resolution"
+  show=$(tasks_in "$home" show "$hold" --full)
+  assert_contains "$show" "(amended)" "amended body must be distinguishable from an ordinary resolve"
+  assert_contains "$show" "Use broad scope." "amended body must carry the corrected decision text"
+  printf 'done: report complete\n' >> "$home/state/$id.status"
+  run_decisions "$home" complete "$id" scope >/dev/null \
+    || fail "completion should succeed once the wiped resolution is amended"
+  run_decisions "$home" verify "$id" >/dev/null \
+    || fail "verify should succeed once the wiped resolution is amended"
+  pass "amend repairs a resolved hold whose body an ordinary update silently stripped its attestation from"
+}
+
 # tasks-axi quotes multi-entry blocked_by values as "a,b,c". resolve must strip
 # those surrounding quotes before comma-boundary membership so the first and last
 # list elements match, not only middle elements.
@@ -560,3 +764,8 @@ test_none_inventory_and_resolved_prose_do_not_create_holds
 test_terminal_single_owner_status_decision_does_not_block_empty_inventory
 test_secondmate_hold_stays_in_authoritative_home
 test_resolve_matches_quoted_blocked_by_edges
+test_none_attestation_covers_stale_default_status_decision
+test_none_attestation_never_creates_a_default_hold_or_masks_a_fresh_default_decision
+test_attest_repairs_a_hold_closed_outside_the_tool
+test_supersede_retires_a_duplicate_against_a_durable_authoritative_hold
+test_amend_repairs_a_resolved_hold_whose_body_was_overwritten
