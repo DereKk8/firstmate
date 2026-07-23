@@ -36,11 +36,8 @@
 # no unresolved captain decision. Later review passes may add keys; a live task's
 # metadata inventory is unioned idempotently. A post-teardown visual review can
 # complete against the surviving report and holds without recreating task state.
-# An explicit `--none` also durably marks this origin's legacy unkeyed ("default")
-# status decision as covered, sticky across later passes that add real keys: an
-# open bare `needs-decision:` line the fold cannot otherwise close (there is no
-# hold to resolve for a key nobody registered) never again blocks completion or
-# verification once `--none` has vouched for it once.
+# An explicit `--none` durably records the reviewed legacy unkeyed ("default")
+# status event. A later default event is a new decision and remains uncovered.
 # `verify` is read-only and is called by scout teardown so teardown cannot erase a
 # source before this gate has succeeded.
 #
@@ -55,16 +52,16 @@
 # recording what evidence justifies the repair, and each writes a body marker
 # distinguishable from an ordinary `resolve`.
 # `attest` durably records a decision for a hold already closed outside this
-# script (state done, kind captain) that has never carried a resolution record; it
-# refuses if one is already present, since `amend` owns correcting an existing one.
+# script (state done, kind captain) that has never carried a resolution record; an
+# exact retry of an attested identity succeeds, while changed evidence is refused.
 # `amend` (re)writes the resolution record for a hold already closed outside this
 # script, whether the record is absent (an external body update wiped it) or
 # present but wrong (the captain corrected an earlier ruling); it always requires
 # `--note` and always overwrites.
 # `supersede` retires a duplicate hold that investigates the same question as an
-# already durable (actively held or resolved) authoritative hold, recording that
-# authoritative identity so the gate accepts the duplicate without inventing a
-# second resolution.
+# already durable (actively held or resolved) authoritative hold, following any
+# superseded links and refusing cycles so the gate cannot accept fabricated
+# mutual attestations.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -168,25 +165,42 @@ meta_value() {  # <meta> <key>
   grep "^$2=" "$1" 2>/dev/null | tail -1 | cut -d= -f2- || true
 }
 
-mark_none_attested() {  # <meta>
-  local meta=$1
-  [ "$(meta_value "$meta" decision_none_ever)" = 1 ] \
-    || printf 'decision_none_ever=1\n' >> "$meta"
+status_default_decision_fingerprint() {  # <status-file>
+  local status_file=$1 line verb key line_no=0 current=''
+  [ -f "$status_file" ] || { printf 'none'; return 0; }
+  while IFS= read -r line || [ -n "$line" ]; do
+    line_no=$((line_no + 1))
+    key=$(_fm_decision_key "$line") || continue
+    [ "$key" = default ] || continue
+    verb=$(status_line_verb "$line")
+    case "$verb" in
+      needs-decision|blocked) current=$(sha256_text "$line_no:$line") ;;
+      resolved|captain-held) current='' ;;
+    esac
+  done < "$status_file"
+  printf '%s' "${current:-none}"
 }
 
-none_attested() {  # <meta>
-  [ "$(meta_value "$1" decision_none_ever)" = 1 ]
+mark_none_attested() {  # <meta> <status-fingerprint>
+  printf 'decision_none_status=%s\n' "$2" >> "$1"
+}
+
+none_attested() {  # <meta> <status-fingerprint>
+  [ "$(meta_value "$1" decision_none_status)" = "$2" ]
 }
 
 # 0 if <key> needs no captain-held backlog entry: either it is in the reviewed
 # <keys> list, or it is the legacy unkeyed "default" status decision and this
-# origin has ever durably attested --none. A --none pass records no hold for
-# "default" (there is nothing to hold), so unlike every other key it can never be
-# satisfied by verify_hold_durable; the sticky meta flag is its only durable proof.
-key_is_covered() {  # <keys> <key> <meta>
-  local keys=$1 key=$2 meta=$3
+# exact status event was durably attested with --none. A --none pass records no
+# hold for "default" (there is nothing to hold), so unlike every other key it can
+# be satisfied only by its matching status-event fingerprint.
+key_is_covered() {  # <keys> <key> <meta> <status-file>
+  local keys=$1 key=$2 meta=$3 status_file=$4 current
   list_has_key "$keys" "$key" && return 0
-  [ "$key" = default ] && [ -f "$meta" ] && none_attested "$meta"
+  [ "$key" = default ] || return 1
+  [ -f "$meta" ] || return 1
+  current=$(status_default_decision_fingerprint "$status_file")
+  none_attested "$meta" "$current"
 }
 
 origin_open_decisions() {  # <origin-id>
@@ -220,7 +234,7 @@ verify_hold_active() {  # <hold-id>
 }
 
 verify_hold_resolved() {  # <hold-id>
-  local id=$1 show state kind body
+  local id=$1 show state kind body routes
   show=$(task_show "$id") || return 1
   state=$(show_field "$show" state)
   kind=$(show_field "$show" kind)
@@ -228,14 +242,62 @@ verify_hold_resolved() {  # <hold-id>
   [ "$state" = "done" ] || return 1
   [ "$kind" = captain ] || return 1
   case "$body" in
-    *"Resolution recorded by fm-decision-hold."*"Routed work:"*) return 0 ;;
+    *"Resolution recorded by fm-decision-hold."*)
+      case "$body" in
+        *'\nDecision digest: '*'\nRouted identities: '*'\nCaptain decision:'*'\nRouted work:'*)
+          routes=$(resolution_routed_csv "$body")
+          [ -n "$routes" ] && return 0
+          ;;
+      esac
+      ;;
   esac
   return 1
 }
 
-verify_hold_durable() {  # <hold-id>
-  local id=$1 show state held kind hold_kind body
-  show=$(task_show "$id") || fail "captain decision $id is absent from $FM_HOME/data/backlog.md"
+resolution_routed_csv() {  # <hold-body>
+  local body=$1 fields
+  case "$body" in
+    *'\nRouted identities: '*)
+      fields=${body#*'\nRouted identities: '}
+      fields=${fields%%\\n*}
+      fields=${fields%\"}
+      printf '%s' "$fields"
+      ;;
+  esac
+}
+
+verify_resolution_note() {  # <hold-id> <hold-body> <label> <expected>
+  local id=$1 body=$2 label=$3 expected=$4 fields recorded
+  case "$body" in
+    *"\\n$label: "*)
+      fields=${body#*"\\n$label: "}
+      recorded=${fields%%\\n*}
+      recorded=${recorded%\"}
+      [ "$recorded" = "$expected" ] \
+        || fail "captain hold $id records a different $label"
+      ;;
+    *) fail "captain hold $id has no $label retry identity" ;;
+  esac
+}
+
+hold_superseded_peer() {  # <hold-body>
+  local body=$1 peer
+  case "$body" in
+    *"Superseded by fm-decision-hold."*"Duplicate of: "*)
+      peer=${body#*"Duplicate of: "}
+      peer=${peer%%\\n*}
+      peer=${peer%\"}
+      printf '%s' "$peer"
+      ;;
+  esac
+}
+
+verify_hold_durable_chain() {  # <hold-id> <seen-csv>
+  local id=$1 seen=$2 show state held kind hold_kind body peer next_seen
+  case ",$seen," in
+    *",$id,"*) return 2 ;;
+  esac
+  show=$(task_show "$id") || return 1
   state=$(show_field "$show" state)
   held=$(show_field "$show" held)
   kind=$(show_field "$show" kind)
@@ -245,19 +307,40 @@ verify_hold_durable() {  # <hold-id>
     return 0
   fi
   if [ "$state" = "done" ] && [ "$kind" = captain ]; then
+    verify_hold_resolved "$id" && return 0
     case "$body" in
-      *"Resolution recorded by fm-decision-hold."*"Routed work:"*) return 0 ;;
-      *"Superseded by fm-decision-hold."*"Duplicate of: "*) return 0 ;;
+      *"Superseded by fm-decision-hold."*"Duplicate of: "*)
+        peer=$(hold_superseded_peer "$body")
+        validate_slug duplicate-of "$peer" >/dev/null 2>&1 || return 1
+        next_seen=$seen
+        [ -n "$next_seen" ] && next_seen="$next_seen,"
+        verify_hold_durable_chain "$peer" "${next_seen}${id}"
+        return $?
+        ;;
     esac
   fi
-  fail "captain decision $id is neither actively held nor durably resolved"
+  return 1
+}
+
+verify_hold_durable() {  # <hold-id>
+  local id=$1 seen=${2:-} rc
+  if verify_hold_durable_chain "$id" "$seen"; then
+    return 0
+  else
+    rc=$?
+  fi
+  case "$rc" in
+    2) fail "captain decision $id has a supersede cycle" ;;
+    *) fail "captain decision $id is neither actively held nor durably resolved" ;;
+  esac
 }
 
 verify_resolution_identity() {
-  local id=$1 hold_body=$2 decision_digest=$3 routed_csv=$4 resolution_prefix resolution_fields recorded_digest recorded_routes
-  resolution_prefix='"Resolution recorded by fm-decision-hold.\nDecision digest: '
+  local id=$1 hold_body=$2 decision_digest=$3 routed_csv=$4 resolution_fields recorded_digest recorded_routes
   case "$hold_body" in
-    "$resolution_prefix"*) resolution_fields=${hold_body#"$resolution_prefix"} ;;
+    *"Resolution recorded by fm-decision-hold."*'\nDecision digest: '*)
+      resolution_fields=${hold_body#*'Decision digest: '}
+      ;;
     *) fail "captain hold $id has no retry identity record" ;;
   esac
   case "$resolution_fields" in
@@ -269,6 +352,8 @@ verify_resolution_identity() {
   recorded_routes=${resolution_fields%%\\n*}
   [ "$recorded_digest" = "$decision_digest" ] \
     || fail "captain hold $id records a different captain decision"
+  [ -n "$recorded_routes" ] \
+    || fail "captain hold $id has no routed identities"
   [ "$recorded_routes" = "$routed_csv" ] \
     || fail "captain hold $id records different routed work"
 }
@@ -284,23 +369,32 @@ read_decision_file() {  # <path> -> decision text
   printf '%s' "$decision"
 }
 
-# Shared by attest and amend: every routed dependent must either already be
-# durably blocked by <hold-id>, or already appear as routed work in <hold-body>
-# (an exact retry). Unblocks each dependent that is still blocked by the hold.
-route_dependents() {  # <hold-id> <hold-body> <routed-tasks space-separated>
-  local id=$1 hold_body=$2 routed=$3 dep show blocked
+# Shared by resolve, attest, and amend: every routed dependent must either be
+# durably blocked by <hold-id>, appear as routed work in <hold-body> (an exact
+# retry), or be explicitly re-established by a repair command. Unblocks each
+# dependent that is still blocked by the hold.
+route_dependents() {  # <hold-id> <hold-body> <routed-tasks> [reestablish]
+  local id=$1 hold_body=$2 routed=$3 reestablish=${4:-0} dep show blocked state
+  [ -n "$routed" ] || fail "at least one --routed-to task is required"
   for dep in $routed; do
     show=$(task_show "$dep") || fail "routed task $dep does not exist in the active home"
+    state=$(show_field "$show" state)
     blocked=$(show_field "$show" blocked_by | tr -d '[:space:]')
     blocked=${blocked#\"}
     blocked=${blocked%\"}
     case ",$blocked," in
       *",$id,"*) : ;;
       *)
-        case "$hold_body" in
-          *"- $dep"*) : ;;
-          *) fail "routed task $dep is not durably blocked by $id" ;;
-        esac
+        if [ "$reestablish" = 1 ]; then
+          [ "$state" != "done" ] || fail "routed task $dep is already done"
+          tasks_axi block "$dep" --by "$id" >/dev/null \
+            || fail "could not re-establish the routed dependency to $dep"
+        else
+          case "$hold_body" in
+            *"- $dep"*) : ;;
+            *) fail "routed task $dep is not durably blocked by $id" ;;
+          esac
+        fi
         ;;
     esac
   done
@@ -375,7 +469,7 @@ command_hold() {
 }
 
 command_complete() {
-  local origin=${1:-} meta previous='' supplied='' keys='' key status_file open raw_open key_seen=0 has_meta=0
+  local origin=${1:-} meta previous='' supplied='' keys='' key status_file open raw_open key_seen=0 has_meta=0 none_requested=0 none_fingerprint
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
   validate_slug origin-id "$origin"
   shift
@@ -384,6 +478,7 @@ command_complete() {
   require_tasks_axi
   origin_exists_here "$origin" || fail "origin $origin is not owned by the active home $FM_HOME"
   if [ "$#" -eq 1 ] && [ "$1" = --none ]; then
+    none_requested=1
     supplied=''
   else
     while [ "$#" -gt 0 ]; do
@@ -407,18 +502,19 @@ EOF
   fi
 
   status_file="$STATE/$origin.status"
+  none_fingerprint=$(status_default_decision_fingerprint "$status_file")
   raw_open=$(status_open_decisions "$status_file")
   open=$(origin_open_decisions "$origin")
   while IFS=$'\t' read -r key _verb _summary; do
     [ -n "$key" ] || continue
-    key_is_covered "$keys" "$key" "$meta" \
+    key_is_covered "$keys" "$key" "$meta" "$status_file" \
       || fail "open structured decision $origin/$key has no captain-held inventory entry"
   done <<EOF
 $open
 EOF
 
   if [ "$has_meta" = 1 ]; then
-    [ -n "$supplied" ] || mark_none_attested "$meta"
+    [ "$none_requested" = 1 ] && mark_none_attested "$meta" "$none_fingerprint"
     if [ "$(meta_value "$meta" decisions_reviewed)" != 1 ] || [ "$previous" != "$keys" ]; then
       printf 'decisions_reviewed=1\ndecision_keys=%s\n' "$keys" >> "$meta"
     fi
@@ -439,7 +535,7 @@ EOF
 }
 
 command_verify() {
-  local origin=${1:-} meta reviewed keys key open
+  local origin=${1:-} meta reviewed keys key open status_file
   [ "$#" -eq 1 ] || { usage >&2; exit 2; }
   validate_slug origin-id "$origin"
   meta="$STATE/$origin.meta"
@@ -448,6 +544,7 @@ command_verify() {
   reviewed=$(meta_value "$meta" decisions_reviewed)
   [ "$reviewed" = 1 ] || fail "origin $origin has no completed unresolved-decision inventory"
   keys=$(meta_value "$meta" decision_keys)
+  status_file="$STATE/$origin.status"
   if [ -n "$keys" ]; then
     while IFS= read -r key; do
       [ -n "$key" ] || continue
@@ -459,7 +556,7 @@ EOF
   open=$(origin_open_decisions "$origin")
   while IFS=$'\t' read -r key _verb _summary; do
     [ -n "$key" ] || continue
-    key_is_covered "$keys" "$key" "$meta" \
+    key_is_covered "$keys" "$key" "$meta" "$status_file" \
       || fail "open structured decision $origin/$key is outside the reviewed inventory"
     [ "$key" = default ] && ! list_has_key "$keys" "$key" && continue
     verify_hold_durable "$(hold_id "$origin" "$key")"
@@ -558,11 +655,11 @@ command_resolve() {
 # attest and amend repair a hold `resolve` can no longer reach: state done, kind
 # captain, closed outside this script. Both require a real --decision-file and a
 # one-line --note recording the evidence for the repair, and both write a body
-# marker distinguishable from an ordinary resolve. attest refuses if a resolution
-# record already exists (use amend); amend always overwrites.
+# marker distinguishable from an ordinary resolve. An exact attest retry succeeds
+# while changed evidence is refused; amend always overwrites.
 command_attest() {
   local origin=${1:-} key=${2:-} decision_file='' note='' routed_raw='' id='' decision='' \
-    decision_digest='' body='' routed='' routed_csv='' dep show state kind hold_body
+    decision_digest='' body='' routed='' routed_csv='' recorded_routed='' dep show state kind hold_body
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
   shift 2
   while [ "$#" -gt 0 ]; do
@@ -589,11 +686,21 @@ command_attest() {
   hold_body=$(show_field "$show" body)
   [ "$state" = "done" ] || fail "captain hold $id is not closed; use resolve for an active decision"
   [ "$kind" = captain ] || fail "backlog item $id is not kind captain"
+  recorded_routed=$(resolution_routed_csv "$hold_body")
+  [ -n "$routed" ] || routed=$(printf '%s\n' "$recorded_routed" | tr ',' ' ')
+  routed_csv=$(printf '%s\n' "$routed" | tr ' ' ',')
   case "$hold_body" in
+    *"Resolution recorded by fm-decision-hold. (attested;"*)
+      verify_resolution_identity "$id" "$hold_body" "$decision_digest" "$routed_csv"
+      verify_resolution_note "$id" "$hold_body" "Attestation note" "$note"
+      printf 'attested: %s\n' "$id"
+      return 0
+      ;;
     *"Resolution recorded by fm-decision-hold."*)
       fail "captain hold $id already carries a resolution record; use amend to correct it" ;;
   esac
-  route_dependents "$id" "$hold_body" "$routed"
+  [ -n "$routed" ] || fail "at least one --routed-to task is required"
+  route_dependents "$id" "$hold_body" "$routed" 1
   body=$(printf 'Resolution recorded by fm-decision-hold. (attested; hold closed outside fm-decision-hold prior to attest)\nDecision digest: %s\nRouted identities: %s\nAttestation note: %s\n\nCaptain decision:\n%s\n\nRouted work:\n' \
     "$decision_digest" "$routed_csv" "$note" "$decision")
   for dep in $routed; do
@@ -607,7 +714,7 @@ command_attest() {
 
 command_amend() {
   local origin=${1:-} key=${2:-} decision_file='' note='' routed_raw='' id='' decision='' \
-    decision_digest='' body='' routed='' routed_csv='' dep show state kind hold_body
+    decision_digest='' body='' routed='' routed_csv='' recorded_routed='' dep show state kind hold_body
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
   shift 2
   while [ "$#" -gt 0 ]; do
@@ -634,7 +741,11 @@ command_amend() {
   hold_body=$(show_field "$show" body)
   [ "$state" = "done" ] || fail "captain hold $id is not closed; correct an active decision by re-running resolve"
   [ "$kind" = captain ] || fail "backlog item $id is not kind captain"
-  route_dependents "$id" "$hold_body" "$routed"
+  recorded_routed=$(resolution_routed_csv "$hold_body")
+  [ -n "$routed" ] || routed=$(printf '%s\n' "$recorded_routed" | tr ',' ' ')
+  routed_csv=$(printf '%s\n' "$routed" | tr ' ' ',')
+  [ -n "$routed" ] || fail "at least one --routed-to task is required"
+  route_dependents "$id" "$hold_body" "$routed" 1
   body=$(printf 'Resolution recorded by fm-decision-hold. (amended)\nDecision digest: %s\nRouted identities: %s\nAmendment note: %s\n\nCaptain decision:\n%s\n\nRouted work:\n' \
     "$decision_digest" "$routed_csv" "$note" "$decision")
   for dep in $routed; do
@@ -669,7 +780,7 @@ command_supersede() {
   id=$(hold_id "$origin" "$key")
   auth_id=$dup_of
   [ "$auth_id" != "$id" ] || fail "captain hold $id cannot be a duplicate of itself"
-  verify_hold_durable "$auth_id"
+  verify_hold_durable "$auth_id" "$id"
   show=$(task_show "$id") || fail "captain hold $id is absent from $FM_HOME/data/backlog.md"
   state=$(show_field "$show" state)
   [ "$(show_field "$show" kind)" = captain ] || fail "backlog item $id is not kind captain"

@@ -472,8 +472,8 @@ test_none_attestation_covers_stale_default_status_decision() {
   printf 'needs-decision: informal early question\ndone: report complete\n' > "$home/state/$id.status"
   run_decisions "$home" complete "$id" --none >/dev/null \
     || fail "initial --none attestation should succeed despite a status-masked stale decision"
-  assert_grep "decision_none_ever=1" "$home/state/$id.meta" \
-    "--none attestation did not record the sticky default-coverage marker"
+  assert_grep "decision_none_status=" "$home/state/$id.meta" \
+    "--none attestation did not record the reviewed default status event"
 
   printf 'needs-decision [key=real-choice]: pick the real thing\n' >> "$home/state/$id.status"
   run_decisions "$home" hold "$id" real-choice \
@@ -509,9 +509,28 @@ test_none_attestation_never_creates_a_default_hold_or_masks_a_fresh_default_deci
     > "$home/fresh-complete.out" 2> "$home/fresh-complete.err"; then
     fail "an unattested fresh default decision must still block --none completion"
   fi
-  assert_no_grep "decision_none_ever=1" "$home/state/$id.meta" \
-    "a refused completion must not record the sticky none-attestation marker"
-  pass "an unreviewed default decision still refuses --none completion; the sticky marker is not a blanket bypass"
+  assert_no_grep "decision_none_status=" "$home/state/$id.meta" \
+    "a refused completion must not record a none status-event fingerprint"
+  pass "an unreviewed default decision still refuses --none completion; the reviewed-event fingerprint is not a blanket bypass"
+}
+
+test_none_attestation_does_not_cover_a_later_default_event() {
+  local home id
+  home=$(make_home fresh-default-after-none)
+  id=sample-new-default
+  mkdir -p "$home/data/$id"
+  write_origin_meta "$home" "$id"
+  printf 'done: clean review\n' > "$home/state/$id.status"
+  run_decisions "$home" complete "$id" --none >/dev/null \
+    || fail "clean --none inventory should succeed"
+  printf 'needs-decision: genuinely new question\n' >> "$home/state/$id.status"
+  if run_decisions "$home" complete "$id" --none > "$home/new-complete.out" 2> "$home/new-complete.err"; then
+    fail "a later default decision was incorrectly covered by an earlier --none"
+  fi
+  if run_decisions "$home" verify "$id" > "$home/new-verify.out" 2> "$home/new-verify.err"; then
+    fail "verify incorrectly accepted a later default decision after --none"
+  fi
+  pass "--none coverage is scoped to the reviewed default status event"
 }
 
 # Reproduces failure mode B: a captain hold answered in the field but closed with
@@ -528,8 +547,12 @@ test_attest_repairs_a_hold_closed_outside_the_tool() {
   hold=$(run_decisions "$home" hold "$id" thing \
     --title "Pick a thing" --reason "captain thing pending" --repo sample) \
     || fail "could not register the hold to be closed outside the tool"
-  tasks_in "$home" update "$hold" --body "Captain 2026-07-23: pick north." >/dev/null \
+  tasks_in "$home" update "$hold" --body "Captain 2026-07-23: pick north. Original routed work: - sample-thing-implementation" >/dev/null \
     || fail "could not simulate a hand-written answer"
+  tasks_in "$home" add sample-thing-implementation "Apply the thing choice" --kind ship --repo sample >/dev/null \
+    || fail "could not create attestation dependent fixture"
+  tasks_in "$home" block sample-thing-implementation --by "$hold" >/dev/null \
+    || fail "could not block attestation dependent fixture"
   tasks_in "$home" "done" "$hold" >/dev/null \
     || fail "could not simulate closing the hold with plain tasks-axi done"
   printf 'done: report complete\n' >> "$home/state/$id.status"
@@ -545,24 +568,30 @@ test_attest_repairs_a_hold_closed_outside_the_tool() {
     fail "attest must require a --note explaining the repair evidence"
   fi
   run_decisions "$home" attest "$id" thing --decision-file "$home/thing-decision.txt" \
-    --note "closed via tasks-axi done on 2026-07-23; answer verified in hand-written body" >/dev/null \
+    --note "closed via tasks-axi done on 2026-07-23; answer verified in hand-written body" \
+    --routed-to sample-thing-implementation >/dev/null \
     || fail "attest could not repair a hold closed outside the tool"
   show=$(tasks_in "$home" show "$hold" --full)
   assert_contains "$show" "attested; hold closed outside fm-decision-hold" \
     "attested body must be distinguishable from an ordinary resolve"
 
+  run_decisions "$home" attest "$id" thing --decision-file "$home/thing-decision.txt" \
+    --note "closed via tasks-axi done on 2026-07-23; answer verified in hand-written body" \
+    --routed-to sample-thing-implementation >/dev/null \
+    || fail "an exact attest retry should be idempotent"
   if run_decisions "$home" attest "$id" thing --decision-file "$home/thing-decision.txt" \
-    --note "retry" > "$home/reattest.out" 2> "$home/reattest.err"; then
-    fail "attest must refuse a hold that already carries a resolution record"
+    --note "changed evidence" --routed-to sample-thing-implementation \
+    > "$home/reattest.out" 2> "$home/reattest.err"; then
+    fail "attest must refuse changed retry evidence"
   fi
-  assert_grep "already carries a resolution record" "$home/reattest.err" \
-    "attest refusal must point the operator at amend"
+  assert_grep "different Attestation note" "$home/reattest.err" \
+    "changed attest evidence must identify the changed retry field"
 
   run_decisions "$home" complete "$id" thing >/dev/null \
     || fail "completion should succeed once the closed-outside-tool hold is attested"
   run_decisions "$home" verify "$id" >/dev/null \
     || fail "verify should succeed once the closed-outside-tool hold is attested"
-  pass "attest repairs a hold closed outside the tool with an evidenced, distinguishable, non-repeatable record"
+  pass "attest repairs a hold closed outside the tool with an evidenced, distinguishable, idempotent record"
 }
 
 test_supersede_retires_a_duplicate_against_a_durable_authoritative_hold() {
@@ -606,6 +635,114 @@ test_supersede_retires_a_duplicate_against_a_durable_authoritative_hold() {
   pass "supersede retires a duplicate hold against a durable authoritative peer, active or resolved"
 }
 
+test_supersede_rejects_cycles_and_follows_superseded_peers() {
+  local home hold_a hold_b hold_d
+  home=$(make_home supersede-graph)
+  for id in sample-graph-a sample-graph-b sample-graph-c sample-graph-d sample-graph-e; do
+    mkdir -p "$home/data/$id"
+    write_origin_meta "$home" "$id"
+    printf 'done: graph fixture\n' > "$home/state/$id.status"
+  done
+  hold_a=$(run_decisions "$home" hold sample-graph-a route \
+    --title "Graph route A" --reason "graph route A pending" --repo sample)
+  hold_b=$(run_decisions "$home" hold sample-graph-b route \
+    --title "Graph route B" --reason "graph route B pending" --repo sample)
+  run_decisions "$home" hold sample-graph-c route \
+    --title "Graph route C" --reason "graph route C pending" --repo sample >/dev/null
+  run_decisions "$home" supersede sample-graph-a route --duplicate-of "$hold_b" \
+    --note "A is the duplicate of B" >/dev/null \
+    || fail "initial supersede edge should succeed"
+  if run_decisions "$home" supersede sample-graph-b route --duplicate-of "$hold_a" \
+    --note "cycle attempt" > "$home/cycle.out" 2> "$home/cycle.err"; then
+    fail "supersede accepted a two-hold cycle"
+  fi
+  assert_grep "supersede cycle" "$home/cycle.err" \
+    "cycle refusal must identify the supersede cycle"
+  assert_contains "$(tasks_in "$home" show "$hold_b" --full)" "state: queued" \
+    "cycle refusal must leave the second hold active"
+
+  run_decisions "$home" supersede sample-graph-c route --duplicate-of "$hold_a" \
+    --note "C follows A to the active B authority" >/dev/null \
+    || fail "supersede should follow a superseded peer to an active authority"
+  run_decisions "$home" complete sample-graph-c route >/dev/null \
+    || fail "superseded-peer completion failed"
+  run_decisions "$home" verify sample-graph-c >/dev/null \
+    || fail "superseded-peer verification failed"
+
+  hold_d=$(run_decisions "$home" hold sample-graph-d route \
+    --title "Graph route D" --reason "graph route D pending" --repo sample)
+  tasks_in "$home" add sample-graph-dependent "Apply graph route D" --kind ship --repo sample >/dev/null
+  tasks_in "$home" block sample-graph-dependent --by "$hold_d" >/dev/null
+  printf 'Use graph route D.\n' > "$home/graph-d-decision.txt"
+  run_decisions "$home" resolve sample-graph-d route --decision-file "$home/graph-d-decision.txt" \
+    --routed-to sample-graph-dependent >/dev/null \
+    || fail "could not create resolved graph authority"
+  run_decisions "$home" hold sample-graph-e route \
+    --title "Graph route E" --reason "graph route E pending" --repo sample >/dev/null
+  run_decisions "$home" supersede sample-graph-e route --duplicate-of "$hold_d" \
+    --note "E follows the resolved D authority" >/dev/null \
+    || fail "supersede should accept a genuinely resolved peer"
+  run_decisions "$home" complete sample-graph-e route >/dev/null \
+    || fail "resolved-peer completion failed"
+  run_decisions "$home" verify sample-graph-e >/dev/null \
+    || fail "resolved-peer verification failed"
+  pass "supersede rejects cycles and follows only active or genuinely resolved authority"
+}
+
+test_repair_paths_preserve_and_reestablish_routed_identity() {
+  local home id hold dep show
+  home=$(make_home repair-routes)
+  id=sample-repair-routes
+  mkdir -p "$home/data/$id"
+  write_origin_meta "$home" "$id"
+  printf 'done: repair fixture\n' > "$home/state/$id.status"
+  hold=$(run_decisions "$home" hold "$id" route \
+    --title "Repair route" --reason "repair route pending" --repo sample)
+  dep=sample-repair-dependent
+  tasks_in "$home" add "$dep" "Apply repair route" --kind ship --repo sample >/dev/null
+  tasks_in "$home" block "$dep" --by "$hold" >/dev/null
+  printf 'Use the original route.\n' > "$home/repair-decision.txt"
+  run_decisions "$home" resolve "$id" route --decision-file "$home/repair-decision.txt" \
+    --routed-to "$dep" >/dev/null \
+    || fail "could not create the original routed resolution"
+
+  tasks_in "$home" update "$hold" --body "Captain corrected the route outside the tool." >/dev/null
+  run_decisions "$home" amend "$id" route --decision-file "$home/repair-decision.txt" \
+    --note "re-establish the original route after body damage" --routed-to "$dep" >/dev/null \
+    || fail "amend could not re-establish the original dependent after body damage"
+
+  run_decisions "$home" amend "$id" route --decision-file "$home/repair-decision.txt" \
+    --note "preserve the original routed identity" >/dev/null \
+    || fail "amend without --routed-to should preserve the recorded route"
+  show=$(tasks_in "$home" show "$hold" --full)
+  assert_contains "$show" "Routed identities: $dep" \
+    "amend silently erased a previously recorded routed identity"
+
+  hold=$(run_decisions "$home" hold "$id" attest-route \
+    --title "Repair attest route" --reason "repair attest route pending" --repo sample)
+  tasks_in "$home" add sample-repair-attest-dependent "Apply attest route" --kind ship --repo sample >/dev/null
+  tasks_in "$home" block sample-repair-attest-dependent --by "$hold" >/dev/null
+  printf 'Use the attested route.\n' > "$home/attest-decision.txt"
+  run_decisions "$home" resolve "$id" attest-route --decision-file "$home/attest-decision.txt" \
+    --routed-to sample-repair-attest-dependent >/dev/null
+  tasks_in "$home" update "$hold" --body "Captain attestation body was damaged." >/dev/null
+  run_decisions "$home" attest "$id" attest-route --decision-file "$home/attest-decision.txt" \
+    --note "re-establish the original attest dependent" --routed-to sample-repair-attest-dependent >/dev/null \
+    || fail "attest could not re-establish the original dependent after body damage"
+
+  hold=$(run_decisions "$home" hold "$id" empty-route \
+    --title "Empty route" --reason "empty route pending" --repo sample)
+  tasks_in "$home" update "$hold" --body "Captain decision without routed evidence." >/dev/null
+  tasks_in "$home" "done" "$hold" >/dev/null
+  if run_decisions "$home" attest "$id" empty-route --decision-file "$home/repair-decision.txt" \
+    --note "fabricated empty route" > "$home/empty-route.out" 2> "$home/empty-route.err"; then
+    fail "attest accepted an empty routed identity set"
+  fi
+  assert_grep "at least one --routed-to" "$home/empty-route.err" \
+    "empty-route refusal must require an existing dependent identity"
+  pass "repair paths preserve, restore, and require routed dependent identities"
+}
+
 # Reproduces failure mode C: an ordinary tasks-axi update on a resolved hold's
 # body silently strips the resolution attestation, and resolve cannot retry
 # because the hold is no longer queued. amend is the explicit repair path.
@@ -646,7 +783,8 @@ test_amend_repairs_a_resolved_hold_whose_body_was_overwritten() {
     fail "amend must require a --note explaining the correction"
   fi
   run_decisions "$home" amend "$id" scope --decision-file "$home/broad-scope-decision.txt" \
-    --note "captain corrected the ruling on 2026-07-23 from narrow to broad scope" >/dev/null \
+    --note "captain corrected the ruling on 2026-07-23 from narrow to broad scope" \
+    --routed-to sample-scope-impl >/dev/null \
     || fail "amend could not repair the wiped resolution"
   show=$(tasks_in "$home" show "$hold" --full)
   assert_contains "$show" "(amended)" "amended body must be distinguishable from an ordinary resolve"
@@ -766,6 +904,9 @@ test_secondmate_hold_stays_in_authoritative_home
 test_resolve_matches_quoted_blocked_by_edges
 test_none_attestation_covers_stale_default_status_decision
 test_none_attestation_never_creates_a_default_hold_or_masks_a_fresh_default_decision
+test_none_attestation_does_not_cover_a_later_default_event
 test_attest_repairs_a_hold_closed_outside_the_tool
 test_supersede_retires_a_duplicate_against_a_durable_authoritative_hold
+test_supersede_rejects_cycles_and_follows_superseded_peers
+test_repair_paths_preserve_and_reestablish_routed_identity
 test_amend_repairs_a_resolved_hold_whose_body_was_overwritten
