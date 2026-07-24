@@ -32,9 +32,8 @@ Anything meaty delegates to a spawned explainer mate so firstmate keeps its cont
    Build a brief from `.agents/skills/explain/explainer-brief.md`, filling in:
    - The subject
    - The evidence-pointer list
-   - The FM_HOME path (so the mate writes to `data/explain/` and `data/explain/concept-ledger.md`)
-   - The tasked concept names for the ledger
-   - A task-id slug like `explain-<kebab-subject>`
+    - The FM_HOME path (so the mate writes to `data/explain/` and `data/explain/concept-ledger.md`)
+    - A task-id slug like `explain-<kebab-subject>`
    Write the brief to `data/<task-id>/brief.md`, then spawn the mate with:
    ```sh
    bin/fm-spawn.sh <task-id> projects/<firstmate-repo-name> --scout --harness <cheap-harness> --model <cheap-model> --effort low
@@ -57,8 +56,7 @@ When the captain says "…and explain it" or "…and explain the findings" while
 The work agent never builds the page itself.
 
 1. **Record the pre-order.**
-   Append `explain=preorder` to the task's state metadata at `state/<task-id>.meta`.
-   If no metadata file exists yet, write one with that single line.
+   After spawning the work task (step 4 creates `state/<task-id>.meta`), append `explain=preorder` to that metadata file.
    This marker survives restarts and tells firstmate there is a pending explainer for this task.
 
 2. **Add a lightweight evidence clause to the work brief.**
