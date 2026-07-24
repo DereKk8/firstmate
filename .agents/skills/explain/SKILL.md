@@ -53,19 +53,31 @@ Anything meaty delegates to a spawned explainer mate so firstmate keeps its cont
 
 ## Pre-order clause
 
-When the captain says "…and explain it" or "…and explain the findings" while ordering work, firstmate adds this clause to the work brief:
+When the captain says "…and explain it" or "…and explain the findings" while ordering work, firstmate records the pre-order and defers the explainer to a separate mate.
+The work agent never builds the page itself.
 
-```
-When your work is complete: before signaling done, also produce a Style E explainer page per the explainer-mate brief at
-<FM_ROOT>/.agents/skills/explain/explainer-brief.md (read it first).
-Build the page from your own findings and the evidence you collected, following every layout rule in that template.
-Write the page to <FM_HOME>/data/explain/<task-id>.html and append a one-line concept entry to
-<FM_HOME>/data/explain/concept-ledger.md.
-When the page is built, run `lavish-axi <FM_HOME>/data/explain/<task-id>.html` so the captain sees it.
-Signal your explainer page link alongside the normal completion signal.
-```
+1. **Record the pre-order.**
+   Append `explain=preorder` to the task's state metadata at `state/<task-id>.meta`.
+   If no metadata file exists yet, write one with that single line.
+   This marker survives restarts and tells firstmate there is a pending explainer for this task.
 
-The normal concise report still comes first; the explainer page is an extra link alongside it.
+2. **Add a lightweight evidence clause to the work brief.**
+   The clause only tells the worker to keep its evidence discoverable for a later explainer.
+   The worker builds no page and its definition of done is unchanged:
+   ```
+   When your work is complete: ensure the evidence of your work is discoverable.
+   Your report, PR URL, or branch commit list must be at a stable path or URL so a later explainer mate can read it.
+   Do not produce an explainer page - a separate explainer mate will build that after you finish.
+   ```
+
+3. **When the work finishes, dispatch the explainer mate.**
+   After the normal report (PR link, local-merge outcome, or scout findings) reaches the captain, firstmate reads the finished work's evidence pointers and dispatches a separate explainer mate exactly as in step 4 above.
+   The mate builds the page from those pointers using the explainer-brief template.
+   The page link then arrives alongside or immediately after the normal report.
+
+4. **The normal report always arrives first; the explainer page never replaces it.**
+   The page is an extra link, not a substitute.
+   If the mate fails, the normal report stands on its own.
 
 ## Scope exclusion
 
