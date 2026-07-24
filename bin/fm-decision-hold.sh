@@ -36,7 +36,16 @@
 # `resolve` requires every --routed-to task to exist and to be blocked by the hold.
 # It writes the captain decision and routed identities into the hold body, clears
 # those dependency edges, and only then marks the hold Done. A failure before the
-# final step leaves the captain hold open.
+# final step leaves the captain hold open. Once a hold is Done, resolve is
+# idempotent and returns success without re-checking the original decision text
+# or routed set, however the hold reached Done.
+#
+# This script trusts firstmate's own operating contract, not cryptographic or
+# historical proof: it verifies only present, locally checkable state (is a
+# decision still unresolved, did routing report an error, is durable work
+# discoverable), never a claim about who wrote a record or when. A hold closed
+# outside this tool (for example a decision answered and closed directly in the
+# backlog) counts as durably resolved on that basis alone.
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -80,16 +89,6 @@ validate_one_line() {  # <label> <value>
   esac
 }
 
-sha256_text() {  # <text>
-  if command -v shasum >/dev/null 2>&1; then
-    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
-  elif command -v sha256sum >/dev/null 2>&1; then
-    printf '%s' "$1" | sha256sum | awk '{print $1}'
-  else
-    fail "shasum or sha256sum is required"
-  fi
-}
-
 hold_id() {  # <origin-id> <decision-key>
   validate_slug origin-id "$1"
   validate_slug decision-key "$2"
@@ -119,6 +118,20 @@ origin_exists_here() {  # <origin-id>
   [ -f "$STATE/$1.meta" ] && return 0
   [ -f "$DATA/$1/report.md" ] && return 0
   task_show "$1" >/dev/null 2>&1
+}
+
+hold_archived_done() {  # <hold-id>
+  # tasks-axi show only reads the live backlog, so a captain hold retention has
+  # already archived is otherwise invisible to this script. Its archive line
+  # keeps the same "(kind: captain)" marker a live Done item would have.
+  local id=$1 archive="$DATA/done-archive.md" line
+  [ -f "$archive" ] || return 1
+  line=$(grep -F -- "- [x] $id -" "$archive" | head -1)
+  [ -n "$line" ] || return 1
+  case "$line" in
+    *"(kind: captain)"*) return 0 ;;
+    *) return 1 ;;
+  esac
 }
 
 list_has_key() {  # <comma-list> <key>
@@ -170,57 +183,29 @@ verify_hold_active() {  # <hold-id>
   [ "$hold_kind" = captain ] || fail "backlog item $id is not held for the captain"
 }
 
-verify_hold_resolved() {  # <hold-id>
-  local id=$1 show state kind body
-  show=$(task_show "$id") || return 1
-  state=$(show_field "$show" state)
-  kind=$(show_field "$show" kind)
-  body=$(show_field "$show" body)
-  [ "$state" = "done" ] || return 1
-  [ "$kind" = captain ] || return 1
-  case "$body" in
-    *"Resolution recorded by fm-decision-hold."*"Routed work:"*) return 0 ;;
-  esac
-  return 1
-}
-
 verify_hold_durable() {  # <hold-id>
-  local id=$1 show state held kind hold_kind body
-  show=$(task_show "$id") || fail "captain decision $id is absent from $FM_HOME/data/backlog.md"
-  state=$(show_field "$show" state)
-  held=$(show_field "$show" held)
-  kind=$(show_field "$show" kind)
-  hold_kind=$(show_field "$show" hold_kind)
-  body=$(show_field "$show" body)
-  if [ "$state" = queued ] && [ "$held" = yes ] && [ "$kind" = captain ] && [ "$hold_kind" = captain ]; then
-    return 0
-  fi
-  if [ "$state" = "done" ] && [ "$kind" = captain ]; then
-    case "$body" in
-      *"Resolution recorded by fm-decision-hold."*"Routed work:"*) return 0 ;;
+  # Checks only present state: a captain-kind item that is either actively held
+  # or closed (Done), however it came to be closed. This is a state-machine
+  # check, not a claim about who closed it or when.
+  local id=$1 show state held kind hold_kind
+  if show=$(task_show "$id"); then
+    state=$(show_field "$show" state)
+    kind=$(show_field "$show" kind)
+    [ "$kind" = captain ] || fail "backlog item $id is not kind captain"
+    case "$state" in
+      done) return 0 ;;
+      queued)
+        held=$(show_field "$show" held)
+        hold_kind=$(show_field "$show" hold_kind)
+        [ "$held" = yes ] && [ "$hold_kind" = captain ] \
+          || fail "captain decision $id is not actively held"
+        return 0
+        ;;
+      *) fail "captain decision $id is neither actively held nor resolved (state=$state)" ;;
     esac
   fi
-  fail "captain decision $id is neither actively held nor durably resolved"
-}
-
-verify_resolution_identity() {
-  local id=$1 hold_body=$2 decision_digest=$3 routed_csv=$4 resolution_prefix resolution_fields recorded_digest recorded_routes
-  resolution_prefix='"Resolution recorded by fm-decision-hold.\nDecision digest: '
-  case "$hold_body" in
-    "$resolution_prefix"*) resolution_fields=${hold_body#"$resolution_prefix"} ;;
-    *) fail "captain hold $id has no retry identity record" ;;
-  esac
-  case "$resolution_fields" in
-    *'\nRouted identities: '*'\n\nCaptain decision:'*) : ;;
-    *) fail "captain hold $id has an invalid retry identity record" ;;
-  esac
-  recorded_digest=${resolution_fields%%\\n*}
-  resolution_fields=${resolution_fields#*\\nRouted identities: }
-  recorded_routes=${resolution_fields%%\\n*}
-  [ "$recorded_digest" = "$decision_digest" ] \
-    || fail "captain hold $id records a different captain decision"
-  [ "$recorded_routes" = "$routed_csv" ] \
-    || fail "captain hold $id records different routed work"
+  hold_archived_done "$id" \
+    || fail "captain decision $id is absent from $FM_HOME/data/backlog.md"
 }
 
 command_id() {
@@ -256,6 +241,8 @@ command_hold() {
     [ "$state" != "done" ] || fail "captain decision $id is already durably resolved; use a new decision key for a new decision"
     [ "$kind" = captain ] || fail "existing backlog identity $id is not kind captain"
     [ "$existing_title" = "$title" ] || fail "existing captain hold $id has a different title"
+  elif hold_archived_done "$id"; then
+    fail "captain decision $id is already durably resolved; use a new decision key for a new decision"
   else
     if [ -z "$repo" ] && [ -f "$STATE/$origin.meta" ]; then
       repo=$(meta_value "$STATE/$origin.meta" project)
@@ -368,7 +355,7 @@ EOF
 }
 
 command_resolve() {
-  local origin=${1:-} key=${2:-} decision_file='' id='' decision='' decision_digest='' body='' routed='' routed_csv='' dep show blocked state hold_show hold_body resolution_recorded=0
+  local origin=${1:-} key=${2:-} decision_file='' id='' decision='' body='' routed='' dep show blocked state kind
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
   shift 2
   while [ "$#" -gt 0 ]; do
@@ -389,32 +376,22 @@ command_resolve() {
     || fail "decision file exceeds 8192 bytes"
   [ -n "$routed" ] || fail "at least one --routed-to task is required"
   routed=$(printf '%s\n' "$routed" | tr ' ' '\n' | sed '/^$/d' | LC_ALL=C sort -u | paste -sd' ' -)
-  routed_csv=$(printf '%s\n' "$routed" | tr ' ' ',')
-  decision_digest=$(sha256_text "$decision")
   require_tasks_axi
   id=$(hold_id "$origin" "$key")
-  if verify_hold_resolved "$id"; then
-    hold_show=$(task_show "$id")
-    hold_body=$(show_field "$hold_show" body)
-    verify_resolution_identity "$id" "$hold_body" "$decision_digest" "$routed_csv"
+  show=$(task_show "$id") || fail "captain hold $id is absent from $FM_HOME/data/backlog.md"
+  state=$(show_field "$show" state)
+  kind=$(show_field "$show" kind)
+  if [ "$state" = "done" ] && [ "$kind" = captain ]; then
+    # Already resolved, however it closed. Idempotent: trust firstmate not to
+    # call resolve again with contradictory arguments, rather than re-deriving
+    # proof the original arguments matched.
     printf 'resolved: %s\n' "$id"
     return 0
   fi
   verify_hold_active "$id"
-  hold_show=$(task_show "$id")
-  hold_body=$(show_field "$hold_show" body)
-  case "$hold_body" in
-    *"Resolution recorded by fm-decision-hold."*)
-      verify_resolution_identity "$id" "$hold_body" "$decision_digest" "$routed_csv"
-      resolution_recorded=1
-      ;;
-  esac
 
   for dep in $routed; do
     show=$(task_show "$dep") || fail "routed task $dep does not exist in the active home"
-    state=$(show_field "$show" state)
-    [ "$state" != "done" ] || [ "$resolution_recorded" = 1 ] \
-      || fail "routed task $dep is already done"
     # tasks-axi quotes multi-entry blocked_by as "a,b,c"; strip so edge ids match.
     blocked=$(show_field "$show" blocked_by | tr -d '[:space:]')
     blocked=${blocked#\"}
@@ -422,34 +399,29 @@ command_resolve() {
     case ",$blocked," in
       *",$id,"*) : ;;
       *)
-        case "$hold_body" in
-          *"Resolution recorded by fm-decision-hold."*"- $dep"*) : ;;
-          *) fail "routed task $dep is not durably blocked by $id" ;;
-        esac
+        # Not currently blocked by this hold. A finished dependent is treated as
+        # already routed by an earlier partial resolve attempt at this hold, since
+        # unblock only ever clears this specific edge; anything still not done was
+        # never linked.
+        state=$(show_field "$show" state)
+        [ "$state" = "done" ] \
+          || fail "routed task $dep is not durably blocked by $id"
         ;;
     esac
   done
 
-  body=$(printf 'Resolution recorded by fm-decision-hold.\nDecision digest: %s\nRouted identities: %s\n\nCaptain decision:\n%s\n\nRouted work:\n' "$decision_digest" "$routed_csv" "$decision")
+  body=$(printf 'Resolution recorded by fm-decision-hold.\n\nCaptain decision:\n%s\n\nRouted work:\n' "$decision")
   for dep in $routed; do
     body="${body}- ${dep}"$'\n'
   done
   tasks_axi update "$id" --body "$body" >/dev/null \
     || fail "could not record the captain decision on $id"
   for dep in $routed; do
-    show=$(task_show "$dep") || fail "routed task $dep disappeared before routing"
-    blocked=$(show_field "$show" blocked_by | tr -d '[:space:]')
-    blocked=${blocked#\"}
-    blocked=${blocked%\"}
-    case ",$blocked," in
-      *",$id,"*)
-        tasks_axi unblock "$dep" --by "$id" >/dev/null \
-          || fail "could not route the recorded decision to $dep"
-        ;;
-    esac
+    # unblock is idempotent in tasks-axi: a no-op when the edge is already gone.
+    tasks_axi unblock "$dep" --by "$id" >/dev/null \
+      || fail "could not route the recorded decision to $dep"
   done
   tasks_axi "done" "$id" >/dev/null || fail "could not close resolved captain hold $id"
-  verify_hold_resolved "$id" || fail "captain hold $id did not retain its durable resolution record"
   printf 'resolved: %s -> %s\n' "$id" "$routed"
 }
 

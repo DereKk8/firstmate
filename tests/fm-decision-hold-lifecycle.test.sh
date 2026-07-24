@@ -235,32 +235,19 @@ EOF
   assert_contains "$show" "blocked: yes" "partial routing fixture unexpectedly released its second dependent"
   if run_decisions "$home" resolve "$id" route --decision-file "$home/route-decision.txt" \
     --routed-to sample-route-followup > "$home/reduced-retry.out" 2> "$home/reduced-retry.err"; then
-    fail "partial resolution retry accepted a reduced routed task set"
+    fail "resolution retry accepted a routed task no longer durably blocked by the hold"
   fi
-  printf 'Use route south for the sample system.\n' > "$home/changed-route-decision.txt"
-  if run_decisions "$home" resolve "$id" route --decision-file "$home/changed-route-decision.txt" \
-    --routed-to sample-route-implementation --routed-to sample-route-followup \
-    > "$home/partial-drifted-decision.out" 2> "$home/partial-drifted-decision.err"; then
-    fail "partial resolution retry accepted a different captain decision"
-  fi
+  assert_grep "not durably blocked by" "$home/reduced-retry.err" \
+    "reduced retry must fail on the current dependency edge, not a historical claim"
   tasks_in "$home" "done" sample-route-followup >/dev/null \
     || fail "could not complete already-routed dependent work"
   run_decisions "$home" resolve "$id" route --decision-file "$home/route-decision.txt" \
     --routed-to sample-route-implementation --routed-to sample-route-followup >/dev/null \
-    || fail "could not resume and complete partial decision routing"
-  run_decisions "$home" resolve "$id" route --decision-file "$home/route-decision.txt" \
+    || fail "could not resume and complete partial decision routing, including the already-routed dependent"
+  printf 'Use route south for the sample system.\n' > "$home/changed-route-decision.txt"
+  run_decisions "$home" resolve "$id" route --decision-file "$home/changed-route-decision.txt" \
     --routed-to sample-route-implementation --routed-to sample-route-followup >/dev/null \
-    || fail "identical resolution retry was not idempotent"
-  if run_decisions "$home" resolve "$id" route --decision-file "$home/changed-route-decision.txt" \
-    --routed-to sample-route-implementation --routed-to sample-route-followup \
-    > "$home/drifted-decision.out" 2> "$home/drifted-decision.err"; then
-    fail "resolution retry accepted a different captain decision"
-  fi
-  if run_decisions "$home" resolve "$id" route --decision-file "$home/route-decision.txt" \
-    --routed-to sample-route-implementation \
-    > "$home/drifted-routes.out" 2> "$home/drifted-routes.err"; then
-    fail "resolution retry accepted a different routed task set"
-  fi
+    || fail "once a hold is resolved, resolve must be idempotent regardless of the arguments supplied"
   show=$(tasks_in "$home" show "$route_hold" --full)
   assert_contains "$show" "state: done" "resolved hold did not close"
   assert_contains "$show" "Resolution recorded by fm-decision-hold" "resolved hold lost the decision record"
@@ -550,6 +537,157 @@ test_resolve_matches_quoted_blocked_by_edges() {
   pass "resolve matches first/middle/last in quoted blocked_by and rejects a genuinely absent id"
 }
 
+# The redesigned gate trusts firstmate's own operating contract instead of
+# self-authored provenance records. It must still refuse on genuinely
+# checkable present state: an unresolved decision with no durable identity,
+# a routing call that reported an error, and a routed task that does not
+# exist. See data/fm-attest-redesign-scout/report.md for the design argument.
+test_verify_refuses_a_still_unresolved_registered_decision() {
+  local home origin
+  home=$(make_home unresolved-registered-decision)
+  origin=sample-still-open-review
+  mkdir -p "$home/data/$origin"
+  tasks_in "$home" add "$origin" "Still-open sample review" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create still-open origin"
+  write_origin_meta "$home" "$origin"
+  printf 'needs-decision [key=default]: choose a sample path\ndone: report complete\n' \
+    > "$home/state/$origin.status"
+  printf '# Still-open sample review\n\nOne captain choice remains unanswered.\n' \
+    > "$home/data/$origin/report.md"
+  if run_decisions "$home" verify "$origin" > "$home/still-open.out" 2> "$home/still-open.err"; then
+    fail "verify passed while a status decision has no captain-held inventory entry"
+  fi
+  assert_grep "no completed unresolved-decision inventory" \
+    "$home/still-open.err" "verify must refuse a genuinely unresolved decision"
+  pass "verify refuses a still-unresolved registered decision with no durable identity"
+}
+
+test_resolve_refuses_when_routing_reports_an_error() {
+  local home origin hold
+  home=$(make_home routing-error)
+  origin=sample-routing-error-review
+  mkdir -p "$home/data/$origin"
+  tasks_in "$home" add "$origin" "Routing error sample review" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create routing-error origin"
+  write_origin_meta "$home" "$origin"
+  printf 'done: report complete\n' > "$home/state/$origin.status"
+  printf '# Routing error sample review\n\nOne captain choice remains.\n' > "$home/data/$origin/report.md"
+  hold=$(run_decisions "$home" hold "$origin" answer \
+    --title "Pick a sample answer" --reason "captain answer pending" --repo sample) \
+    || fail "could not register routing-error hold"
+  tasks_in "$home" add sample-routing-error-impl "Apply the sample answer" \
+    --kind ship --repo sample >/dev/null || fail "could not create dependent work fixture"
+  tasks_in "$home" block sample-routing-error-impl --by "$hold" >/dev/null \
+    || fail "could not block dependent work by the hold"
+  cat > "$home/fakebin/tasks-axi" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = unblock ]; then
+  echo "synthetic unblock failure" >&2
+  exit 41
+fi
+exec "$REAL_TASKS_AXI" "$@"
+EOF
+  chmod +x "$home/fakebin/tasks-axi"
+  printf 'Use the sample answer.\n' > "$home/answer.txt"
+  if run_decisions "$home" resolve "$origin" answer --decision-file "$home/answer.txt" \
+    --routed-to sample-routing-error-impl > "$home/routing-error.out" 2> "$home/routing-error.err"; then
+    fail "resolve succeeded although routing reported an error"
+  fi
+  assert_grep "could not route the recorded decision" "$home/routing-error.err" \
+    "a routing error must be reported, not swallowed"
+  show=$(tasks_in "$home" show "$hold" --full)
+  assert_contains "$show" "state: queued" "a routing error must leave the hold open"
+  pass "resolve refuses when routing reports an error"
+}
+
+test_resolve_refuses_a_routed_task_that_does_not_exist() {
+  local home origin hold
+  home=$(make_home routed-task-missing)
+  origin=sample-missing-route-review
+  mkdir -p "$home/data/$origin"
+  tasks_in "$home" add "$origin" "Missing route sample review" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create missing-route origin"
+  write_origin_meta "$home" "$origin"
+  printf 'done: report complete\n' > "$home/state/$origin.status"
+  printf '# Missing route sample review\n\nOne captain choice remains.\n' > "$home/data/$origin/report.md"
+  hold=$(run_decisions "$home" hold "$origin" answer \
+    --title "Pick a sample answer" --reason "captain answer pending" --repo sample) \
+    || fail "could not register missing-route hold"
+  printf 'Use the sample answer.\n' > "$home/answer.txt"
+  if run_decisions "$home" resolve "$origin" answer --decision-file "$home/answer.txt" \
+    --routed-to sample-nonexistent-impl > "$home/missing-route.out" 2> "$home/missing-route.err"; then
+    fail "resolve succeeded although the routed task does not exist"
+  fi
+  assert_grep "does not exist in the active home" "$home/missing-route.err" \
+    "a nonexistent routed task must be reported, not assumed"
+  show=$(tasks_in "$home" show "$hold" --full)
+  assert_contains "$show" "state: queued" "an undiscoverable routed task must leave the hold open"
+  pass "resolve refuses a routed task that does not exist"
+}
+
+# The gate must not deadlock a decision the captain genuinely answered outside
+# fm-decision-hold.sh, such as a ticket closed directly in the backlog. Trusting
+# firstmate's own accounting means a captain-kind hold in state done is durably
+# resolved regardless of how it reached that state.
+test_verify_accepts_a_hold_closed_outside_the_tool() {
+  local home origin hold
+  home=$(make_home closed-outside-tool)
+  origin=sample-outside-tool-review
+  mkdir -p "$home/data/$origin"
+  tasks_in "$home" add "$origin" "Outside-tool sample review" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create outside-tool origin"
+  write_origin_meta "$home" "$origin"
+  printf 'done: report complete\n' > "$home/state/$origin.status"
+  printf '# Outside-tool sample review\n\nOne captain choice remains.\n' > "$home/data/$origin/report.md"
+  hold=$(run_decisions "$home" hold "$origin" answer \
+    --title "Pick a sample answer" --reason "captain answer pending" --repo sample) \
+    || fail "could not register outside-tool hold"
+  tasks_in "$home" "done" "$hold" >/dev/null \
+    || fail "could not close the hold directly, outside resolve"
+  run_decisions "$home" complete "$origin" answer >/dev/null \
+    || fail "completion refused a decision closed outside the tool"
+  run_decisions "$home" verify "$origin" >/dev/null \
+    || fail "verify refused a decision closed outside the tool"
+  pass "verify accepts a hold closed outside the tool as durably resolved"
+}
+
+# tasks-axi show only reads the live backlog, so a captain hold that retention
+# has already archived to done-archive.md is otherwise invisible to this
+# script. This reproduces the real aideinf-tickets-final-review deadlock:
+# a hold answered and closed outside the tool, then archived by --keep 0.
+test_verify_accepts_a_hold_archived_after_closing_outside_the_tool() {
+  local home origin hold
+  home=$(make_home archived-outside-tool)
+  origin=sample-archived-review
+  mkdir -p "$home/data/$origin"
+  tasks_in "$home" add "$origin" "Archived sample review" --kind scout --repo sample --start >/dev/null \
+    || fail "could not create archived-review origin"
+  write_origin_meta "$home" "$origin"
+  printf 'done: report complete\n' > "$home/state/$origin.status"
+  printf '# Archived sample review\n\nOne captain choice remains.\n' > "$home/data/$origin/report.md"
+  hold=$(run_decisions "$home" hold "$origin" answer \
+    --title "Pick a sample answer" --reason "captain answer pending" --repo sample) \
+    || fail "could not register archived-review hold"
+  tasks_in "$home" "done" "$hold" --keep 0 >/dev/null \
+    || fail "could not close and archive the hold directly, outside resolve"
+  ! tasks_in "$home" show "$hold" --full >/dev/null 2>&1 \
+    || fail "fixture did not actually archive the hold out of the live backlog"
+  assert_grep "- [x] $hold -" "$home/data/done-archive.md" \
+    "fixture must retain the archived hold line"
+  run_decisions "$home" complete "$origin" answer >/dev/null \
+    || fail "completion refused a decision archived after closing outside the tool"
+  run_decisions "$home" verify "$origin" >/dev/null \
+    || fail "verify refused a decision archived after closing outside the tool"
+  if run_decisions "$home" hold "$origin" answer \
+    --title "Pick a sample answer" --reason "captain answer pending" --repo sample \
+    > "$home/reopen.out" 2> "$home/reopen.err"; then
+    fail "hold recreated an archived, already-resolved decision instead of refusing"
+  fi
+  assert_grep "already durably resolved" "$home/reopen.err" \
+    "hold must refuse to reopen an archived, already-resolved decision key"
+  pass "verify accepts a hold archived after closing outside the tool"
+}
+
 test_uninventoried_report_decision_refuses_completion
 
 test_scout_teardown_always_requires_inventory_verification
@@ -560,3 +698,8 @@ test_none_inventory_and_resolved_prose_do_not_create_holds
 test_terminal_single_owner_status_decision_does_not_block_empty_inventory
 test_secondmate_hold_stays_in_authoritative_home
 test_resolve_matches_quoted_blocked_by_edges
+test_verify_refuses_a_still_unresolved_registered_decision
+test_resolve_refuses_when_routing_reports_an_error
+test_resolve_refuses_a_routed_task_that_does_not_exist
+test_verify_accepts_a_hold_closed_outside_the_tool
+test_verify_accepts_a_hold_archived_after_closing_outside_the_tool

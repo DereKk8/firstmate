@@ -24,6 +24,8 @@ Do not close a hold merely because the originating investigation completed, its 
 The hold remains the authoritative Captain's Call item until the captain's answer is durably recorded, dependent work is created in the same backlog and blocked by that hold, and `bin/fm-decision-hold.sh resolve` routes the answer by clearing those dependency edges before closing the hold.
 Resolved findings, recommendations that need no captain choice, and prose that merely sounds decision-like do not create holds.
 Bearings reads the resulting structured state and must never compensate by scraping historical reports, visual-review artifacts, terminal output, chat, or other prose.
+The gate trusts firstmate's own operating contract, not a provenance proof: it checks only present, locally checkable state (is the decision still unresolved, did routing error, is durable work discoverable), never who wrote a record or when.
+A hold the captain answered and closed outside this tool is durably resolved on that basis alone; there is no separate repair step to reconstruct evidence for it.
 
 ## Operating sequence
 
