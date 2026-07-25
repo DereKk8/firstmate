@@ -52,9 +52,8 @@
 #          lavish-axi). tasks-axi is also version and feature gated (0.1.1+
 #          with update --archive-body and mv [<id>...]); an installed but
 #          incompatible build reports MISSING like no-mistakes. A compatible
-#          tasks-axi default backend is silent. quota-axi is required because
-#          crew-dispatch quota-balanced may call it; fm-dispatch-select.sh still
-#          degrades at runtime when quota data is unavailable.
+#          tasks-axi default backend is silent. quota-axi is required for the
+#          agent-owned dispatch-profile array procedure in AGENTS.md section 4.
 #          X mode is OPTIONAL and inert unless FM_HOME/.env has a non-empty
 #          FMX_PAIRING_TOKEN. When opted in, bootstrap requires curl+jq, writes
 #          the relay poll shim and 30s cadence config, and prints an FMX line.
