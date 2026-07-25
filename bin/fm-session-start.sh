@@ -38,7 +38,9 @@
 #                       recent data/reset-window/*.md handoff note (only when
 #                       newer than the previous session start, tracked via
 #                       state/.last-session-start): read-only, always safe,
-#                       always runs.
+#                       always runs. The marker itself only advances on the
+#                       locked path - a read-only session must not consume the
+#                       note before the session holding the lock ever sees it.
 #   5. fleet digest   - a compact data/backlog.md identity/metadata listing,
 #                       every state/*.meta, a bounded state/*.status tail,
 #                       state/.afk, and a cheap per-task endpoint-liveness read:
@@ -136,15 +138,16 @@ print_file_or_absent() {
 }
 
 
-# print_reset_handoff_note <reset-window-dir> <marker>: the most recent
-# data/reset-window/*.md handoff note left by a session this one replaced,
-# printed only when it is newer than the marker recorded at the previous
-# session start - so a note is surfaced exactly once, not at every session
-# start for the rest of time. Always advances the marker to now afterward,
-# whether or not a note was found, so the next session start compares against
-# this one's start time.
+# print_reset_handoff_note <reset-window-dir> <marker> <read-only>: the most
+# recent data/reset-window/*.md handoff note left by a session this one
+# replaced, printed only when it is newer than the marker recorded at the
+# previous session start - so a note is surfaced exactly once, not at every
+# session start for the rest of time. Advances the marker to now afterward
+# ONLY when this session is not read-only: a lock-refused session must not
+# perform a durable mutation, and advancing the marker here would consume the
+# note before the session that actually holds the lock ever sees it.
 print_reset_handoff_note() {
-  local dir=$1 marker=$2 latest=""
+  local dir=$1 marker=$2 read_only=$3 latest=""
   subsection "data/reset-window (handoff note from the session this one replaced)"
   if [ -d "$dir" ]; then
     if [ -f "$marker" ]; then
@@ -159,7 +162,7 @@ print_reset_handoff_note() {
   else
     printf 'none (no reset note newer than the previous session start)\n'
   fi
-  touch "$marker"
+  [ "$read_only" -eq 1 ] || touch "$marker"
 }
 
 print_backlog_pointer() {
@@ -361,7 +364,7 @@ print_file_or_absent "$DATA/secondmates.md" "data/secondmates.md"
 print_file_or_absent "$DATA/captain.md" "data/captain.md"
 print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
 print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
-print_reset_handoff_note "$DATA/reset-window" "$STATE/.last-session-start"
+print_reset_handoff_note "$DATA/reset-window" "$STATE/.last-session-start" "$READ_ONLY"
 
 # --- 5. fleet-state digest ---------------------------------------------
 section "FLEET STATE"
