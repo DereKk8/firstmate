@@ -106,6 +106,13 @@ It owns per-adapter supervision knowledge (busy signature, exit, interrupt, dial
 
 `docs/configuration.md` owns dispatch-profile and runtime-backend schemas, `bin/fm-dispatch-select.sh` owns selector mechanics, `bin/fm-harness.sh` owns static resolution, and `bin/fm-spawn.sh` owns launch flags and fail-closed validation.
 
+Firstmate alone resolves a matched profile array: run `quota-axi --json` at that intake, evaluate every configured candidate against that current output, and choose the candidate with the most real headroom.
+Account for every candidate; if any harness/model/provider relationship, applicable quota data, or interpretation cannot be established, stop and report that candidate instead of omitting it, guessing, falling back, or calling the result quota-informed.
+Preserve malformed profile configuration as an actionable error rather than selecting around it.
+When every candidate is tight, preserve the captain's strongest-reasoning class rather than silently downgrading it solely to conserve quota; stop and report the tight choice if that class cannot proceed.
+Break genuine headroom ties without array-order or harness bias.
+`quota-axi` owns how model or product windows relate to bounding account windows; this is an explicitly interim rule until successor `quota-axi-interpretation-hints-h3` lands.
+
 The static crewmate harness default lives in `config/crew-harness` (absent or `default` = mirror your own harness).
 Resolve `default` with `bin/fm-harness.sh`; resolve the active static crewmate harness with `bin/fm-harness.sh crew`.
 
