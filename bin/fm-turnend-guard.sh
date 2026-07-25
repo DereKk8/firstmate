@@ -54,7 +54,8 @@
 #      (default 3) consecutive blocks per session - safely below Claude Code's
 #      hard 8-consecutive-block override - then allow degraded with a visible
 #      systemMessage so the session can always end.
-# Any allow resets the consecutive-block budget.set -u
+# Any allow resets the consecutive-block budget.
+set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"

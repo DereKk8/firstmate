@@ -878,7 +878,6 @@ if [ "${FM_BOOTSTRAP_VERBOSE_FACTS:-0}" = 1 ] \
   echo "BOOTSTRAP_INFO: tasks-axi available"
 fi
 if [ "${FM_BOOTSTRAP_DETECT_ONLY:-0}" != 1 ]; then
-  secondmate_liveness_sweep
   secondmate_sync
   secondmate_liveness_sweep
   x_mode_setup
