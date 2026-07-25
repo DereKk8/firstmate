@@ -45,7 +45,7 @@ Never add an agent name as a commit co-author.
 
 ## 2. Layout and state
 
-`docs/configuration.md` is the single owner of the operational-home layout, configuration schemas, and reference state map; each producing script's header and help own exact child fields and mutation mechanics.
+`docs/configuration.md` is the single owner of the top-level operational-home layout, configuration schemas, and reference state map; each producing script's header and help own exact child fields and mutation mechanics.
 `FM_HOME` selects an instance's private `data/`, `state/`, `config/`, and `projects/`, while scripts continue to come from their tracked code root.
 `FM_STATE_OVERRIDE` and `FM_ROOT_OVERRIDE` remain compatible narrower overrides when `FM_HOME` is unset.
 Each secondmate has a persistent isolated `FM_HOME`, including its own state, backlog, projects, and session lock.
@@ -63,7 +63,7 @@ Load `layout-reference` when you need the full file-by-file inventory, backend-s
 ## 3. Session start (run once at every session start)
 
 Run `bin/fm-session-start.sh` exactly once at session start.
-Its header is the single owner of composed commands, ordering, digest contents, and emitted supervision instructions; do not reimplement it by separately running its lock, bootstrap, or wake-drain components.
+Its header is the single owner of composed commands, ordering, and digest contents, including emitted supervision instructions; do not reimplement it by separately running its lock, bootstrap, or wake-drain components.
 It composes today's `fm-lock.sh`, `fm-bootstrap.sh`, and `fm-wake-drain.sh`, then prints a full context digest and fleet-state digest.
 Its mutating sweeps (non-executing legacy PR-check migration, fleet sync, local secondmate fast-forward, the secondmate liveness respawn sweep, and X-mode artifact writes) run only when this session actually holds the lock; detect-only diagnostics always print.
 The digest ends by emitting exactly one supervision operating block for the detected primary harness (rendered by `bin/fm-supervision-instructions.sh`); that emitted block owns the exact wait or wake mechanism for this session - do not substitute another harness's command shape for it.
@@ -196,15 +196,19 @@ Before commissioning an investigation, consult existing reports and established 
 
 Classify the deliverable:
 
-- **Ship** is the default and produces a project change through the selected delivery mode.
-- **Scout** produces knowledge in `data/<id>/report.md`, never a PR, and is the default for investigation, diagnosis, planning, reproduction, or audit requests that do not clearly include implementation.
+- **Ship** is the default and produces a project change through the selected delivery mode; once implementation is authorized, dispatch a ship and keep any remaining bounded research inside it unless unresolved uncertainty could materially change whether or what to build.
+- **Scout** produces knowledge in `data/<id>/report.md`, never a PR, and is appropriate for investigation, diagnosis, planning, reproduction, or audit work when the captain explicitly requests a separate knowledge or design deliverable or unresolved uncertainty could materially change whether or what to build.
+
+If established evidence already answers an informational question, relay it without a design-only scout; when implementation intent is unclear, answer and ask one concise implementation question when useful rather than dispatching speculative design work.
+Never both present a likely-enough solution and launch a parallel design exercise that is not expected to change it.
 
 A diagnostic request, report, recommendation, or implementation-ready finding is evidence, not authorization to change code.
 Implementation requires a separate request or other clear implementation scope.
 Load `diagnostic-reasoning` before scoping a reported bug and before acting on a diagnostic report.
 
 Classify work as dispatchable when it does not overlap work under way, or queued and blocked when it touches the same project subsystem or depends on unlanded work.
-Dispatch independent work immediately with no concurrency cap, serialize coarse overlaps, and record blockers durably.
+Treat file or subsystem overlap as a risk signal rather than an automatic reason to wait, and dispatch isolated work immediately with no concurrency cap when each change can be independently implemented and validated and the selected delivery path can reconcile ordinary rebases or conflicts.
+Serialize only for a true semantic dependency, shared mutable external state, incompatible concurrent migration, or another concrete condition that makes independent progress or reconciliation unsafe; same-file editing alone is insufficient, and genuine blockers remain durable.
 Write the task-specific brief under section 11 before spawning.
 
 ### Dispatch and supervision handoff
