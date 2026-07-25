@@ -58,7 +58,8 @@ Write the continuation note to `data/reset-window/<YYYY-MM-DD-HHMM>.md`:
 ```
 
 This note is transient scaffolding for the next session, not a permanent record;
-older ones can be pruned freely.
+older ones can be pruned freely. Keep the exact path you wrote — step 5 names it
+directly in the successor's launch prompt.
 
 ### 2. Back up fleet data
 
@@ -90,6 +91,12 @@ Backend-aware. Resolve the backend from `config/backend` (herdr is this fleet's
 default). The successor launches at the firstmate repo root, on the requested
 harness/model/effort, with a catch-up prompt so it runs session-start itself.
 
+The launch prompt must name the exact `data/reset-window/<YYYY-MM-DD-HHMM>.md`
+path written in step 1, not a bare "catch up" — session-start surfaces that note
+only once, so a successor that never reads its instructions can still find it
+named explicitly in its very first prompt. Substitute `<note-path>` below with
+that literal path, exactly as `<model>` and `<effort>` are already substituted.
+
 **herdr backend:**
 ```sh
 herdr agent start firstmate-<model-short> \
@@ -97,14 +104,14 @@ herdr agent start firstmate-<model-short> \
   --env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false \
   -- env -u ANTHROPIC_BASE_URL claude \
        --model <model> --effort <effort> --permission-mode bypassPermissions \
-       "We are resuming a session of Firstmate. Please catch up."
+       "We are resuming a session of Firstmate. The prior session left a handoff note at <note-path> — read it, then catch up."
 ```
 
 **tmux backend** (only if `config/backend` is tmux / no herdr):
 ```sh
 tmux new-window -t "$SESSION" -n firstmate-<model-short> -d \
   'cd "$FM_HOME" && env -u ANTHROPIC_BASE_URL claude --model <model> --effort <effort> \
-     --permission-mode bypassPermissions "We are resuming a session of Firstmate. Please catch up."'
+     --permission-mode bypassPermissions "We are resuming a session of Firstmate. The prior session left a handoff note at <note-path> — read it, then catch up."'
 ```
 
 For a non-Claude successor harness, use that adapter's launch shape from
