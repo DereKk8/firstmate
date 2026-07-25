@@ -18,6 +18,8 @@
 #   - composition: the script invokes the real fm-lock.sh/fm-bootstrap.sh/
 #     fm-wake-drain.sh (their real, distinctive output appears verbatim), it
 #     does not reimplement their logic
+#   - the reset-window handoff note: printed once when newer than the
+#     previous session start, not reprinted at the next session start
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -901,6 +903,58 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
+# --- reset-window handoff note ----------------------------------------------
+
+test_reset_handoff_note_printed_when_newer_than_previous_session_start() {
+  local rec root home fakebin out
+  rec=$(new_world reset-handoff-newer)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  mkdir -p "$home/data/reset-window"
+  printf '# Session reset 2026-07-25-1200\n\n## In-flight\n- fm-demo-task: watch CI\n' \
+    > "$home/data/reset-window/2026-07-25-1200.md"
+
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+
+  assert_contains "$out" "handoff note from the session this one replaced" \
+    "digest did not label the reset-window handoff note"
+  assert_contains "$out" "fm-demo-task: watch CI" \
+    "digest did not print the reset-window note content"
+  [ -f "$home/state/.last-session-start" ] || fail "session start did not record a .last-session-start marker"
+
+  pass "session start prints a reset-window note newer than the previous session start"
+}
+
+test_reset_handoff_note_not_reprinted_at_next_session_start() {
+  local rec root home fakebin out1 out2
+  rec=$(new_world reset-handoff-not-reprinted)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  mkdir -p "$home/data/reset-window"
+  printf '# Session reset 2026-07-25-0900\n\n## In-flight\n- fm-old-task: watch tests\n' \
+    > "$home/data/reset-window/2026-07-25-0900.md"
+
+  out1=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out1" "fm-old-task: watch tests" \
+    "first session start did not print the reset-window note"
+
+  out2=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_not_contains "$out2" "fm-old-task: watch tests" \
+    "second session start reprinted a reset-window note no newer than the previous session start"
+  assert_contains "$out2" "none (no reset note newer than the previous session start)" \
+    "second session start did not report the reset-window note as already surfaced"
+
+  pass "session start does not reprint a reset-window note that is not newer than the previous session start"
+}
+
 test_context_digest_absent_empty_present
 test_lock_refusal_read_only_path
 test_output_ordering_diagnostics_lead
@@ -921,3 +975,5 @@ test_pi_diagnostic_rejects_stale_loaded_marker
 test_pi_diagnostic_accepts_prelock_loaded_marker
 test_pi_diagnostic_rejects_missing_turnend_guard_marker
 test_pi_diagnostic_rejects_previous_session_loaded_marker
+test_reset_handoff_note_printed_when_newer_than_previous_session_start
+test_reset_handoff_note_not_reprinted_at_next_session_start
