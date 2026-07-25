@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Watcher liveness and worktree-tangle guard, called by supervision scripts, by
 # fm-wake-drain.sh after it empties queued wakes, and by fm-session-start.sh in
-# read-only advisory mode when another session holds the fleet lock.
+# read-only advisory mode whenever session-lock ownership was not verified.
 # First, always warn if the firstmate primary checkout (FM_ROOT) is on a named
 # non-default branch OR has uncommitted changes to tracked files, because either
 # means firstmate-on-itself work landed in the primary instead of an isolated worktree.
@@ -131,7 +131,7 @@ if [ -n "$tangle_branch" ]; then
     printf '●  A crewmate likely branched/committed in the primary instead of its own worktree.\n'
     printf "●  The work is SAFE on the '%s' ref.\n" "$tangle_branch"
     if [ "$READ_ONLY" -eq 1 ]; then
-      printf '●  This read-only session must leave restore work to the session holding the fleet lock.\n'
+      printf '●  This read-only session must leave restore work to a session with verified fleet-lock ownership.\n'
     else
       printf "●  Restore the primary to '%s':\n" "$tangle_default"
       printf '●      git -C %s checkout %s\n' "$FM_ROOT" "$tangle_default"
@@ -152,7 +152,7 @@ if [ -n "$tangle_dirty" ]; then
     printf '●  A crewmate likely modified or staged files in the primary instead of its own worktree.\n'
     printf '●  The work is SAFE. Never discard it.\n'
     if [ "$READ_ONLY" -eq 1 ]; then
-      printf '●  This read-only session must leave restore work to the session holding the fleet lock.\n'
+      printf '●  This read-only session must leave restore work to a session with verified fleet-lock ownership.\n'
     else
       printf '●  To preserve: create a branch and commit:\n'
       printf '●      git -C %s switch -c <branch-name> && git -C %s commit -a -m wip\n' "$FM_ROOT" "$FM_ROOT"
@@ -178,7 +178,6 @@ if [ "$in_flight" -eq 0 ]; then
   [ "$READ_ONLY" -eq 1 ] || fm_guard_clear_stale_banner
   exit 0
 fi
-
 [ -s "$FM_WAKE_QUEUE" ] && queue_pending=true
 
 # No fresh watcher with tasks in flight is the dangerous state: emit a prominent,
@@ -205,7 +204,7 @@ if [ "$watcher_fresh" = false ]; then
       --afk "$afk" \
       --x-mode "$x_mode" \
       --queue-pending "$queue_arg" \
-      --repair-line 2>/dev/null || printf '%s\n' 'Resume supervision according to the session-start operating block.')
+      --repair-line 2>/dev/null || printf '%s\n' 'Repair missing watcher supervision according to the session-start operating block.')
     rule='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
     {
       printf '●%s\n' "$rule"
@@ -235,7 +234,7 @@ fi
 # Dedup of the watcher-down banner never suppresses this warning.
 if "$queue_pending"; then
   if [ "$READ_ONLY" -eq 1 ]; then
-    echo "WARNING: queued wakes pending - left untouched for the session holding the fleet lock." >&2
+    echo "WARNING: queued wakes pending - left untouched because this session lacks verified fleet-lock ownership." >&2
   else
     echo "WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else." >&2
   fi
