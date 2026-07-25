@@ -1173,9 +1173,9 @@ spawn_readiness_fail() {  # <reason>
 # invocation already proved isolated. No other prompt receives input here.
 spawn_wait_ready() {  # <target>
   local target=$1 attempts=${FM_SPAWN_READY_ATTEMPTS:-20} delay=${FM_SPAWN_READY_SLEEP:-0.25}
-  local i capture trust_seen=0
+  local _ capture trust_seen=0
   case "$attempts" in ''|*[!0-9]*|0) attempts=20 ;; esac
-  for i in $(seq 1 "$attempts"); do
+  for _ in $(seq 1 "$attempts"); do
     if ! fm_backend_target_exists "$BACKEND" "$target" "$W"; then
       sleep "$delay"
       continue
