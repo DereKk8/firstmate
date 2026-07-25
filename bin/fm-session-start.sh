@@ -34,8 +34,11 @@
 #   3. wake-drain     - mutates the durable wake queue, so it also only runs
 #                       when locked.
 #   4. context digest - data/projects.md, data/secondmates.md, data/captain.md,
-#                       data/captain-shared.md, data/learnings.md: read-only,
-#                       always safe, always runs.
+#                       data/captain-shared.md, data/learnings.md, and the most
+#                       recent data/reset-window/*.md handoff note (only when
+#                       newer than the previous session start, tracked via
+#                       state/.last-session-start): read-only, always safe,
+#                       always runs.
 #   5. fleet digest   - a compact data/backlog.md identity/metadata listing,
 #                       every state/*.meta, a bounded state/*.status tail,
 #                       state/.afk, and a cheap per-task endpoint-liveness read:
@@ -130,6 +133,33 @@ print_file_or_absent() {
   else
     printf 'ABSENT\n'
   fi
+}
+
+
+# print_reset_handoff_note <reset-window-dir> <marker>: the most recent
+# data/reset-window/*.md handoff note left by a session this one replaced,
+# printed only when it is newer than the marker recorded at the previous
+# session start - so a note is surfaced exactly once, not at every session
+# start for the rest of time. Always advances the marker to now afterward,
+# whether or not a note was found, so the next session start compares against
+# this one's start time.
+print_reset_handoff_note() {
+  local dir=$1 marker=$2 latest=""
+  subsection "data/reset-window (handoff note from the session this one replaced)"
+  if [ -d "$dir" ]; then
+    if [ -f "$marker" ]; then
+      latest=$(find "$dir" -maxdepth 1 -type f -name '*.md' -newer "$marker" 2>/dev/null | sort | tail -n1)
+    else
+      latest=$(find "$dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null | sort | tail -n1)
+    fi
+  fi
+  if [ -n "$latest" ]; then
+    printf '%s\n' "$latest"
+    cat "$latest"
+  else
+    printf 'none (no reset note newer than the previous session start)\n'
+  fi
+  touch "$marker"
 }
 
 print_backlog_pointer() {
@@ -331,6 +361,7 @@ print_file_or_absent "$DATA/secondmates.md" "data/secondmates.md"
 print_file_or_absent "$DATA/captain.md" "data/captain.md"
 print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
 print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
+print_reset_handoff_note "$DATA/reset-window" "$STATE/.last-session-start"
 
 # --- 5. fleet-state digest ---------------------------------------------
 section "FLEET STATE"
@@ -419,7 +450,7 @@ fi
 cat <<'EOF'
 The digest above is complete for this session start. Do NOT re-read
 data/projects.md, data/secondmates.md, data/captain.md,
-data/captain-shared.md, data/learnings.md,
+data/captain-shared.md, data/learnings.md, the reset-window handoff note,
 or state/*.meta now - they were just printed in full.
 Do NOT bulk-read data/backlog.md now either: the compact identity/metadata
 listing was just printed with a pointer for targeted full-body follow-up.
