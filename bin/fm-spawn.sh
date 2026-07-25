@@ -810,14 +810,18 @@ validate_spawn_worktree() {  # <source> <inspect-target>
   # clones of the same remote share one pool; treehouse get can silently hand out a
   # worktree whose .git objects, refs, and hooks belong to the other clone.
   # git-common-dir is the authoritative pointer; assert it resolves inside proj_real.
-  local wt_common wt_common_real
+  local wt_common wt_common_path wt_common_real
   wt_common=$(git -C "$WT" rev-parse --git-common-dir 2>/dev/null || true)
   if [ -z "$wt_common" ]; then
     echo "error: $source cannot verify worktree isolation: 'git rev-parse --git-common-dir' failed or returned empty for '$WT'. Inspect target $inspect_target" >&2
     exit 1
   fi
+  case "$wt_common" in
+    /*) wt_common_path=$wt_common ;;
+    *) wt_common_path="$WT/$wt_common" ;;
+  esac
   wt_common_real=
-  if ! wt_common_real=$(cd "$wt_common" 2>/dev/null && pwd -P); then
+  if ! wt_common_real=$(cd "$wt_common_path" 2>/dev/null && pwd -P); then
     echo "error: $source cannot verify worktree isolation: git-common-dir path '$wt_common' cannot be resolved to an absolute path. Inspect target $inspect_target" >&2
     exit 1
   fi
@@ -1193,8 +1197,10 @@ spawn_wait_ready() {  # <target>
         fi
         ;;
       *)
-        [ "$trust_seen" -eq 1 ] && return 0
-        [ -n "$capture" ] && return 0
+        # Endpoint reachability is the readiness gate. A Codex pane can be
+        # empty immediately after launch; only a previously observed trust
+        # prompt needs an additional capture to prove it cleared.
+        return 0
         ;;
     esac
     sleep "$delay"

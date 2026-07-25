@@ -108,6 +108,50 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/cardio/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/claude-remote/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/crew-dispatch/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/explain/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/explain/explainer-brief.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/layout-reference/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/reset-window/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/supervision/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/syncfirstmate/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/task-lifecycle/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/x-mode/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/ahoy/SKILL.md",
       "audience": "agent-runtime"
     },
