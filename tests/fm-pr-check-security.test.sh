@@ -1439,6 +1439,7 @@ test_ambiguous_failure_accepts_validated_replacement() {
   dir=$(make_case ambiguous-validated-replacement)
   state="$dir/home/state"
   write_ambiguous_poll "$dir"
+  printf 'project=%s\n' "$dir/project" >> "$state/task-a.meta"
   mkdir "$state/task-a.pr-poll"
 
   set +e
