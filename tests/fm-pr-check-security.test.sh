@@ -61,6 +61,8 @@ make_case() {
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"
 SH
   chmod +x "$fake_root/bin/fm-guard.sh"
+  cp "$ROOT/bin/fm-project-base.sh" "$fake_root/bin/fm-project-base.sh"
+  chmod +x "$fake_root/bin/fm-project-base.sh"
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
@@ -97,6 +99,8 @@ SH
 
 write_task_meta() {
   local dir=$1 id=${2:-task-a}
+  mkdir -p "$dir/project"
+  printf '%s\n' '- project [no-mistakes] base=main - fixture project' > "$dir/home/data/projects.md"
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=fm-$id" \
     "worktree=$dir/wt" \

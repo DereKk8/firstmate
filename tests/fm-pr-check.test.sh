@@ -430,8 +430,8 @@ test_gh_unavailable_refused() {
   local case_dir rc out
   case_dir=$(make_case gh-unavailable)
   # PATH is fakebin-only (no /bin or /usr/bin), so gh is absent from PATH.
-  # Passthroughs for tools used before the gh gate; guard call uses || true.
-  add_system_passthroughs "$case_dir" dirname grep tail cut
+  # dirname derives the script directory before the missing-gh refusal.
+  add_system_passthroughs "$case_dir" dirname
   # No wt dir: inner headRefOid block is skipped; no gh call before gate.
 
   set +e

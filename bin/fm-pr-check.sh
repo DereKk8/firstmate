@@ -59,6 +59,16 @@ HOST=$FM_PR_HOST
 PROJECT_PATH=$FM_PR_PATH
 NUMBER=$FM_PR_NUMBER
 
+pr_check_refuse() {  # <message>
+  echo "pr-check: REFUSED: $1" >&2
+  echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
+  exit 1
+}
+
+if [ "$PROVIDER" = github ] && ! command -v gh >/dev/null 2>&1; then
+  pr_check_refuse "gh is not on PATH; cannot verify PR content"
+fi
+
 # Task-derived paths are constructed only after the canonical ID validation.
 META="$STATE/$ID.meta"
 if [ ! -f "$META" ] || [ -L "$META" ] || [ "$(fm_pr_file_link_count "$META")" != 1 ]; then
@@ -107,18 +117,8 @@ fi
 
 # --- PR content verification (GitHub only; skipped when --force-ready is given) --
 # Fail closed: every unverifiable path is a refuse, never a silent pass-through.
-pr_check_refuse() {  # <message>
-  echo "pr-check: REFUSED: $1" >&2
-  echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
-  exit 1
-}
-
 if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
-  # Gate 1: gh must be on PATH.  A missing tool means nothing can be verified.
-  command -v gh >/dev/null 2>&1 \
-    || pr_check_refuse "gh is not on PATH; cannot verify PR content"
-
-  # Gate 2: fetch the fields we need from GitHub.  Any gh failure is a refuse,
+  # Gate 1: fetch the fields we need from GitHub.  Any gh failure is a refuse,
   # not a silent pass-through — auth errors, network failures, and rate limits
   # all mean we cannot verify, and cannot-verify must not arm the merge poll.
   PR_BODY=""
