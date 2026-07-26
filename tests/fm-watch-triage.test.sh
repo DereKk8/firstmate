@@ -748,8 +748,13 @@ test_exited_declared_pause_is_bounded_with_live_terminal_or_unknown_state() {
   [ -e "$state/.paused-$key" ] || { reap "$pid"; fail "live unknown state lost its pause cadence marker"; }
   [ ! -e "$state/.stale-since-$key" ] || { reap "$pid"; fail "live unknown state retained the wedge timer"; }
   reap "$pid"
-  wakes=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w { n++ } END { print n + 0 }' "$state/.wake-queue")
-  bare=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w && $5 == "stale: " w { n++ } END { print n + 0 }' "$state/.wake-queue")
+  if [ -e "$state/.wake-queue" ]; then
+    wakes=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w { n++ } END { print n + 0 }' "$state/.wake-queue")
+    bare=$(awk -F '\t' -v w="$window" '$3 == "stale" && $4 == w && $5 == "stale: " w { n++ } END { print n + 0 }' "$state/.wake-queue")
+  else
+    wakes=0
+    bare=0
+  fi
   [ "$wakes" -eq 0 ] || fail "live terminal or unknown state emitted $wakes stale wakes"
   [ "$bare" -eq 0 ] || fail "live terminal or unknown state emitted $bare bare stale wakes"
   pass "declared pauses absorb live terminal and unknown crew states without wedge escalation"
