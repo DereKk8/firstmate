@@ -55,7 +55,8 @@ make_case() {
   dir="$TMP_ROOT/$name"
   fakebin="$dir/fakebin"
   fake_root="$dir/root"
-  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/wt" "$fakebin" "$fake_root/bin"
+  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/project" "$dir/wt" "$fakebin" "$fake_root/bin"
+  printf '%s\n' '- project [no-mistakes] base=main - fixture project' > "$dir/home/data/projects.md"
   cat > "$fake_root/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"
@@ -99,8 +100,6 @@ SH
 
 write_task_meta() {
   local dir=$1 id=${2:-task-a}
-  mkdir -p "$dir/project"
-  printf '%s\n' '- project [no-mistakes] base=main - fixture project' > "$dir/home/data/projects.md"
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=fm-$id" \
     "worktree=$dir/wt" \
