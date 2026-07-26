@@ -252,6 +252,7 @@ case "${1:-}" in
       case "$format" in
         *pane_current_path*) printf '%s\n' "$mate_home" ;;
         *pane_current_command*) printf '%s\n' node ;;
+        *session_name*) printf '%s\n' firstmate ;;
         *) printf '%s\n' "$target" ;;
       esac
       exit 0

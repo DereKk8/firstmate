@@ -58,9 +58,18 @@ fm_backend_tmux_send_text_submit() {  # <target> <text> <retries> <enter-sleep> 
 # firstmate itself runs inside tmux, else ensure a dedicated detached
 # "firstmate" session exists. Mirrors fm-spawn.sh's container-ensure block;
 # prints the resolved session name.
+#
+# Targets the query at $TMUX_PANE (this process's own controlling pane, always
+# populated when truly inside a tmux client) rather than issuing an untargeted
+# display-message: an untargeted query falls back to tmux's ambient "current
+# client" guess, which can resolve to the wrong session - or, from a
+# non-interactive subprocess, to no real client at all - exactly the same
+# active-client fallback hazard already called out in fm-spawn.sh's window-id
+# targeting (see the worktree-detection comment there). A stable pane id
+# avoids that guess the same way a stable window id does.
 fm_backend_tmux_container_ensure() {
-  if [ -n "${TMUX:-}" ]; then
-    tmux display-message -p '#S'
+  if [ -n "${TMUX_PANE:-}" ]; then
+    tmux display-message -p -t "$TMUX_PANE" '#{session_name}'
   else
     tmux has-session -t firstmate 2>/dev/null || tmux new-session -d -s firstmate
     printf 'firstmate'
