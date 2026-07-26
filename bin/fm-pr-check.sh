@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Record a PR-ready task: store one validated canonical pr=<url> and GitHub's
+# Record a PR-ready task: store one validated canonical pr=<url> and the forge's
 # exact pr_head=<sha> when available, then atomically arm a static merge poll.
 # The watcher check source is byte-for-byte bin/fm-pr-poll.sh; task and PR data
 # live only in a private sidecar and are never interpolated into shell source.
-# Before arming, verifies the PR is clean. The gate is fail-closed: every path
-# that cannot verify refuses explicitly. Refuses (exit non-zero, naming the
-# exact condition) when any of the following hold:
+# A GitHub pull request URL and a GitLab merge request URL are both accepted,
+# including a merge request on a self-hosted GitLab instance.
+# Before arming a GitHub PR, verifies the PR is clean. The gate is fail-closed:
+# every path that cannot verify refuses explicitly. Refuses (exit non-zero,
+# naming the exact condition) when any of the following hold:
 #   - gh is not on PATH (cannot verify anything)
 #   - any gh pr view call fails (auth error, network, rate-limit)
 #   - the PR body shows a skipped pipeline gate (no-mistakes markers)
@@ -18,7 +20,10 @@
 #     (the registry base wins over the repo default; used for repos targeting dev)
 # Absence of no-mistakes markers (hand-written PR, direct-PR mode) does NOT
 # trip the body checks; only the presence of specific markers refuses.
-# --force-ready: bypass all content checks and arm anyway.
+# A GitLab merge request has no such content verification: glab exposes the
+# fields we would need only inside JSON output, which would need a JSON
+# processor firstmate does not require, so a GitLab task arms directly.
+# --force-ready: bypass all GitHub content checks and arm anyway.
 #   Records pr_check_override=1 in meta so the override is auditable; once set
 #   it survives a later clean re-check rather than being silently dropped.
 # Usage: fm-pr-check.sh [--force-ready] <task-id> <pr-url>
@@ -49,14 +54,42 @@ if ! fm_pr_task_id_valid "$ID" || ! fm_pr_url_parse "$RAW_URL"; then
   exit 2
 fi
 URL=$FM_PR_URL
-OWNER=$FM_PR_OWNER
-REPO=$FM_PR_REPO
+PROVIDER=$FM_PR_PROVIDER
+HOST=$FM_PR_HOST
+PROJECT_PATH=$FM_PR_PATH
 NUMBER=$FM_PR_NUMBER
+
+pr_check_refuse() {  # <message>
+  echo "pr-check: REFUSED: $1" >&2
+  echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
+  exit 1
+}
+
+if [ "$PROVIDER" = github ] && ! command -v gh >/dev/null 2>&1; then
+  pr_check_refuse "gh is not on PATH; cannot verify PR content"
+fi
 
 # Task-derived paths are constructed only after the canonical ID validation.
 META="$STATE/$ID.meta"
 if [ ! -f "$META" ] || [ -L "$META" ] || [ "$(fm_pr_file_link_count "$META")" != 1 ]; then
   echo "error: task metadata is unavailable" >&2
+  exit 1
+fi
+
+# A prior exact merged result may have queued its durable wake immediately
+# before interruption.
+# Finish only its identity-bound receipt before publishing a replacement poll.
+fm_pr_poll_retirement_recover_one "$STATE" "$ID" "$SCRIPT_DIR/fm-pr-poll.sh" || {
+  echo "error: pending PR poll retirement could not be validated" >&2
+  exit 1
+}
+
+# Refuse to arm a GitLab watch with no glab on PATH. The poll is silent on
+# every error by design, so a missing CLI would be indistinguishable from a
+# merge request that is never merged. Arming is the one point where that can be
+# reported, so the absent tool stops the watch here instead of watching nothing.
+if [ "$PROVIDER" = gitlab ] && ! command -v glab >/dev/null 2>&1; then
+  echo "error: watching a GitLab merge request requires glab on PATH" >&2
   exit 1
 fi
 
@@ -66,29 +99,26 @@ fi
 "$SCRIPT_DIR/fm-pr-check-migrate.sh" --checks-safe || exit 1
 "$FM_ROOT/bin/fm-guard.sh" || true
 
+# pr_head is recorded only when the forge's CLI can supply it. gh exposes the
+# head commit as a selectable field; plain glab exposes it only inside its JSON
+# output, which would need a JSON processor firstmate does not require, so a
+# GitLab task records no pr_head. Both consumers already treat it as optional:
+# bin/fm-teardown.sh reads the head from the forge at teardown rather than from
+# metadata and falls back to its provider-agnostic content check, and
+# bin/fm-review-diff.sh resolves the head from the remote when none is recorded.
 WT=$(grep '^worktree=' "$META" | tail -1 | cut -d= -f2- || true)
 PR_HEAD=
-if [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/dev/null 2>&1; then
+if [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/dev/null 2>&1; then
   if REMOTE_HEAD=$(cd "$WT" && gh pr view "$URL" --json headRefOid -q .headRefOid 2>/dev/null) \
     && fm_pr_head_valid "$REMOTE_HEAD"; then
     PR_HEAD=$REMOTE_HEAD
   fi
 fi
 
-# --- PR content verification (skipped when --force-ready is given) -----------
+# --- PR content verification (GitHub only; skipped when --force-ready is given) --
 # Fail closed: every unverifiable path is a refuse, never a silent pass-through.
-pr_check_refuse() {  # <message>
-  echo "pr-check: REFUSED: $1" >&2
-  echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
-  exit 1
-}
-
-if [ "$FORCE_READY" -eq 0 ]; then
-  # Gate 1: gh must be on PATH.  A missing tool means nothing can be verified.
-  command -v gh >/dev/null 2>&1 \
-    || pr_check_refuse "gh is not on PATH; cannot verify PR content"
-
-  # Gate 2: fetch the fields we need from GitHub.  Any gh failure is a refuse,
+if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
+  # Gate 1: fetch the fields we need from GitHub.  Any gh failure is a refuse,
   # not a silent pass-through — auth errors, network failures, and rate limits
   # all mean we cannot verify, and cannot-verify must not arm the merge poll.
   PR_BODY=""
@@ -199,7 +229,7 @@ pr_check_cleanup() {
 }
 trap pr_check_cleanup EXIT
 trap 'exit 1' HUP INT TERM
-fm_pr_poll_prepare "$STATE" "$ID" "$URL" "$OWNER" "$REPO" "$NUMBER" "$SCRIPT_DIR/fm-pr-poll.sh" \
+fm_pr_poll_prepare "$STATE" "$ID" "$PROVIDER" "$URL" "$HOST" "$PROJECT_PATH" "$NUMBER" "$SCRIPT_DIR/fm-pr-poll.sh" \
   || { echo "error: could not prepare PR poll" >&2; exit 1; }
 
 META_DEVICE=$(fm_pr_file_device "$META") || exit 1
@@ -229,15 +259,17 @@ printf 'pr=%s\n' "$URL" >> "$META_TMP" || exit 1
 chmod 0600 "$META_TMP" || exit 1
 fm_pr_private_file_valid "$META_TMP" 600 "$STATE_DEVICE" || exit 1
 fm_pr_metadata_identity_parse "$META_TMP" || exit 1
-[ "$FM_PR_META_URL" = "$URL" ] && [ "$FM_PR_META_OWNER" = "$OWNER" ] \
-  && [ "$FM_PR_META_REPO" = "$REPO" ] && [ "$FM_PR_META_NUMBER" = "$NUMBER" ] || exit 1
+[ "$FM_PR_META_PROVIDER" = "$PROVIDER" ] && [ "$FM_PR_META_URL" = "$URL" ] \
+  && [ "$FM_PR_META_HOST" = "$HOST" ] && [ "$FM_PR_META_PATH" = "$PROJECT_PATH" ] \
+  && [ "$FM_PR_META_NUMBER" = "$NUMBER" ] || exit 1
 fm_pr_regular_destination_on_device_or_absent "$META" "$STATE_DEVICE" || exit 1
 mv -f -- "$META_TMP" "$META" || exit 1
 META_TMP=
 fm_pr_private_file_valid "$META" 600 "$STATE_DEVICE" || exit 1
 fm_pr_metadata_identity_parse "$META" || exit 1
-[ "$FM_PR_META_URL" = "$URL" ] && [ "$FM_PR_META_OWNER" = "$OWNER" ] \
-  && [ "$FM_PR_META_REPO" = "$REPO" ] && [ "$FM_PR_META_NUMBER" = "$NUMBER" ] || exit 1
+[ "$FM_PR_META_PROVIDER" = "$PROVIDER" ] && [ "$FM_PR_META_URL" = "$URL" ] \
+  && [ "$FM_PR_META_HOST" = "$HOST" ] && [ "$FM_PR_META_PATH" = "$PROJECT_PATH" ] \
+  && [ "$FM_PR_META_NUMBER" = "$NUMBER" ] || exit 1
 
 fm_pr_poll_publish_prepared || {
   echo "error: could not publish PR poll" >&2

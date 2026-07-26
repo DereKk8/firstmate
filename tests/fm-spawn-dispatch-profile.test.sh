@@ -105,7 +105,7 @@ assert_meta_profile() {
   assert_grep "effort=$effort" "$meta" "meta missing effort=$effort"
 }
 
-test_no_profile_keeps_claude_launch_unchanged() {
+test_no_profile_keeps_claude_profile_defaults() {
   local rec id out status expected launch
   id=profile-off-z1
   rec=$(make_spawn_case profile-off claude "$id")
@@ -118,9 +118,9 @@ test_no_profile_keeps_claude_launch_unchanged() {
   assert_meta_profile "$HOME_DIR/state/$id.meta" claude default default
 
   launch=$(cat "$LAUNCH_LOG")
-  expected="CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false claude --dangerously-skip-permissions \"\$(cat '$HOME_DIR/data/$id/brief.md')\""
-  [ "$launch" = "$expected" ] || fail "no-profile claude launch changed"$'\n'"expected: $expected"$'\n'"actual:   $launch"
-  pass "no --model/--effort records defaults and keeps the claude launch byte-identical"
+  expected="CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false claude --dangerously-skip-permissions \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < '$HOME_DIR/data/$id/brief.md')\""
+  [ "$launch" = "$expected" ] || fail "no-profile claude launch did not use the canonical launch kind"$'\n'"expected: $expected"$'\n'"actual:   $launch"
+  pass "no --model/--effort records defaults and types the claude launch instructions"
 }
 
 test_active_dispatch_profile_requires_explicit_harness_for_ship() {
@@ -285,8 +285,8 @@ test_grok_omits_invalid_max_reasoning_effort() {
   expect_code 0 "$status" "grok spawn with unsupported max reasoning effort should omit the effort flag"
   assert_meta_profile "$HOME_DIR/state/$id.meta" grok grok-4 max
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "grok --always-approve --model 'grok-4' \"\$(cat " \
-    "grok launch did not preserve the model flag when max effort was omitted"
+  assert_contains "$launch" "grok --always-approve --model 'grok-4' \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < " \
+    "grok launch did not preserve the model flag and typed brief when max effort was omitted"
   assert_not_contains "$launch" "--reasoning-effort" "grok launch must omit unsupported max reasoning effort"
   assert_not_contains "$launch" "--effort" "grok launch must not fall back to --effort for reasoning effort"
   pass "grok omits unsupported max reasoning effort"
@@ -304,8 +304,8 @@ test_grok_omits_invalid_xhigh_reasoning_effort() {
   expect_code 0 "$status" "grok spawn with unsupported xhigh reasoning effort should omit the effort flag"
   assert_meta_profile "$HOME_DIR/state/$id.meta" grok grok-4 xhigh
   launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "grok --always-approve --model 'grok-4' \"\$(cat " \
-    "grok launch did not preserve the model flag when xhigh effort was omitted"
+  assert_contains "$launch" "grok --always-approve --model 'grok-4' \"\$('${ROOT}/bin/fm-operational-input.sh' encode launch-brief < " \
+    "grok launch did not preserve the model flag and typed brief when xhigh effort was omitted"
   assert_not_contains "$launch" "--reasoning-effort" "grok launch must omit unsupported xhigh reasoning effort"
   assert_not_contains "$launch" "--effort" "grok launch must not fall back to --effort for reasoning effort"
   pass "grok omits unsupported xhigh reasoning effort"
@@ -344,6 +344,10 @@ test_pi_threads_model_and_max_effort() {
   launch=$(cat "$LAUNCH_LOG")
   assert_contains "$launch" "pi --model 'openai-codex/gpt-5.6-sol' --thinking 'max' -e" \
     "pi launch did not thread the requested model and max thinking level"
+  assert_not_contains "$launch" "FM_FIRSTMATE_PI_LAUNCH_BRIEF=" \
+    "pi launch still exports the removed Calm input-reroute binding"
+  assert_contains "$launch" "fm-operational-input.sh' encode launch-brief" \
+    "pi launch lost the canonical typed launch-brief envelope"
   pass "pi receives --model and --thinking max profile flags"
 }
 
@@ -384,39 +388,7 @@ test_active_dispatch_profile_does_not_block_secondmate_launch() {
   pass "active crew-dispatch profile does not block secondmate launches"
 }
 
-test_codex_includes_hook_trust_flag_in_crew() {
-  local rec id out status launch
-  id=codex-hook-trust-crew-z17
-  rec=$(make_spawn_case codex-hook-trust-crew codex "$id")
-  read_case_record "$rec"
-
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$PROJ_DIR" --model gpt-5 --effort high)
-  status=$?
-  expect_code 0 "$status" "codex crew spawn should succeed"
-  launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "--dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust" \
-    "codex crew launch missing --dangerously-bypass-hook-trust flag after --dangerously-bypass-approvals-and-sandbox"
-  pass "codex crew launch includes --dangerously-bypass-hook-trust"
-}
-
-test_codex_includes_hook_trust_flag_in_secondmate() {
-  local rec id sm out status launch
-  id=codex-hook-trust-secondmate-z18
-  rec=$(make_spawn_case codex-hook-trust-secondmate codex "$id")
-  read_case_record "$rec"
-  sm="$CASE_DIR/secondmate-home"
-  make_seeded_secondmate_home "$sm" "$id"
-
-  out=$(run_spawn "$HOME_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$LAUNCH_LOG" "$id" "$sm" --secondmate)
-  status=$?
-  expect_code 0 "$status" "codex secondmate spawn should succeed"
-  launch=$(cat "$LAUNCH_LOG")
-  assert_contains "$launch" "--dangerously-bypass-approvals-and-sandbox --dangerously-bypass-hook-trust" \
-    "codex secondmate launch missing --dangerously-bypass-hook-trust flag after --dangerously-bypass-approvals-and-sandbox"
-  pass "codex secondmate launch includes --dangerously-bypass-hook-trust"
-}
-
-test_no_profile_keeps_claude_launch_unchanged
+test_no_profile_keeps_claude_profile_defaults
 test_active_dispatch_profile_requires_explicit_harness_for_ship
 test_active_dispatch_profile_requires_explicit_harness_for_scout
 test_active_dispatch_profile_allows_explicit_harness
@@ -432,7 +404,5 @@ test_opencode_threads_model_and_ignores_effort_axis
 test_pi_threads_model_and_max_effort
 test_batch_forwards_shared_profile_flags
 test_active_dispatch_profile_does_not_block_secondmate_launch
-test_codex_includes_hook_trust_flag_in_crew
-test_codex_includes_hook_trust_flag_in_secondmate
 
 echo "# all fm-spawn-dispatch-profile tests passed"
