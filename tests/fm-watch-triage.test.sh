@@ -1277,6 +1277,122 @@ test_afk_paused_changed_pane_hands_off_plain_stale() {
   pass "AFK changed paused panes hand off plain stale identities for daemon-owned pause triage"
 }
 
+# --- endpoint-unreachable: declared pause absorbed, not churned ----------
+# When a task has declared a pause (paused: / captain-held:) but its backend
+# endpoint (pane/window) is gone, the watcher must absorb the unreachable
+# endpoint via the existing pause resume cadence instead of waking every cycle.
+# A declared pause with a missing target should never churn wakes: it must be
+# absorbed with proper stale suppressor, pause flag, and resurface marker,
+# exactly as a live-pane paused stale is.
+
+test_endpoint_unreachable_paused_absorbed() {
+  local dir state fakebin out window key statusf
+  dir=$(make_case unreachable-paused); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"
+  window="test:fm-paused-gone"
+  printf 'window=%s\nkind=ship\nbackend=tmux\n' "$window" > "$state/paused-gone.meta"
+  printf 'paused: awaiting captain merge decision\n' > "$state/paused-gone.status"
+  sig=$(seen_sig "$state/paused-gone.status"); printf '%s' "$sig" > "$state/.seen-paused-gone_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+
+  # Replace the fake tmux so capture-pane fails (unreachable endpoint).
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+set -u
+if [ "${1:-}" = "capture-pane" ]; then exit 1; fi
+exit 0
+SH
+  chmod +x "$fakebin/tmux"
+
+  # Phase A: first sight of an unreachable paused task must be absorbed.
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · backend target gone' \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  local pid=$!
+  if ! wait_live "$pid" 30; then
+    reap "$pid"; fail "watcher exited for a declared-pause unreachable endpoint (should absorb): $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || fail "unreachable declared-pause stale printed a wake reason during absorb"
+  [ ! -s "$state/.wake-queue" ] || fail "unreachable declared-pause stale enqueued a wake during absorb"
+  [ "$(cat "$state/.stale-$key" 2>/dev/null || true)" = "$pane_hash" ] || fail "stale suppressor not advanced on unreachable paused absorb (expected $pane_hash, got $(cat "$state/.stale-$key" 2>/dev/null || echo ''))"
+  [ -e "$state/.paused-$key" ] || fail "paused flag not recorded on unreachable endpoint absorb"
+  reap "$pid"
+
+  # Phase B: a second run with the same unreachable endpoint remains absorbed.
+  : > "$out"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · backend target gone' \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_PAUSE_RESURFACE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_live "$pid" 30; then
+    reap "$pid"; fail "watcher exited on a second run for the same unreachable declared-pause stale (churn): $(cat "$out")"
+  fi
+  reap "$pid"
+  pass "a declared-pause task with an unreachable backend endpoint is absorbed and does not churn"
+}
+
+# --- endpoint-unreachable: non-paused worker surfaced once, then suppressed ---
+# A task whose backend endpoint is gone but has NOT declared a pause (working:,
+# done:, or any non-pause status) must still wake the supervisor, but only once.
+# Suppressing an undeclared dead endpoint entirely would be a safety regression.
+
+test_endpoint_unreachable_not_paused_surfaced_once() {
+  local dir state fakebin out drain_out window key pane_hash sig pid
+  dir=$(make_case unreachable-not-paused); state="$dir/state"; fakebin="$dir/fakebin"
+  out="$dir/watch.out"; drain_out="$dir/drain.out"
+  window="test:fm-gone-working"
+  printf 'window=%s\nkind=ship\nbackend=tmux\n' "$window" > "$state/gone-working.meta"
+  printf 'working: still building\n' > "$state/gone-working.status"
+  sig=$(seen_sig "$state/gone-working.status"); printf '%s' "$sig" > "$state/.seen-gone-working_status"
+  key=$(printf '%s' "$window" | tr ':/.' '___')
+  pane_hash=$(hash_text "")
+  printf '%s' "$pane_hash" > "$state/.hash-$key"
+  printf '1\n' > "$state/.count-$key"
+
+  # Replace the fake tmux so capture-pane fails.
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+set -u
+if [ "${1:-}" = "capture-pane" ]; then exit 1; fi
+exit 0
+SH
+  chmod +x "$fakebin/tmux"
+
+  # Phase A: first sight of an unreachable non-paused endpoint must surface.
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · backend target gone' \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  wait_for_exit "$pid" 40 || fail "watcher did not surface an unreachable non-paused endpoint"
+  grep -F "stale: $window" "$out" >/dev/null || fail "unreachable non-paused endpoint did not print a stale wake reason"
+  [ "$(cat "$state/.stale-$key" 2>/dev/null || true)" = "$pane_hash" ] || fail "stale suppressor not advanced on unreachable non-paused surface"
+  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$drain_out" 2>/dev/null || fail "drain after unreachable non-paused surface failed"
+  grep "$(printf '\tstale\t')" "$drain_out" | grep -F "$window" >/dev/null || fail "unreachable non-paused wake was not queued"
+
+  # Phase B: the suppressor must prevent a re-fire on the next run.
+  : > "$out"
+  truncate -s 0 "$state/.wake-queue" 2>/dev/null || : > "$state/.wake-queue"
+  PATH="$fakebin:$PATH" FM_FAKE_TMUX_WINDOW="$window" \
+    FM_FAKE_CREW_STATE='state: unknown · source: none · backend target gone' \
+    FM_STATE_OVERRIDE="$state" FM_CREW_STATE_BIN="$fakebin/fm-crew-state.sh" FM_STALE_ESCALATE_SECS=999 FM_POLL=1 FM_SIGNAL_GRACE=1 \
+    FM_CHECK_INTERVAL=999999 FM_HEARTBEAT=999999 "$WATCH" > "$out" &
+  pid=$!
+  if ! wait_live "$pid" 30; then
+    reap "$pid"; fail "watcher re-surfaced an already-suppressed unreachable endpoint (churn): $(cat "$out")"
+  fi
+  [ ! -s "$out" ] || fail "suppressed unreachable endpoint printed a wake reason on second run"
+  reap "$pid"
+  pass "a non-paused task with an unreachable backend endpoint is surfaced once then suppressed"
+}
+
+test_endpoint_unreachable_paused_absorbed
+test_endpoint_unreachable_not_paused_surfaced_once
 test_signal_reason_is_actionable_classifier
 test_stale_is_terminal_classifier
 test_scan_captain_relevant_statuses_classifier
