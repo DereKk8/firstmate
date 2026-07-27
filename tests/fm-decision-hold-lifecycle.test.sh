@@ -136,6 +136,7 @@ EOF
 
 Two choices remain unresolved: the route and the sample access level.
 A separate recommendation is already resolved and requires no captain action.
+Both open choices are documented below with their evidence and trade-offs.
 EOF
 
   if run_decisions "$home" complete "$id" route access > "$home/early-complete.out" 2> "$home/early-complete.err"; then
@@ -318,7 +319,7 @@ test_visual_review_uses_shared_completion_owner() {
   tasks_in "$home" add "$id" "Review the sample board" --kind scout --repo sample --start >/dev/null
   write_origin_meta "$home" "$id"
   printf 'done: investigation complete\n' > "$home/state/$id.status"
-  printf '# Sample board investigation\n\nThe initial findings need no captain choice.\n' > "$home/data/$id/report.md"
+  printf '# Sample board investigation\n\nThe initial findings need no captain choice.\nThe board configuration was checked end to end and every setting matched the documented baseline.\nNo follow-up work is required and the investigation is considered closed.\n' > "$home/data/$id/report.md"
   run_decisions "$home" complete "$id" --none >/dev/null \
     || fail "initial investigation could not pass the shared completion owner"
   run_teardown "$home" "$id" >/dev/null 2> "$home/visual-teardown.err" \
@@ -375,7 +376,7 @@ test_terminal_single_owner_status_decision_does_not_block_empty_inventory() {
   write_origin_meta "$home" "$id"
   printf 'needs-decision [key=default]: choose route A or route B\ndone: report complete\n' \
     > "$home/state/$id.status"
-  printf '# Terminal sample review\n\nNo unresolved captain choice remains.\n' > "$home/data/$id/report.md"
+  printf '# Terminal sample review\n\nNo unresolved captain choice remains.\nThe stale status decision predates the report and does not reflect current findings.\nThe investigation reached a firm conclusion and needs no further captain input.\n' > "$home/data/$id/report.md"
   open=$(bash -c '. "$1"; status_open_decisions "$2"' _ \
     "$ROOT/bin/fm-classify-lib.sh" "$home/state/$id.status")
   assert_contains "$open" "default" "fixture must retain the raw stale status decision"
@@ -419,7 +420,7 @@ EOF
   tasks_in "$mate" add "$origin" "Investigate secondmate sample" --kind scout --repo sample --start >/dev/null
   write_origin_meta "$mate" "$origin"
   printf 'done: report and visual review complete\n' > "$mate/state/$origin.status"
-  printf '# Sample secondmate review\n\nOne captain choice remains.\n' > "$mate/data/$origin/report.md"
+  printf '# Sample secondmate review\n\nOne captain choice remains.\nThe secondmate home investigated the release path end to end before flagging it for a captain decision.\nEvery other aspect of the release is already confirmed and needs no further review.\n' > "$mate/data/$origin/report.md"
   hold=$(run_decisions "$mate" hold "$origin" release \
     --title "Choose the sample release" --reason "captain release choice pending" --repo sample) \
     || fail "secondmate-owned hold creation failed"

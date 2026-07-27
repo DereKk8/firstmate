@@ -926,7 +926,7 @@ test_teardown_conformance_old_vs_new() {
 
   data="$TMP_ROOT/teardown-data"
   mkdir -p "$data/$id"
-  printf 'scout findings\n' > "$data/$id/report.md"
+  printf '# Scout findings\n\nThe conformance fixture exercises a real scout report so old and new teardown behave alike.\nBoth binaries are expected to emit the identical treehouse and tmux command sequence for this task.\n' > "$data/$id/report.md"
 
   state_old="$TMP_ROOT/teardown-state-old"; state_new="$TMP_ROOT/teardown-state-new"
   config_old="$TMP_ROOT/teardown-config-old"; config_new="$TMP_ROOT/teardown-config-new"

@@ -783,7 +783,7 @@ test_scout_teardown_removes_orca_worktree_via_helper() {
   config="$TMP_ROOT/teardown-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
   mkdir -p "$data/$id" "$state" "$config"
-  printf 'report\n' > "$data/$id/report.md"
+  printf '# Orca teardown report\n\nThe Orca worktree removal path was exercised end to end and behaved as expected.\nBoth the terminal close and the worktree removal calls were confirmed against the recorded Orca ids.\n' > "$data/$id/report.md"
   touch "$state/.last-watcher-beat"
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" "terminal=term-teardown" "worktree=$wt" "project=$proj" \
@@ -820,7 +820,7 @@ test_scout_teardown_refuses_orca_id_path_mismatch() {
   fm_git_worktree "$proj" "$wt" "fm/$id"
   git -C "$proj" worktree add --quiet -b "fm/$id-other" "$other_wt"
   mkdir -p "$data/$id" "$state" "$config"
-  printf 'report\n' > "$data/$id/report.md"
+  printf '# Scout mismatch report\n\nThis fixture exercises the Orca worktree id/path mismatch refusal, not report content.\nThe report itself is deliberately unremarkable so the mismatch path is what actually fires.\n' > "$data/$id/report.md"
   touch "$state/.last-watcher-beat"
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" "terminal=term-scout-mismatch" "worktree=$wt" "project=$proj" \
@@ -856,7 +856,7 @@ test_teardown_removes_orca_worktree_when_path_missing() {
   state="$TMP_ROOT/missing-path-state"
   config="$TMP_ROOT/missing-path-config"
   mkdir -p "$data/$id" "$state" "$config"
-  printf 'report\n' > "$data/$id/report.md"
+  printf '# Orca teardown fixture report\n\nThis fixture exercises Orca-specific teardown behavior; the report content itself is not under test here.\nThe investigation confirmed the recorded backend metadata drives the expected helper calls end to end.\n' > "$data/$id/report.md"
   touch "$state/.last-watcher-beat"
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" "terminal=term-missing-path" "worktree=$wt" "project=$proj" \
@@ -889,7 +889,7 @@ test_teardown_preserves_metadata_when_orca_remove_error_json() {
   state="$TMP_ROOT/remove-error-state"
   config="$TMP_ROOT/remove-error-config"
   mkdir -p "$data/$id" "$state" "$config"
-  printf 'report\n' > "$data/$id/report.md"
+  printf '# Orca teardown fixture report\n\nThis fixture exercises Orca-specific teardown behavior; the report content itself is not under test here.\nThe investigation confirmed the recorded backend metadata drives the expected helper calls end to end.\n' > "$data/$id/report.md"
   touch "$state/.last-watcher-beat"
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" "worktree=$wt" "project=$proj" \
@@ -1092,7 +1092,7 @@ test_teardown_refuses_orca_missing_worktree_id() {
   config="$TMP_ROOT/missing-id-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
   mkdir -p "$data/$id" "$state" "$config"
-  printf 'report\n' > "$data/$id/report.md"
+  printf '# Orca teardown fixture report\n\nThis fixture exercises Orca-specific teardown behavior; the report content itself is not under test here.\nThe investigation confirmed the recorded backend metadata drives the expected helper calls end to end.\n' > "$data/$id/report.md"
   touch "$state/.last-watcher-beat"
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" "terminal=term-missing-id" "worktree=$wt" "project=$proj" \
@@ -1123,7 +1123,7 @@ test_teardown_removes_orca_worktree_without_terminal_handle() {
   config="$TMP_ROOT/no-terminal-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
   mkdir -p "$data/$id" "$state" "$config"
-  printf 'report\n' > "$data/$id/report.md"
+  printf '# Orca teardown fixture report\n\nThis fixture exercises Orca-specific teardown behavior; the report content itself is not under test here.\nThe investigation confirmed the recorded backend metadata drives the expected helper calls end to end.\n' > "$data/$id/report.md"
   touch "$state/.last-watcher-beat"
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" "worktree=$wt" "project=$proj" \
