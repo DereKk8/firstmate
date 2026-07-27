@@ -68,9 +68,11 @@ CLAUDE_MODE=0
 SYNC_WAIT_MS=${FM_CLAUDE_AUTOARM_SYNC_WAIT_MS:-800}
 EPOCH_FRESH=${FM_CLAUDE_AUTOARM_EPOCH_FRESH:-15}
 BLOCK_BUDGET=${FM_CLAUDE_TURNEND_BLOCK_BUDGET:-3}
+ARM_CONFIRM_TIMEOUT=${FM_ARM_CONFIRM_TIMEOUT:-10}
 case "$SYNC_WAIT_MS" in ''|*[!0-9]*) SYNC_WAIT_MS=800 ;; esac
 case "$EPOCH_FRESH" in ''|*[!0-9]*|0) EPOCH_FRESH=15 ;; esac
 case "$BLOCK_BUDGET" in ''|*[!0-9]*|0) BLOCK_BUDGET=3 ;; esac
+case "$ARM_CONFIRM_TIMEOUT" in ''|*[!0-9]*|0) ARM_CONFIRM_TIMEOUT=10 ;; esac
 
 for arg in "$@"; do
   case "$arg" in
@@ -137,8 +139,31 @@ if fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME"; then
   exit 0
 fi
 
+# The final action in a supervised turn starts fm-watch-arm in a tracked
+# background task. A stop hook can run while that arm is still publishing its
+# child lock, so wait only for a live, identity-bound arm marker and require the
+# ordinary healthy-watcher proof before allowing the turn to end. The wait is
+# bounded by the arm's own confirmation timeout (10 seconds by default); a
+# missing, stale, or unverified marker never suppresses this alarm.
+wait_for_arm_confirmation() {
+  local deadline
+  fm_watch_arm_confirmation_pending "$STATE" "$FM_HOME" || return 1
+  deadline=$(( $(date +%s) + ARM_CONFIRM_TIMEOUT + 1 ))
+  while :; do
+    fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME" && return 0
+    fm_watch_arm_confirmation_pending "$STATE" "$FM_HOME" || return 1
+    [ "$(date +%s)" -ge "$deadline" ] && return 1
+    sleep 0.1
+  done
+}
+
+if wait_for_arm_confirmation; then
+  budget_reset
+  exit 0
+fi
+
 block_stop() {
-  local afk x_mode reason rule
+  local afk x_mode reason rule beacon_note
   afk=0
   [ -e "$STATE/.afk" ] && afk=1
   x_mode=0
@@ -146,13 +171,15 @@ block_stop() {
   reason=$("$SCRIPT_DIR/fm-supervision-instructions.sh" --afk "$afk" --x-mode "$x_mode" --repair-line 2>/dev/null \
     || printf '%s\n' 'tasks in flight, no live watcher - repair missing watcher supervision according to the session-start operating block before ending the turn')
   rule='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+  beacon_note='no watcher beacon exists'
+  [ -e "$STATE/.last-watcher-beat" ] && beacon_note='watcher beacon is orphaned'
   {
     printf '●%s\n' "$rule"
     printf '●  TURN WOULD END BLIND - SUPERVISION IS OFF\n'
     if [ "$FM_SUP_IN_FLIGHT" -gt 0 ]; then
-      printf '●  %s task(s) in flight, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_IN_FLIGHT" "$FM_SUP_BEACON_DESC"
+      printf '●  %s task(s) in flight, but no live watcher holds this home lock (%s).\n' "$FM_SUP_IN_FLIGHT" "$beacon_note"
     else
-      printf '●  X-mode relay polling needs supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
+      printf '●  X-mode relay polling needs supervision, but no live watcher holds this home lock (%s).\n' "$beacon_note"
     fi
     if [ "$CLAUDE_MODE" -eq 1 ]; then
       printf '●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.\n'

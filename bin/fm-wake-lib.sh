@@ -99,6 +99,40 @@ fm_watcher_healthy() {
   return 0
 }
 
+# A turn-end guard may wait for an arm only when this identity-bound marker proves
+# that this home has a live arm process actively publishing a watcher.
+fm_watch_arm_confirmation_claim() {
+  local state=$1 home=${2:-$FM_HOME} lockdir pid identity
+  lockdir="$state/.watch-arm-confirm.lock"
+  fm_lock_try_acquire "$lockdir" || return 1
+  pid=$(cat "$lockdir/pid" 2>/dev/null || true)
+  identity=$(fm_pid_identity "$pid") || {
+    fm_lock_release "$lockdir"
+    return 1
+  }
+  if ! {
+    printf '%s\n' "$home" > "$lockdir/fm-home"
+    printf '%s\n' "$identity" > "$lockdir/pid-identity"
+  }; then
+    fm_lock_release "$lockdir"
+    return 1
+  fi
+  return 0
+}
+
+fm_watch_arm_confirmation_pending() {
+  local state=$1 home=${2:-$FM_HOME} lockdir pid expected_identity current_identity marker_home
+  lockdir="$state/.watch-arm-confirm.lock"
+  pid=$(cat "$lockdir/pid" 2>/dev/null || true)
+  marker_home=$(cat "$lockdir/fm-home" 2>/dev/null || true)
+  expected_identity=$(cat "$lockdir/pid-identity" 2>/dev/null || true)
+  [ "$marker_home" = "$home" ] || return 1
+  [ -n "$expected_identity" ] || return 1
+  fm_pid_alive "$pid" || return 1
+  current_identity=$(fm_pid_identity "$pid") || return 1
+  [ "$current_identity" = "$expected_identity" ]
+}
+
 fm_lock_clean_known_files() {
   local lockdir=$1
   rm -f \
