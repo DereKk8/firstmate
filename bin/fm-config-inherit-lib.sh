@@ -564,7 +564,7 @@ fm_config_reread_new_retry_stage_path() {
     rm -f "$sequence_tmp"
     return 1
   fi
-  generation=$(date -u +%Y%m%dT%H%M%S 2>/dev/null) || return 1
+  generation=$(date -u +%Y%m%dT%H%M%S.%N 2>/dev/null) || generation=$(date -u +%Y%m%dT%H%M%S 2>/dev/null) || return 1
   generation="$generation.$(printf '%08d' "$sequence")"
   stage=$(umask 077; mktemp "$retry_dir/.fm-inherited-config-reread.$generation.XXXXXX" 2>/dev/null) || return 1
   printf '%s\n' "$stage"
