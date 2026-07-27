@@ -466,6 +466,73 @@ test_scout_and_secondmate_scaffold() {
   pass "fm-brief: scout and secondmate code paths still scaffold well-formed briefs"
 }
 
+# --- firstmate disclaimer tests -----------------------------------------------
+
+test_firstmate_disclaimer_appears_in_ship() {
+  local home id brief
+  home="$TMP_ROOT/firstmate-ship-home"
+  mkdir -p "$home/data" "$home/projects"
+  ln -sf "$ROOT" "$home/projects/firstmate"
+  id="brief-firstmate-ship-h1"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "firstmate ship brief was not scaffolded"
+  assert_grep "AGENTS.md and CLAUDE.md document the SUPERVISOR role" "$brief" \
+    "firstmate ship brief missing the role warning"
+  assert_grep "Never run \`bin/fm-session-start.sh\`" "$brief" \
+    "firstmate ship brief missing the fleet-command ban"
+  assert_grep "treehouse pool path" "$brief" \
+    "firstmate ship brief missing the worktree clarification"
+  pass "fm-brief.sh: auto-injects disclaimer in ship brief when target is firstmate"
+}
+
+test_firstmate_disclaimer_appears_in_scout() {
+  local home id brief
+  home="$TMP_ROOT/firstmate-scout-home"
+  mkdir -p "$home/data" "$home/projects"
+  ln -sf "$ROOT" "$home/projects/firstmate"
+  id="brief-firstmate-scout-h2"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate --scout >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "firstmate scout brief was not scaffolded"
+  assert_grep "AGENTS.md and CLAUDE.md document the SUPERVISOR role" "$brief" \
+    "firstmate scout brief missing the role warning"
+  assert_grep "Never run \`bin/fm-session-start.sh\`" "$brief" \
+    "firstmate scout brief missing the fleet-command ban"
+  assert_grep "treehouse pool path" "$brief" \
+    "firstmate scout brief missing the worktree clarification"
+  pass "fm-brief.sh: auto-injects disclaimer in scout brief when target is firstmate"
+}
+
+test_firstmate_disclaimer_absent_for_other_repos() {
+  local home id brief
+  home="$TMP_ROOT/other-repo-home"
+  mkdir -p "$home/data"
+  id="brief-other-h3"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-other-repo >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "other-repo brief was not scaffolded"
+  assert_no_grep "AGENTS.md and CLAUDE.md document the SUPERVISOR role" "$brief" \
+    "other-repo brief should NOT have the firstmate disclaimer"
+  pass "fm-brief.sh: does not inject disclaimer for non-firstmate repos"
+}
+
+test_firstmate_disclaimer_absent_when_project_path_differs() {
+  local home id brief firstmate_dir
+  home="$TMP_ROOT/different-path-home"
+  firstmate_dir="$TMP_ROOT/fake-firstmate"
+  mkdir -p "$home/data" "$home/projects" "$firstmate_dir"
+  # Symlink to a DIFFERENT dir, not the real FM_ROOT, so detection should not fire.
+  ln -sf "$firstmate_dir" "$home/projects/firstmate"
+  id="brief-different-h4"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "different-path brief was not scaffolded"
+  assert_no_grep "AGENTS.md and CLAUDE.md document the SUPERVISOR role" "$brief" \
+    "brief should NOT have the disclaimer when project path differs from FM_ROOT"
+  pass "fm-brief.sh: does not inject disclaimer when project path differs from FM_ROOT"
+}
+
 test_script_parses
 test_help_includes_entire_header
 test_ship_modes_generate_clean_briefs
@@ -485,3 +552,7 @@ test_scout_and_secondmate_load_decision_hold_policy
 test_ship_brief_injects_origin_base_when_set
 test_ship_brief_uses_default_when_base_unset
 test_scout_and_secondmate_scaffold
+test_firstmate_disclaimer_appears_in_ship
+test_firstmate_disclaimer_appears_in_scout
+test_firstmate_disclaimer_absent_for_other_repos
+test_firstmate_disclaimer_absent_when_project_path_differs
