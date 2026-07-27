@@ -755,6 +755,43 @@ test_parked_scout_decision_stays_pending() {
   pass "a scout still parked at a decision stays pending (terminal clear does not over-fire)"
 }
 
+test_large_backlog_survives_argv_limit() {
+  local home arg_max target_bytes rows out
+  home=$(make_home large-backlog)
+  arg_max=$(getconf ARG_MAX 2>/dev/null) || arg_max=2097152
+  case "$arg_max" in ''|*[!0-9]*) arg_max=2097152 ;; esac
+  # A structured backlog row expands roughly 4x once projected into JSON
+  # (quoting, field names, derived blocker/role fields), so a raw backlog
+  # file at ARG_MAX/3 comfortably produces a JSON payload past ARG_MAX -
+  # the payload that used to be handed to jq as a single argv value.
+  target_bytes=$((arg_max / 3))
+  {
+    echo "## In flight"
+    echo "## Queued"
+    awk -v target="$target_bytes" '
+      BEGIN {
+        total = 0
+        i = 0
+        while (total < target) {
+          line = sprintf("- [ ] queued-task-%05d - Queued task %d padded with descriptive text to grow the backlog payload toward the argv limit (repo: alpha) (kind: ship) (priority: 2) (since 2026-07-08)", i, i)
+          print line
+          total += length(line) + 1
+          i++
+        }
+      }'
+    echo "## Done"
+  } > "$home/data/backlog.md"
+  rows=$(grep -c '^- \[ \] queued-task-' "$home/data/backlog.md")
+  out=$(FM_HOME="$home" "$SNAPSHOT" --json) \
+    || fail "snapshot must succeed against a backlog whose JSON exceeds ARG_MAX ($arg_max bytes, $rows rows)"
+  printf '%s' "$out" | jq -e --argjson rows "$rows" '
+    .schema == "fm-fleet-snapshot.v1"
+      and (.backlog.records | length) == $rows
+      and .main_inventory.valid == true
+  ' >/dev/null || fail "large-backlog snapshot must still emit valid structured JSON ($rows rows expected)"
+  pass "a backlog whose JSON exceeds ARG_MAX still produces a valid snapshot"
+}
+
 test_empty_fleet_json
 test_fixture_snapshot_json
 test_main_inventory_orphan_and_unstructured_disclosure
@@ -770,3 +807,4 @@ test_scout_reports_include_teardown_reports
 test_backlog_tasks_axi_forms_and_overrides
 test_view_renders_snapshot
 test_view_renders_dead_secondmate_agent_status
+test_large_backlog_survives_argv_limit
