@@ -365,6 +365,7 @@ fi
 child=
 child_out=
 arm_confirmation_claimed=0
+# shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap below.
 release_arm_confirmation() {
   [ "$arm_confirmation_claimed" -eq 1 ] || return 0
   fm_lock_release "$ARM_CONFIRM_LOCK"
