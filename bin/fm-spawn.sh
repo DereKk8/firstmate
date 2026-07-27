@@ -1282,6 +1282,15 @@ exclude_path() {
   mkdir -p "$(dirname "$EXCL")"
   grep -qxF "$rel" "$EXCL" 2>/dev/null || echo "$rel" >> "$EXCL"
 }
+# Task-identity marker: lets fm-teardown.sh verify a recorded worktree still
+# belongs to this task before returning it, instead of trusting a possibly-stale
+# meta worktree= path that a re-leased pool slot has since moved on from. Kept
+# out of git's view like the turn-end hooks above.
+if [ "$KIND" != secondmate ]; then
+  printf '%s\n' "$ID" > "$WT/.fm-task-id"
+  exclude_path '.fm-task-id'
+fi
+
 if [ "$KIND" != secondmate ]; then
   case "$HARNESS" in
     claude*)
