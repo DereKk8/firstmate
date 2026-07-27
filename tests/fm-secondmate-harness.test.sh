@@ -1677,6 +1677,32 @@ SH
   pass "B21 config reread serializes concurrent propagation and delivery"
 }
 
+test_config_reread_generation_paths_are_unique() {
+  local w home fakebin paths_file path seen total _
+  w=$(new_world config-reread-gen-unique)
+  home="$w/home"
+  fakebin=$(make_fake_toolchain "$w")
+  cat > "$fakebin/date" <<'SH'
+#!/usr/bin/env bash
+printf '20260727T120000.123456789\n'
+SH
+  chmod +x "$fakebin/date"
+  mkdir -p "$home/state/.fm-inherited-config-reread-retry/test-sm"
+  printf '0\n' > "$home/state/.fm-inherited-config-reread-retry/test-sm/.sequence"
+  paths_file=$(mktemp)
+  for _ in $(seq 1 100); do
+    path=$(PATH="$fakebin:$BASE_PATH" FM_HOME="$home" \
+      fm_config_reread_new_retry_stage_path "$home" "test-sm") \
+      || fail "stage path creation failed at call $_"
+    printf '%s\n' "$(basename "$path")" >> "$paths_file"
+  done
+  total=$(wc -l < "$paths_file" | tr -d ' ')
+  seen=$(sort -u "$paths_file" | wc -l | tr -d ' ')
+  rm -f "$paths_file"
+  [ "$seen" -eq "$total" ] || fail "generation paths collided: $seen unique from $total calls"
+  pass "B21.5 config reread generation paths are unique under fixed clock"
+}
+
 test_config_reread_full_retry_queue_drains_before_new_push() {
   local w head retry_dir path n fakebin log out status pointer_count
   w=$(new_world config-reread-full-queue)
@@ -2080,6 +2106,7 @@ test_config_reread_publication_failure_retries_exact_generation
 test_config_reread_write_failure_retains_exact_retry_generation
 test_config_reread_exact_temp_survives_adoption_failure
 test_config_reread_serializes_concurrent_pushes
+test_config_reread_generation_paths_are_unique
 test_config_reread_full_retry_queue_drains_before_new_push
 test_config_reread_cleanup_runs_after_mixed_delivery_failure
 test_config_reread_stops_after_failed_generation
