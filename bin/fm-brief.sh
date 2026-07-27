@@ -222,17 +222,42 @@ fi
 
 REPO=${POS[1]}
 
-# Detect if the target project is firstmate itself.  A project under
-# $FM_HOME/projects/ that resolves to the same directory as $FM_ROOT
-# means the worker is operating on the firstmate repo -- which carries
-# a supervisor manual that can confuse a worker about its role.
+# Detect if the target project is firstmate itself.  This can carry a
+# supervisor manual that can confuse a worker about its role, so it needs
+# detecting independent of whether this home registers firstmate under
+# projects/ at all -- most homes do not, since firstmate is not normally
+# a project of itself.  IS_FIRSTMATE fires when any of three signals
+# resolves to the same real directory as $FM_ROOT, always compared as
+# fully resolved physical paths (never a raw string or basename-only
+# comparison):
+#   1. the existing projects/$REPO registry entry, when one exists
+#   2. an absolute or relative path argument that itself resolves to $FM_ROOT
+#   3. the normal case -- a bare repo name naming firstmate's own checkout
+#      directory, confirmed by resolving that name as a sibling of $FM_ROOT
 IS_FIRSTMATE=0
-FIRSTMATE_PROJ_PATH="$FM_HOME/projects/$REPO"
-if [ -e "$FIRSTMATE_PROJ_PATH" ]; then
-  PROJ_REAL=$(cd "$FIRSTMATE_PROJ_PATH" 2>/dev/null && pwd -P) || true
-  ROOT_REAL=$(cd "$FM_ROOT" 2>/dev/null && pwd -P) || true
-  if [ -n "$PROJ_REAL" ] && [ "$PROJ_REAL" = "$ROOT_REAL" ]; then
-    IS_FIRSTMATE=1
+ROOT_REAL=$(cd "$FM_ROOT" 2>/dev/null && pwd -P) || true
+if [ -n "$ROOT_REAL" ]; then
+  FIRSTMATE_PROJ_PATH="$FM_HOME/projects/$REPO"
+  if [ -e "$FIRSTMATE_PROJ_PATH" ]; then
+    PROJ_REAL=$(cd "$FIRSTMATE_PROJ_PATH" 2>/dev/null && pwd -P) || true
+    if [ -n "$PROJ_REAL" ] && [ "$PROJ_REAL" = "$ROOT_REAL" ]; then
+      IS_FIRSTMATE=1
+    fi
+  fi
+  if [ "$IS_FIRSTMATE" -eq 0 ] && [ -e "$REPO" ]; then
+    REPO_REAL=$(cd "$REPO" 2>/dev/null && pwd -P) || true
+    if [ -n "$REPO_REAL" ] && [ "$REPO_REAL" = "$ROOT_REAL" ]; then
+      IS_FIRSTMATE=1
+    fi
+  fi
+  if [ "$IS_FIRSTMATE" -eq 0 ]; then
+    SIBLING_PATH="$(dirname "$ROOT_REAL")/$REPO"
+    if [ -e "$SIBLING_PATH" ]; then
+      SIBLING_REAL=$(cd "$SIBLING_PATH" 2>/dev/null && pwd -P) || true
+      if [ -n "$SIBLING_REAL" ] && [ "$SIBLING_REAL" = "$ROOT_REAL" ]; then
+        IS_FIRSTMATE=1
+      fi
+    fi
   fi
 fi
 

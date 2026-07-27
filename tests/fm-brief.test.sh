@@ -522,15 +522,48 @@ test_firstmate_disclaimer_absent_when_project_path_differs() {
   home="$TMP_ROOT/different-path-home"
   firstmate_dir="$TMP_ROOT/fake-firstmate"
   mkdir -p "$home/data" "$home/projects" "$firstmate_dir"
-  # Symlink to a DIFFERENT dir, not the real FM_ROOT, so detection should not fire.
-  ln -sf "$firstmate_dir" "$home/projects/firstmate"
+  # Registry entry name does NOT match FM_ROOT's own basename ("firstmate"),
+  # so this exercises only the projects/ tier: a registered entry that
+  # resolves to a DIFFERENT real directory than FM_ROOT must not fire.
+  ln -sf "$firstmate_dir" "$home/projects/unrelated-project"
   id="brief-different-h4"
-  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate >/dev/null 2>&1
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" unrelated-project >/dev/null 2>&1
   brief="$home/data/$id/brief.md"
   assert_present "$brief" "different-path brief was not scaffolded"
   assert_no_grep "AGENTS.md and CLAUDE.md document the SUPERVISOR role" "$brief" \
-    "brief should NOT have the disclaimer when project path differs from FM_ROOT"
+    "brief should NOT have the disclaimer when the registered project path differs from FM_ROOT"
   pass "fm-brief.sh: does not inject disclaimer when project path differs from FM_ROOT"
+}
+
+# Regression test for the original defect: firstmate's own repo is normally
+# NOT registered under projects/ at all (a home only registers the projects
+# it actually works on), so detection must not depend on a projects/firstmate
+# entry existing. Fails against the pre-fix code, which required exactly
+# that entry and left IS_FIRSTMATE permanently 0 on a home like this one.
+test_firstmate_disclaimer_fires_without_projects_registry_entry() {
+  local home id brief
+  home="$TMP_ROOT/no-registry-home"
+  mkdir -p "$home/data"
+  id="brief-noreg-h5"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "no-registry-entry brief was not scaffolded"
+  assert_grep "AGENTS.md and CLAUDE.md document the SUPERVISOR role" "$brief" \
+    "firstmate disclaimer must fire from the bare repo name alone, with no projects/firstmate entry"
+  pass "fm-brief.sh: injects disclaimer for bare 'firstmate' with no projects/ registry entry"
+}
+
+test_firstmate_disclaimer_fires_for_absolute_path_argument() {
+  local home id brief
+  home="$TMP_ROOT/abs-path-home"
+  mkdir -p "$home/data"
+  id="brief-abspath-h6"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" "$ROOT" >/dev/null 2>&1
+  brief="$home/data/$id/brief.md"
+  assert_present "$brief" "absolute-path brief was not scaffolded"
+  assert_grep "AGENTS.md and CLAUDE.md document the SUPERVISOR role" "$brief" \
+    "firstmate disclaimer must fire when the repo argument is an absolute path to FM_ROOT"
+  pass "fm-brief.sh: injects disclaimer when the repo argument is an absolute path to FM_ROOT"
 }
 
 test_script_parses
@@ -556,3 +589,5 @@ test_firstmate_disclaimer_appears_in_ship
 test_firstmate_disclaimer_appears_in_scout
 test_firstmate_disclaimer_absent_for_other_repos
 test_firstmate_disclaimer_absent_when_project_path_differs
+test_firstmate_disclaimer_fires_without_projects_registry_entry
+test_firstmate_disclaimer_fires_for_absolute_path_argument
