@@ -210,6 +210,15 @@ record_watcher_lock() {
   printf '%s\n' "$identity" > "$dir/state/.watch.lock/pid-identity"
 }
 
+record_arm_confirmation() {
+  local dir=$1 pid=$2 identity=$3 root
+  root=$(cd "$dir" && pwd)
+  mkdir -p "$dir/state/.watch-arm-confirm.lock"
+  printf '%s\n' "$pid" > "$dir/state/.watch-arm-confirm.lock/pid"
+  printf '%s\n' "$root" > "$dir/state/.watch-arm-confirm.lock/fm-home"
+  printf '%s\n' "$identity" > "$dir/state/.watch-arm-confirm.lock/pid-identity"
+}
+
 test_hook_silent_when_no_work_in_flight() {
   local dir out status
   dir=$(make_primary_dir "$TMP_ROOT/hook-idle")
@@ -227,7 +236,52 @@ test_hook_blocks_when_fresh_beacon_has_no_live_lock() {
   out=$(run_hook "$dir" false); status=$?
   expect_code 2 "$status" "hook must block when a fresh beacon has no live watcher lock"
   assert_contains "$out" "$REQUIRED_REASON" "block reason must contain the exact required instruction"
+  assert_contains "$out" "watcher beacon is orphaned" "fresh beacon without a lock must be labelled orphaned"
+  assert_not_contains "$out" "last beat:" "orphaned beacon must not be reported as watcher liveness"
   pass "fm-turnend-guard: blocks when a fresh beacon has no live watcher lock"
+}
+
+test_hook_allows_only_after_live_arm_confirms_watcher() {
+  local dir arm_pid arm_identity watcher_pid watcher_identity publisher out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-arm-confirmed")
+  : > "$dir/state/task1.meta"
+  sleep 60 &
+  arm_pid=$!
+  arm_identity=$(watcher_identity "$dir" "$arm_pid") || fail "could not identify arm process"
+  record_arm_confirmation "$dir" "$arm_pid" "$arm_identity"
+  sleep 60 &
+  watcher_pid=$!
+  watcher_identity=$(watcher_identity "$dir" "$watcher_pid") || fail "could not identify watcher process"
+  (
+    sleep 0.2
+    record_watcher_lock "$dir" "$watcher_pid" "$watcher_identity"
+    touch "$dir/state/.last-watcher-beat"
+  ) &
+  publisher=$!
+  out=$(run_hook "$dir" false); status=$?
+  wait "$publisher" 2>/dev/null || true
+  kill "$watcher_pid" "$arm_pid" 2>/dev/null || true
+  wait "$watcher_pid" 2>/dev/null || true
+  wait "$arm_pid" 2>/dev/null || true
+  expect_code 0 "$status" "hook must allow only after the arm confirms a healthy watcher"
+  [ -z "$out" ] || fail "confirmed arm should not print a blind-turn banner: $out"
+  pass "fm-turnend-guard: waits for a live arm to confirm watcher supervision"
+}
+
+test_hook_blocks_when_live_arm_never_confirms_watcher() {
+  local dir arm_pid arm_identity out status
+  dir=$(make_primary_dir "$TMP_ROOT/hook-arm-unconfirmed")
+  : > "$dir/state/task1.meta"
+  sleep 60 &
+  arm_pid=$!
+  arm_identity=$(watcher_identity "$dir" "$arm_pid") || fail "could not identify arm process"
+  record_arm_confirmation "$dir" "$arm_pid" "$arm_identity"
+  out=$(FM_ARM_CONFIRM_TIMEOUT=1 run_hook "$dir" false); status=$?
+  kill "$arm_pid" 2>/dev/null || true
+  wait "$arm_pid" 2>/dev/null || true
+  expect_code 2 "$status" "unconfirmed arm marker must not allow a blind turn"
+  assert_contains "$out" "TURN WOULD END BLIND" "unconfirmed arm must preserve the alarm"
+  pass "fm-turnend-guard: live arm marker alone never permits a turn end"
 }
 
 test_hook_blocks_when_dead_lock_has_fresh_beacon() {
@@ -1094,6 +1148,8 @@ test_predicate_queue_pending_flag
 test_predicate_x_mode_needs_supervision
 test_hook_silent_when_no_work_in_flight
 test_hook_blocks_when_fresh_beacon_has_no_live_lock
+test_hook_allows_only_after_live_arm_confirms_watcher
+test_hook_blocks_when_live_arm_never_confirms_watcher
 test_hook_blocks_when_dead_lock_has_fresh_beacon
 test_hook_silent_with_live_lock_and_fresh_beacon
 test_hook_blocks_with_live_lock_and_stale_beacon

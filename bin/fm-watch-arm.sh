@@ -64,6 +64,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 WATCH="$SCRIPT_DIR/fm-watch.sh"
 WATCH_LOCK="$STATE/.watch.lock"
+ARM_CONFIRM_LOCK="$STATE/.watch-arm-confirm.lock"
 BEAT="$STATE/.last-watcher-beat"
 # "Fresh" reuses the guard's threshold so there is one definition of liveness.
 GRACE=${FM_GUARD_GRACE:-300}
@@ -363,6 +364,15 @@ fi
 # wake exit propagates out so the harness re-notifies firstmate.
 child=
 child_out=
+arm_confirmation_claimed=0
+# shellcheck disable=SC2329 # Invoked indirectly by the EXIT trap below.
+release_arm_confirmation() {
+  [ "$arm_confirmation_claimed" -eq 1 ] || return 0
+  fm_lock_release "$ARM_CONFIRM_LOCK"
+  arm_confirmation_claimed=0
+}
+
+trap release_arm_confirmation EXIT
 cleanup_child() {
   if [ -n "$child" ] && fm_pid_alive "$child"; then
     kill -TERM "$child" 2>/dev/null || true
@@ -393,6 +403,14 @@ child_out=$(mktemp "$STATE/.watch-arm-output.XXXXXX") || {
   echo "watcher: FAILED - no live watcher with a fresh beacon"
   exit 1
 }
+# The turn-end hook can observe the background arm before this child publishes
+# its lock. This marker lets it wait for this arm's confirmation, but only until
+# it sees the same identity-bound lock and fresh beacon used everywhere else.
+if ! fm_watch_arm_confirmation_claim "$STATE" "$FM_HOME"; then
+  echo "watcher: FAILED - could not claim watcher confirmation"
+  exit 1
+fi
+arm_confirmation_claimed=1
 "$WATCH" >"$child_out" &
 child=$!
 cycle_begin "$child" started
