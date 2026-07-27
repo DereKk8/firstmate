@@ -407,7 +407,12 @@ fm_backend_of_selector() {  # <raw-target> <resolved-target> <state-dir>
     meta=$(fm_backend_meta_for_window "$resolved" "$state" 2>/dev/null || true)
     [ -n "$meta" ] && { fm_backend_of_meta "$meta"; return 0; }
   fi
-  printf 'tmux'
+  # Neither metadata lookup resolved a task (e.g. a firstmate session's own
+  # pane): fall back through the home's normal backend resolution
+  # (env, then config/backend, then runtime detection, then tmux) instead of
+  # hardcoding tmux, so a herdr/zellij/orca/cmux home peeks its own pane
+  # correctly.
+  fm_backend_name
 }
 
 fm_backend_expected_label_of_selector() {  # <raw-target> <state-dir>

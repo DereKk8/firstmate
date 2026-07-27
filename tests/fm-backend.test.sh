@@ -600,10 +600,28 @@ test_backend_of_selector_matches_explicit_target_meta() {
     || fail "explicit backend target matching metadata should use that task's backend"
   [ "$(fm_backend_of_selector 'firstmate:fm-tmux-task' 'firstmate:fm-tmux-task' "$state")" = tmux ] \
     || fail "explicit tmux-shaped target with absent backend= should default to tmux"
-  [ "$(fm_backend_of_selector 'manual:outside' 'manual:outside' "$state")" = tmux ] \
-    || fail "explicit target with no matching metadata should keep the tmux compatibility default"
 
-  pass "fm_backend_of_selector: exact task ids, legacy fm-<id> labels, and matching explicit targets inherit metadata backend"
+  # Neither metadata lookup resolves for "manual:outside" (no task carries that
+  # id or window). This is the shape of a firstmate session peeking its own
+  # pane: no task metadata exists for it at all. The fallback must run the
+  # home's normal backend resolution (env, then config/backend, then runtime
+  # detection, then tmux) - never a hardcoded tmux compatibility default -
+  # so a herdr/zellij/orca/cmux home resolves its own pane correctly.
+  [ "$(unset TMUX HERDR_ENV CMUX_WORKSPACE_ID; FM_BACKEND='' FM_BACKEND_CONFIG_DIR="$TMP_ROOT/no-such-config" \
+      fm_backend_of_selector 'manual:outside' 'manual:outside' "$state")" = tmux ] \
+    || fail "explicit target with no matching metadata and no configured/detected backend should still default to tmux"
+
+  mkdir -p "$TMP_ROOT/selector-herdr-config"
+  printf 'herdr\n' > "$TMP_ROOT/selector-herdr-config/backend"
+  [ "$(unset TMUX HERDR_ENV CMUX_WORKSPACE_ID; FM_BACKEND='' FM_BACKEND_CONFIG_DIR="$TMP_ROOT/selector-herdr-config" \
+      fm_backend_of_selector 'manual:outside' 'manual:outside' "$state")" = herdr ] \
+    || fail "explicit target with no matching metadata should fall back to the home's configured backend, not hardcoded tmux"
+
+  [ "$(unset TMUX CMUX_WORKSPACE_ID; HERDR_ENV=1 FM_BACKEND='' FM_BACKEND_CONFIG_DIR="$TMP_ROOT/no-such-config" \
+      fm_backend_of_selector 'manual:outside' 'manual:outside' "$state" 2>/dev/null)" = herdr ] \
+    || fail "explicit target with no matching metadata and no config should still fall back through runtime auto-detection before tmux"
+
+  pass "fm_backend_of_selector: exact task ids, legacy fm-<id> labels, and matching explicit targets inherit metadata backend; unmatched targets fall back through the home's normal backend resolution instead of hardcoding tmux"
 }
 
 # --- old vs new: fm-send.sh --------------------------------------------------
@@ -727,11 +745,15 @@ test_peek_conformance_old_vs_new() {
   # that guard, since STATE/HOME are already overridden directly.
   neutral_root="$TMP_ROOT/peek-neutral-root"; mkdir -p "$neutral_root"
 
+  # "sess:win" carries no task metadata, so the no-metadata backend fallback
+  # applies. Unset ambient runtime-detection markers so this fake-tmux
+  # conformance check stays deterministic across homes regardless of what
+  # backend the invoking session itself happens to be running under.
   : > "$log_old"
-  out_old=$(PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$neutral_root" FM_HOME="$home" FM_TMUX_LOG="$log_old" \
+  out_old=$(unset TMUX HERDR_ENV CMUX_WORKSPACE_ID; PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$neutral_root" FM_HOME="$home" FM_TMUX_LOG="$log_old" \
     "$old_bin/bin/fm-peek.sh" "sess:win" 25 2>/dev/null)
   : > "$log_new"
-  out_new=$(PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$neutral_root" FM_HOME="$home" FM_TMUX_LOG="$log_new" \
+  out_new=$(unset TMUX HERDR_ENV CMUX_WORKSPACE_ID; PATH="$fb:$PATH" FM_ROOT_OVERRIDE="$neutral_root" FM_HOME="$home" FM_TMUX_LOG="$log_new" \
     "$ROOT/bin/fm-peek.sh" "sess:win" 25 2>/dev/null)
 
   [ "$out_old" = "$out_new" ] || fail "fm-peek output differs old vs new"$'\n'"--- old ---"$'\n'"$out_old"$'\n'"--- new ---"$'\n'"$out_new"
