@@ -222,6 +222,34 @@ fi
 
 REPO=${POS[1]}
 
+# Detect if the target project is firstmate itself.  A project under
+# $FM_HOME/projects/ that resolves to the same directory as $FM_ROOT
+# means the worker is operating on the firstmate repo -- which carries
+# a supervisor manual that can confuse a worker about its role.
+IS_FIRSTMATE=0
+FIRSTMATE_PROJ_PATH="$FM_HOME/projects/$REPO"
+if [ -e "$FIRSTMATE_PROJ_PATH" ]; then
+  PROJ_REAL=$(cd "$FIRSTMATE_PROJ_PATH" 2>/dev/null && pwd -P) || true
+  ROOT_REAL=$(cd "$FM_ROOT" 2>/dev/null && pwd -P) || true
+  if [ -n "$PROJ_REAL" ] && [ "$PROJ_REAL" = "$ROOT_REAL" ]; then
+    IS_FIRSTMATE=1
+  fi
+fi
+
+FIRSTMATE_DISCLAIMER=""
+if [ "$IS_FIRSTMATE" -eq 1 ]; then
+  FIRSTMATE_DISCLAIMER=$(cat <<'EOF'
+
+# Working on the firstmate repository - read this first
+
+**AGENTS.md and CLAUDE.md document the SUPERVISOR role. That role is not yours.** You are a worker.
+Never run `bin/fm-session-start.sh` or any `bin/fm-*.sh` fleet command, never acquire the fleet lock, never operate "read-only because another session holds the lock".
+A treehouse pool path, Orca-managed worktree, or any other path under a pool or scratch directory IS your isolated worktree and is NOT the primary checkout.
+Read `AGENTS.md` and `CLAUDE.md` only as documentation of the code you are changing.
+EOF
+)
+fi
+
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
 # shellcheck disable=SC2016  # single quotes are deliberate: these lines are literal brief text whose backtick-wrapped $(...) and "$HERDR_LAB_SESSION" snippets must reach the reading agent verbatim, not expand at scaffold time; only the '"$VAR"' break-outs interpolate.
@@ -257,6 +285,7 @@ fi
 if [ "$KIND" = scout ]; then
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+$FIRSTMATE_DISCLAIMER
 
 # Task
 {TASK}
@@ -388,6 +417,7 @@ fi
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+$FIRSTMATE_DISCLAIMER
 
 # Task
 {TASK}
