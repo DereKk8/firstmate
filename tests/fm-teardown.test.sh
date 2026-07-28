@@ -49,6 +49,23 @@
 #   (w) index.lock mtime read failure                         -> lock kept, REFUSE
 #   (x) transient lock cleared after first failed return      -> retry ALLOW
 #   (y) persistent lock (never clears, not provably stale)    -> REFUSE loudly
+#
+# Also covers two additional safety guards added after real near-misses:
+#   - scout report size floor: a scout report that exists but is only a stub
+#     (e.g. the real deliverable was left in the scratch worktree) must not
+#     read as "done" just because the file is present.
+#   - stale worktree identity: a recorded worktree= can point at a treehouse
+#     pool slot that has since been re-leased to a different, unrelated task.
+#     Teardown must refuse rather than reset/return someone else's worktree.
+#   (z1) scout report exists but under SCOUT_REPORT_MIN_BYTES  -> REFUSE
+#   (z2) scout report comfortably over the size floor          -> ALLOW
+#   (z3) worktree branch does not match fm/<task-id>           -> REFUSE
+#   (z4) same, with --force                                    -> REFUSE (not bypassable)
+#   (z5) .fm-task-id marker names a different task              -> REFUSE
+#   (z6) .fm-task-id marker names this task                     -> ALLOW
+#   (z7) detached worktree, no branch or marker to check        -> ALLOW (documented gap)
+#   (z8) no worktree= recorded at all                           -> ALLOW (guard is a no-op)
+#   (z9) recorded worktree= path no longer exists               -> ALLOW (guard is a no-op)
 set -u
 
 # shellcheck source=tests/lib.sh disable=SC1091
@@ -1376,6 +1393,235 @@ test_herdr_projection_teardown_retains_journal_when_close_unconfirmed() {
   pass "herdr projection teardown retains the stale journal and attempts no workspace cleanup when exact-pane close is unconfirmed"
 }
 
+# --- scout report size floor + stale-worktree identity guard tests --------
+
+# tasks-axi mock that satisfies both fm_tasks_axi_compatible (version/update/mv)
+# and fm-decision-hold.sh's require_tasks_axi (hold --help must expose
+# --kind captain), so a scout teardown can reach and pass its completion gate.
+add_scout_gate_tasks_axi() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/tasks-axi" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  --version) printf '%s\n' '0.2.2'; exit 0 ;;
+esac
+case "${1:-} ${2:-}" in
+  "update --help") printf '%s\n' '  --archive-body'; exit 0 ;;
+  "mv --help") printf '%s\n' 'usage: tasks-axi mv <id> [<id>...] --to <path-or-dir>'; exit 0 ;;
+  "hold --help") printf '%s\n' '  --kind captain'; exit 0 ;;
+esac
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/tasks-axi"
+}
+
+# Run teardown with FM_DATA_OVERRIDE pointed at the case sandbox: scout tests
+# need a report path outside the real firstmate home. Args: case_dir [extra args...]
+run_teardown_scout() {
+  local case_dir=$1; shift
+  FM_ROOT_OVERRIDE="$ROOT" \
+  FM_STATE_OVERRIDE="$case_dir/state" \
+  FM_DATA_OVERRIDE="$case_dir/data" \
+  FM_CONFIG_OVERRIDE="$case_dir/config" \
+  PATH="$case_dir/fakebin:$PATH" \
+    "$TEARDOWN" task-x1 "$@"
+}
+
+# Write the spawn-time task-identity marker into the worktree the same way
+# fm-spawn.sh does: the file itself, plus a git info/exclude entry so it never
+# shows up as a dirty untracked file. Args: case_dir marker-task-id
+write_wt_task_marker() {
+  local case_dir=$1 marker_id=$2 excl
+  printf '%s\n' "$marker_id" > "$case_dir/wt/.fm-task-id"
+  excl=$(git -C "$case_dir/wt" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$excl")"
+  grep -qxF '.fm-task-id' "$excl" 2>/dev/null || echo '.fm-task-id' >> "$excl"
+}
+
+test_scout_stub_report_refuses() {
+  local case_dir rc
+  case_dir=$(make_case scout-stub-report)
+  write_meta "$case_dir" no-mistakes scout
+  printf '%s\n' 'decisions_reviewed=1' >> "$case_dir/state/task-x1.meta"
+  add_scout_gate_tasks_axi "$case_dir"
+  mkdir -p "$case_dir/data/task-x1"
+  printf 'TBD\n' > "$case_dir/data/task-x1/report.md"
+
+  set +e
+  run_teardown_scout "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "scout-stub-report: teardown should refuse a near-empty report"
+  assert_grep REFUSED "$case_dir/stderr" "scout-stub-report: no REFUSED line in stderr"
+  assert_grep "bytes (minimum" "$case_dir/stderr" "scout-stub-report: refusal did not explain the size floor"
+  [ -e "$case_dir/wt" ] || fail "scout-stub-report: worktree was destroyed despite the refusal"
+  pass "scout teardown refuses a report that exists but is only a stub (Guard 1)"
+}
+
+test_scout_real_report_allows() {
+  local case_dir rc report i
+  case_dir=$(make_case scout-real-report)
+  write_meta "$case_dir" no-mistakes scout
+  printf '%s\n' 'decisions_reviewed=1' >> "$case_dir/state/task-x1.meta"
+  add_scout_gate_tasks_axi "$case_dir"
+  mkdir -p "$case_dir/data/task-x1"
+  report="$case_dir/data/task-x1/report.md"
+  {
+    printf '# Findings\n\n'
+    for i in $(seq 1 20); do
+      printf 'Investigated case %d and confirmed the behavior end to end.\n' "$i"
+    done
+  } > "$report"
+
+  set +e
+  run_teardown_scout "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "scout-real-report: teardown should succeed with a real report"
+  ! grep -q REFUSED "$case_dir/stderr" || fail "scout-real-report: teardown printed a REFUSED line"
+  pass "scout teardown proceeds once the report clears the size floor (no regression)"
+}
+
+test_stale_worktree_branch_mismatch_refuses() {
+  local case_dir rc
+  case_dir=$(make_case stale-wt-branch-mismatch)
+  write_meta "$case_dir" no-mistakes ship
+  # Simulate a re-leased pool slot: the recorded worktree now holds a
+  # different, unrelated task's branch and work.
+  git -C "$case_dir/wt" checkout -q -b fm/other-task
+  wt_commit "$case_dir" "unrelated live work"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "stale-wt-branch-mismatch: teardown should refuse"
+  assert_grep REFUSED "$case_dir/stderr" "stale-wt-branch-mismatch: no REFUSED line in stderr"
+  assert_grep "not the expected fm/task-x1" "$case_dir/stderr" \
+    "stale-wt-branch-mismatch: refusal did not explain the branch mismatch"
+  [ "$(git -C "$case_dir/wt" rev-parse --abbrev-ref HEAD)" = "fm/other-task" ] \
+    || fail "stale-wt-branch-mismatch: the unrelated task's branch was altered"
+  pass "teardown refuses a recorded worktree whose branch belongs to a different task (Guard 2)"
+}
+
+test_stale_worktree_branch_mismatch_refuses_even_with_force() {
+  local case_dir rc
+  case_dir=$(make_case stale-wt-branch-mismatch-force)
+  write_meta "$case_dir" no-mistakes ship
+  git -C "$case_dir/wt" checkout -q -b fm/other-task
+  wt_commit "$case_dir" "unrelated live work"
+
+  set +e
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "stale-wt-branch-mismatch-force: --force must not bypass the identity guard"
+  assert_grep REFUSED "$case_dir/stderr" \
+    "stale-wt-branch-mismatch-force: no REFUSED line in stderr"
+  [ "$(git -C "$case_dir/wt" rev-parse --abbrev-ref HEAD)" = "fm/other-task" ] \
+    || fail "stale-wt-branch-mismatch-force: the unrelated task's branch was altered"
+  pass "the stale-worktree identity guard is not bypassable with --force"
+}
+
+test_worktree_marker_mismatch_refuses() {
+  local case_dir rc
+  case_dir=$(make_case wt-marker-mismatch)
+  write_meta "$case_dir" no-mistakes ship
+  write_wt_task_marker "$case_dir" other-task
+  wt_commit "$case_dir" "irrelevant"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "wt-marker-mismatch: teardown should refuse"
+  assert_grep REFUSED "$case_dir/stderr" "wt-marker-mismatch: no REFUSED line in stderr"
+  assert_grep "marked for task other-task" "$case_dir/stderr" \
+    "wt-marker-mismatch: refusal did not explain the marker mismatch"
+  pass "teardown refuses when the spawn-time task marker names a different task, even on a matching branch name"
+}
+
+test_worktree_marker_match_allows() {
+  local case_dir rc
+  case_dir=$(make_case wt-marker-match)
+  write_meta "$case_dir" no-mistakes ship
+  write_wt_task_marker "$case_dir" task-x1
+  wt_commit "$case_dir" "shippable work"
+  git -C "$case_dir/wt" push -q origin fm/task-x1
+  git -C "$case_dir/project" fetch -q origin
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "wt-marker-match: teardown should succeed when the marker names this task"
+  ! grep -q REFUSED "$case_dir/stderr" || fail "wt-marker-match: teardown printed a REFUSED line"
+  pass "teardown proceeds normally when the spawn-time task marker matches (no regression)"
+}
+
+test_detached_worktree_no_identity_signal_allows() {
+  local case_dir rc
+  case_dir=$(make_case detached-no-signal)
+  write_meta "$case_dir" no-mistakes ship
+  git -C "$case_dir/wt" checkout -q --detach
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "detached-no-signal: teardown should succeed with no identity signal to check"
+  ! grep -q REFUSED "$case_dir/stderr" || fail "detached-no-signal: teardown printed a REFUSED line"
+  pass "teardown proceeds when the worktree is detached with no branch or marker to check (documented gap, no regression)"
+}
+
+test_missing_worktree_record_teardown_still_works() {
+  local case_dir rc
+  case_dir=$(make_case no-worktree-recorded)
+  fm_write_meta "$case_dir/state/task-x1.meta" \
+    "window=fm-task-x1" \
+    "worktree=" \
+    "project=$case_dir/project" \
+    "kind=ship" \
+    "mode=no-mistakes"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "no-worktree-recorded: teardown should succeed with no worktree= recorded"
+  ! grep -q REFUSED "$case_dir/stderr" || fail "no-worktree-recorded: teardown printed a REFUSED line"
+  pass "teardown succeeds when the task has no recorded worktree at all (identity guard is a no-op)"
+}
+
+test_already_returned_worktree_teardown_still_works() {
+  local case_dir rc missing_wt
+  case_dir=$(make_case already-returned-wt)
+  missing_wt="$case_dir/wt-gone"
+  fm_write_meta "$case_dir/state/task-x1.meta" \
+    "window=fm-task-x1" \
+    "worktree=$missing_wt" \
+    "project=$case_dir/project" \
+    "kind=ship" \
+    "mode=no-mistakes"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "already-returned-wt: teardown should succeed when the recorded worktree is already gone"
+  ! grep -q REFUSED "$case_dir/stderr" || fail "already-returned-wt: teardown printed a REFUSED line"
+  pass "teardown succeeds when the recorded worktree was already returned (path missing, identity guard is a no-op)"
+}
+
 test_local_only_fork_remote_allows
 test_teardown_prompts_tasks_axi_done_when_compatible
 test_teardown_manual_backend_prompts_hand_edit_even_when_tasks_axi_present
@@ -1408,3 +1654,12 @@ test_transient_index_lock_clears_after_first_attempt_and_retry_succeeds
 test_persistent_index_lock_exhausts_retries_and_refuses_loudly
 test_empty_retry_wait_uses_default_without_aborting
 test_fractional_legacy_retry_wait_refuses_without_arithmetic_error
+test_scout_stub_report_refuses
+test_scout_real_report_allows
+test_stale_worktree_branch_mismatch_refuses
+test_stale_worktree_branch_mismatch_refuses_even_with_force
+test_worktree_marker_mismatch_refuses
+test_worktree_marker_match_allows
+test_detached_worktree_no_identity_signal_allows
+test_missing_worktree_record_teardown_still_works
+test_already_returned_worktree_teardown_still_works

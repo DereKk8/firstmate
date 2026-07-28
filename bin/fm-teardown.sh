@@ -27,8 +27,15 @@
 # for the common case where there is no remote at all.
 # Scout tasks (kind=scout in meta) carve out of that check: their worktree is
 # declared scratch and the report at data/<task-id>/report.md is the work
-# product. Teardown proceeds only once the report exists and the shared
-# unresolved-decision completion gate verifies its captain-held inventory.
+# product. Teardown proceeds only once the report exists, is at least
+# SCOUT_REPORT_MIN_BYTES (a scout that wrote its deliverable only inside the
+# scratch worktree instead of this durable path otherwise looks identical to a
+# finished, empty-handed one), and the shared unresolved-decision completion
+# gate verifies its captain-held inventory.
+# Before touching any recorded worktree=, teardown verifies it still belongs to
+# THIS task (spawn-time .fm-task-id marker, falling back to the fm/<task-id>
+# branch convention) and refuses if it looks like a stale record now pointing
+# at a pool slot re-leased to a different task; see verify_worktree_task_identity.
 # Before destructive cleanup, teardown validates task check artifacts and any
 # matching quarantine entries as ordinary single-link files on the state
 # device. It refuses and preserves task state when that proof fails; otherwise
@@ -140,6 +147,44 @@ KIND=$(grep '^kind=' "$META" | cut -d= -f2- || true)
 [ -n "$KIND" ] || KIND=ship
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
 [ -n "$MODE" ] || MODE=no-mistakes
+
+# Guard: a recorded worktree= can go stale (task died, its pool slot got
+# re-leased to a different task) while the meta file is never updated. Verify
+# the worktree still belongs to THIS task before anything below touches it, so
+# teardown never resets or removes a live unrelated worker's worktree. Two
+# independent, spawn-time-anchored signals, most specific first:
+#   1. fm-spawn.sh writes a `.fm-task-id` marker naming the owning task; if
+#      present it must match exactly.
+#   2. Absent that marker (tasks spawned before this check existed), fall back
+#      to the branch-naming convention every brief enforces: `fm/<task-id>`.
+#      A still-detached worktree (no branch created yet) has no signal to
+#      check either way and is treated as inconclusive rather than refused,
+#      matching pre-existing behavior for that narrow window.
+# This check is NOT skipped by --force: --force authorizes discarding this
+# task's own unlanded work, never touching a worktree that turns out to
+# belong to someone else.
+verify_worktree_task_identity() {
+  local marker="$WT/.fm-task-id" marker_id branch
+  [ -d "$WT" ] || return 0
+  [ "$KIND" = secondmate ] && return 0
+  if [ -f "$marker" ]; then
+    marker_id=$(head -1 "$marker" 2>/dev/null | tr -d '\r\n')
+    if [ "$marker_id" != "$ID" ]; then
+      echo "REFUSED: worktree $WT is marked for task ${marker_id:-<unreadable>}, not $ID." >&2
+      echo "This looks like a stale record pointing at a pool slot since re-leased to a different task; refusing to touch it." >&2
+      return 1
+    fi
+    return 0
+  fi
+  branch=$(git -C "$WT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)
+  if [ "$branch" != HEAD ] && [ "$branch" != "fm/$ID" ]; then
+    echo "REFUSED: worktree $WT is on branch $branch, not the expected fm/$ID." >&2
+    echo "This looks like a stale record pointing at a pool slot since re-leased to a different task; refusing to touch it." >&2
+    return 1
+  fi
+  return 0
+}
+verify_worktree_task_identity || exit 1
 
 default_branch() {
   local ref branch
@@ -516,6 +561,15 @@ canonical_existing_dir() {
 retry_wait_secs_is_valid() {
   [[ "$1" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)$ ]]
 }
+
+# A scout's report is its entire deliverable; a bare "exists" check passes an
+# empty or one-line stub just as happily as a real writeup, and a scout that
+# wrote its actual report only inside the scratch worktree (instead of this
+# durable path) has looked identical to a finished, empty-handed scout. 200
+# bytes is comfortably above any placeholder heading or "TBD" stub, and
+# comfortably below any real investigation writeup (evidence at data/*/
+# report.md across this fleet runs from several KB to tens of KB).
+SCOUT_REPORT_MIN_BYTES=${FM_SCOUT_REPORT_MIN_BYTES:-200}
 
 STALE_WORKTREE_LOCK_AGE_SECS=${FM_STALE_WORKTREE_LOCK_AGE_SECS:-30}
 # Bounded patience window for transient index.lock after killing a crew process.
@@ -1086,6 +1140,13 @@ if [ "$KIND" = scout ] && [ "$FORCE" != "--force" ]; then
     echo "The report is the work product. Have the crewmate write it, or use --force after explicit discard approval." >&2
     exit 1
   fi
+  REPORT_BYTES=$(wc -c < "$REPORT" 2>/dev/null | tr -d '[:space:]')
+  case "$REPORT_BYTES" in ''|*[!0-9]*) REPORT_BYTES=0 ;; esac
+  if [ "$REPORT_BYTES" -lt "$SCOUT_REPORT_MIN_BYTES" ]; then
+    echo "REFUSED: scout task $ID report at $REPORT is only $REPORT_BYTES bytes (minimum $SCOUT_REPORT_MIN_BYTES)." >&2
+    echo "This looks like a stub, not the finished deliverable - the real report may still be sitting only in the scratch worktree. Check there before discarding, or use --force after explicit discard approval." >&2
+    exit 1
+  fi
   if ! FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" \
       FM_CONFIG_OVERRIDE="$CONFIG" "$SCRIPT_DIR/fm-decision-hold.sh" verify "$ID" >/dev/null; then
     echo "REFUSED: scout task $ID has not passed the unresolved-decision completion gate." >&2
@@ -1131,7 +1192,7 @@ if [ "$BACKEND" = orca ] && [ "$KIND" != secondmate ]; then
         git -C "$WT" branch -D "$branch" >/dev/null 2>&1 || true
       fi
     fi
-    rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" "$WT/.fm-grok-turnend"
+    rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" "$WT/.fm-grok-turnend" "$WT/.fm-task-id"
   fi
   [ -z "$T_ORCA" ] || fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
   fm_backend_remove_worktree "$BACKEND" "$ORCA_WORKTREE_ID"
@@ -1143,7 +1204,9 @@ elif [ -d "$WT" ] && [ "$KIND" != secondmate ]; then
     fi
   fi
   # Remove our hook file so a reused pool worktree cannot fire signals for a dead task.
-  rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" "$WT/.fm-grok-turnend"
+  # Also clear the task-identity marker so a later task inheriting this slot is never
+  # compared against a stale owner (see verify_worktree_task_identity).
+  rm -f "$WT/.claude/settings.local.json" "$WT/.opencode/plugins/fm-turn-end.js" "$WT/.fm-grok-turnend" "$WT/.fm-task-id"
   # Kills remaining processes in the worktree (including the agent), resets, returns
   # to pool. treehouse resolves the pool from the working directory, so run it from
   # the project. teardown_treehouse_return tolerates transient and stale git locks
