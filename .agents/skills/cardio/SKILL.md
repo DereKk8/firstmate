@@ -28,10 +28,18 @@ and is not reimplemented here.
    - No unresolved `blocked-by`.
    - No future date/time gate that has not yet arrived.
    - No explicit captain hold on the item.
-   Do not offer blocked, future-gated, or held items - `/cardio` is a launch
-   menu, not a full backlog dump. Present each surviving item concise and
-   scannable: id, one-line description, project. If nothing qualifies, say so
-   plainly and skip straight to step 4.
+   Do not offer blocked, future-gated, or held items - `/cardio` is a launch menu, not a full backlog dump.
+   Present each surviving item concise and scannable: id, one-line description, project, and its external ticket reference when the item records one.
+   List items with no recorded ticket plainly with no reference.
+   If nothing qualifies, say so plainly and skip straight to step 4.
+
+   **Ticket reference source.**
+   The backlog item's explicit `ticket` field is authoritative for this presentation.
+   It holds the Notion `ENG-TASKS-###` or `BRAIN-TASKS-###` id for Aide work, or the equivalent external tracker id for another project.
+   Never invent, guess, or derive a ticket reference from an item id, title, body, slug, or any text that merely resembles one.
+   Extraction-only is rejected because most current item ids do not encode their ticket, while a field gives one stable source across every backlog backend.
+   Backfill the field only from the authoritative external ticket when creating or reviewing backlog items, and leave items whose ticket is genuinely unknown or absent unreferenced.
+   The current `.tasks.toml` Markdown configuration has no field schema and the installed `tasks-axi add` and `tasks-axi update` commands expose no `ticket` option, so adding and carrying this field through both backends is a prerequisite for rendering existing references through the `tasks-axi` path.
 
 2. **Get the captain's authorization.**
    Ask which of the listed items to launch now. This is a multi-select: the
