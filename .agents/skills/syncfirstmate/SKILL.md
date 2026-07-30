@@ -158,11 +158,63 @@ The shell helper stays deterministic and read-only.
 
 After writing the changelog, tell the captain its path so they can open it.
 
+## External tooling sync
+
+Beyond this repo's own git history, firstmate depends on external CLI tooling to operate:
+the harness runners that crewmates execute on, plus those harnesses' own extensions and plugins.
+
+### Discovery (run every check)
+
+Do not consult a hardcoded name list.
+Instead, discover the current working set at run time from these authoritative places:
+
+1. **Harness CLIs** - the `harness-adapters` skill's verified-adapter list is the single owner of which
+   harnesses firstmate supports.
+   Extract every verified adapter name from it.
+2. **Pi packages** - run `pi list` to enumerate installed user packages (extensions and plugins that
+   extend pi's own behavior).
+   These live under `~/.pi/agent/` and are kept current via `pi update`.
+3. **Dispatch configuration** - read `config/crew-dispatch.json` and `config/crew-harness` for any
+   harness references not already covered by the verified-adapter list.
+   A harness referenced only in config but not yet verified is worth flagging.
+
+For each discovered tool, determine its installed version and whether an update is available.
+The exact update-check mechanic varies by tool; use the tool's own native mechanism where one exists
+(e.g. `git fetch` + `git rev-list --left-right` for git-based pi packages), and fall back to a
+presence/version check when no native update-check command is available.
+
+### Check mode
+
+Run `bin/fm-external-tooling-check.sh`.
+It discovers tools from the authoritative sources above, checks each for drift, and prints a
+grouped report: harness CLIs with their installed versions, pi packages with their local and
+remote commit SHAs, and a behind count for any package that has drifted from upstream.
+
+Report to the captain alongside the upstream git gap from `bin/fm-upstream-check.sh`.
+
+### Full-sync mode
+
+When the captain authorizes a full sync, include external tooling updates after the git merge
+work is complete.
+For each outdated tool, use its native update mechanism:
+
+- **Pi packages**: `pi update <source>` (e.g. `pi update git:github.com/org/repo`).
+- **Harness CLIs**: follow that harness's own upgrade path (the install method is
+  environment-specific - brew, npm, pip, or the harness's own updater).
+  Harness CLIs that were already current before the sync started do not need a re-update just
+  because the sync ran.
+
+The merge crewmate owns the full-sync implementation.
+Update tooling only after the git merge is committed, so a tooling-update failure does not block
+the git sync from landing.
+
 ## Weekly heartbeat
 
-Check mode (`bin/fm-upstream-check.sh`) is designed to run non-interactively as a weekly heartbeat job.
-It never writes to tracked files or pushes.
-It outputs to stdout so the scheduler can surface it.
+Check mode runs two read-only scripts:
+`bin/fm-upstream-check.sh` (git gap) and `bin/fm-external-tooling-check.sh` (external tooling drift).
+Both are designed to run non-interactively as a weekly heartbeat job.
+Neither writes to tracked files or pushes.
+Both output to stdout so the scheduler can surface them.
 The weekly schedule is wired by firstmate separately; this skill does not set it up.
 
 ## Safety
@@ -170,4 +222,4 @@ The weekly schedule is wired by firstmate separately; this skill does not set it
 - **Never merge without the captain's explicit word** (prime directive #2; `yolo` does not waive it for this skill because a real merge into `origin/main` is irreversible).
 - **Never skip the pipeline-run approval ask** - the captain owns that decision.
 - The crewmate must not force, stash, or discard any unlanded work.
-- The helper `bin/fm-upstream-check.sh` is read-only; it never writes to tracked files or pushes.
+- The helpers `bin/fm-upstream-check.sh` and `bin/fm-external-tooling-check.sh` are read-only; they never write to tracked files or push.
