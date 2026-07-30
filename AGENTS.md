@@ -471,6 +471,7 @@ Each skill may be loaded for reference at any time; the triggers below are when 
 - `firstmate-coding-guidelines` - load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
 - `layout-reference` - load when you need the full file-by-file state/data/config inventory, backend-specific path naming, or help locating a specific artifact.
 - `project-management` - load before adding, creating, removing, or initializing a project.
+- `pr-merge-board` - load when the captain asks to regenerate the Notion PR merge board, or when a session that touches tracked PRs starts or ends per the captain's standing instruction to keep the board current.
 - `task-lifecycle` - load for full spawn flag reference; validate procedure and run-step states; PR-ready and teardown safety checks; scout promotion; crewmate brief contract; and full recovery step details.
 - `supervision` - load for wake triage absorption logic, watcher mechanics, heartbeat backoff, worktree-tangle guard details, away-mode daemon specifics, and token discipline.
 - `x-mode` - load when `.env` has `FMX_PAIRING_TOKEN`, when bootstrap prints `FMX:`, or when a watcher cadence transition (opt-in or opt-out) is needed. Contains X mode setup, activation, cadence arm/restart, completion follow-up contract, conversation handling, and dry-run details.
