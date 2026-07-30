@@ -244,7 +244,7 @@ case "\${1:-} \${2:-}" in
     case " \$* " in
       *"state,headRefOid"*) printf '%s\t%s\n' 'MERGED' '$head' ; exit 0 ;;
       *"headRefOid"*) printf '%s\n' '$head' ; exit 0 ;;
-      *"body"*) printf '\n'; exit 0 ;;
+      *"body"*) printf '## What Changed\n- Fixed the thing.\n'; exit 0 ;;
       *"mergeStateStatus"*) printf '%s\n' 'CLEAN'; exit 0 ;;
       *"baseRefName"*) printf '%s\n' 'main'; exit 0 ;;
     esac
