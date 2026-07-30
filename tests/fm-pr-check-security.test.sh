@@ -99,13 +99,13 @@ SH
 }
 
 write_task_meta() {
-  local dir=$1 id=${2:-task-a}
+  local dir=$1 id=${2:-task-a} mode=${3:-no-mistakes}
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=fm-$id" \
     "worktree=$dir/wt" \
     "project=$dir/project" \
     "kind=ship" \
-    "mode=no-mistakes"
+    "mode=$mode"
 }
 
 write_poll_meta() {
@@ -518,7 +518,12 @@ test_invalid_entrypoints_have_zero_side_effects() {
 test_valid_recording_and_merge_derivation() {
   local dir expected sidecar count rc
   dir=$(make_case valid-recording)
-  write_task_meta "$dir"
+  # mode=direct-PR: this test exercises atomic sidecar/registration recording
+  # mechanics, not PR body content; this fixture's gh mock never answers the
+  # body/mergeStateStatus/baseRefName queries, so mode=no-mistakes would trip
+  # the '## What Changed' structure gate (bin/fm-pr-check.sh) on the resulting
+  # empty body.
+  write_task_meta "$dir" task-a direct-PR
   expected=0123456789abcdef0123456789abcdef01234567
   FM_TEST_GH_HEAD=$expected run_check_entry "$dir" task-a https://github.com/my-org/repo_name.with-dots/pull/37 \
     > "$dir/stdout" 2> "$dir/stderr" || fail "valid direct check failed"
@@ -565,7 +570,9 @@ test_valid_recording_and_merge_derivation() {
     || fail "guarded merge retirement removed pr_head metadata"
 
   dir=$(make_case newline-head)
-  write_task_meta "$dir"
+  # mode=direct-PR: this fixture's gh mock never answers the body query, and
+  # this test is about malformed pr_head handling, not PR body content.
+  write_task_meta "$dir" task-a direct-PR
   FM_TEST_GH_HEAD=$'0123456789abcdef0123456789abcdef01234567\nwindow=unexpected' \
     run_check_entry "$dir" task-a https://github.com/o/r/pull/2 >/dev/null 2>/dev/null \
     || fail "valid check with malformed remote head failed"
@@ -573,7 +580,10 @@ test_valid_recording_and_merge_derivation() {
   assert_no_grep 'window=unexpected' "$dir/home/state/task-a.meta" "newline metadata key was injected"
 
   dir=$(make_case lifecycle-compatible-id)
-  write_task_meta "$dir" Task_A.1
+  # mode=direct-PR: fm-pr-merge.sh re-invokes fm-pr-check.sh internally, and
+  # this fixture's gh mock never answers the body query; this test is about
+  # lifecycle-compatible task IDs, not PR content.
+  write_task_meta "$dir" Task_A.1 direct-PR
   run_merge_entry "$dir" Task_A.1 https://github.com/o/r/pull/3 \
     > "$dir/stdout" 2> "$dir/stderr" \
     || fail "safe lifecycle-compatible task ID could not use the PR merge flow"
@@ -653,7 +663,9 @@ run_watcher_bounded() {
 test_rejected_metacharacter_bytes_are_inert() {
   local dir family rc before after
   dir=$(make_case rejected-metacharacters)
-  write_task_meta "$dir"
+  # mode=direct-PR: this fixture's gh mock never answers the body query, and
+  # this test is about metacharacter rejection, not PR content.
+  write_task_meta "$dir" task-a direct-PR
   write_poll_meta "$dir/home/state" safe-check https://github.com/o/r/pull/99
   families=(
     'https://github.com/o$/r/pull/1'
@@ -796,7 +808,9 @@ test_concurrent_watcher_sees_only_complete_publication() {
   n=1
   while [ "$n" -le 3 ]; do
     dir=$(make_case "concurrent-$n")
-    write_task_meta "$dir"
+    # mode=direct-PR: this fixture's gh mock never answers the body query,
+    # and this test is about concurrent atomic publication, not PR content.
+    write_task_meta "$dir" task-a direct-PR
     cat > "$dir/fakebin/cp" <<SH
 #!/usr/bin/env bash
 '$REAL_CP' "\$@" || exit 1
@@ -1550,7 +1564,9 @@ test_complete_single_link_validation() {
   for artifact in check.sh pr-poll pr-poll-registration; do
     dir=$(make_case "single-link-live-${artifact//./-}")
     state="$dir/home/state"
-    write_task_meta "$dir"
+    # mode=direct-PR: this fixture's gh mock never answers the body query,
+    # and this test is about single-link artifact validation, not PR content.
+    write_task_meta "$dir" task-a direct-PR
     run_check_entry "$dir" task-a https://github.com/o/r/pull/10 >/dev/null 2>/dev/null \
       || fail "could not publish $artifact hard-link fixture"
     fm_pr_poll_artifacts_valid "$state" task-a "$POLL" \

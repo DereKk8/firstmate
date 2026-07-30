@@ -31,6 +31,20 @@
 #   (l6) ls-remote returns no symref line → REFUSED ("remote HEAD carries no symbolic ref")
 #   (m) false-positive guard: "skipped" alone in body without the emoji → pass
 #   (n) false-positive guard: "High" alone without the 🚨 emoji → pass
+#
+# PR-body structure gate (mode=no-mistakes only, pinned against the
+# ENG-TASKS-166 PR #65 incident: an Intent/Summary/Testing/Review essay with
+# no "## What Changed" section at all — see data/captain.md "PR bodies follow
+# the no-mistakes structure, not a firstmate-invented one"):
+#   (o) mode=no-mistakes, body has a conforming "## What Changed" bulleted
+#       section plus other pipeline sections around it → armed (pass)
+#   (p) mode=no-mistakes, body has no "## What Changed" section at all
+#       (an invented Intent/Summary essay instead) → refused
+#   (q) mode != no-mistakes (direct-PR), body has no "## What Changed" section
+#       → armed (pass; the check is scoped to no-mistakes-mode tasks only)
+#   (r) mode=no-mistakes, empty body → refused (the pipeline always generates
+#       a body, unlike the marker checks above which let an empty body pass)
+#   (s) mode=no-mistakes, body missing "## What Changed", --force-ready → armed
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -42,7 +56,7 @@ TMP_ROOT=$(fm_test_tmproot fm-pr-check-tests)
 # --- fixtures ---------------------------------------------------------------
 
 make_case() {
-  local name=$1 case_dir
+  local name=$1 mode=${2:-no-mistakes} case_dir
   case_dir="$TMP_ROOT/$name"
   mkdir -p "$case_dir/state" "$case_dir/fakebin" "$case_dir/project"
   fm_write_meta "$case_dir/state/task-x1.meta" \
@@ -50,7 +64,7 @@ make_case() {
     "worktree=$case_dir/wt" \
     "project=$case_dir/project" \
     "kind=ship" \
-    "mode=no-mistakes"
+    "mode=$mode"
   printf '%s\n' "$case_dir"
 }
 
@@ -243,8 +257,8 @@ test_clean_pr_armed() {
   local case_dir rc out
   case_dir=$(make_case clean)
   add_gh_mock "$case_dir" \
-    "## Summary
-Adds feature X.
+    "## What Changed
+- Adds feature X.
 
 ## Test plan
 - Ran unit tests locally" \
@@ -265,8 +279,11 @@ Adds feature X.
 
 test_handwritten_pr_no_markers_armed() {
   local case_dir rc out
-  case_dir=$(make_case handwritten)
+  case_dir=$(make_case handwritten direct-PR)
   # A hand-written PR body with words that sound similar but are NOT markers.
+  # mode=direct-PR: the new '## What Changed' structure check is scoped to
+  # mode=no-mistakes only, so a direct-PR task's hand-written body (no
+  # "## What Changed" section at all) must not trip it.
   add_gh_mock "$case_dir" \
     "Fix the regression in the login flow.
 
@@ -314,7 +331,10 @@ test_bookkeeping_still_works() {
   local case_dir rc
   case_dir=$(make_case bookkeeping)
   mkdir -p "$case_dir/wt"
-  add_gh_mock "$case_dir" "Normal PR." "CLEAN" "main" "deadbeefdeadbeef0000000000000000deadbeef"
+  add_gh_mock "$case_dir" \
+    "## What Changed
+- Fixed the thing." \
+    "CLEAN" "main" "deadbeefdeadbeef0000000000000000deadbeef"
   add_git_mock "$case_dir" main
 
   set +e
@@ -553,8 +573,11 @@ test_ls_remote_no_symref_refused() {
 
 test_false_positive_skipped_word_alone() {
   local case_dir rc out
-  case_dir=$(make_case fp-skipped)
+  case_dir=$(make_case fp-skipped direct-PR)
   # "skipped" alone, without the ⏭️ emoji, must not trip the skip-gate check.
+  # mode=direct-PR so this plain hand-written body (no "## What Changed"
+  # section) does not also trip the new structure check, keeping this test
+  # scoped to the marker false-positive it is named for.
   add_gh_mock "$case_dir" \
     "I skipped the expensive migration for now.
 This PR is not a pipeline skip." \
@@ -573,8 +596,9 @@ This PR is not a pipeline skip." \
 
 test_false_positive_high_word_alone() {
   local case_dir rc out
-  case_dir=$(make_case fp-high)
+  case_dir=$(make_case fp-high direct-PR)
   # "High" without the 🚨 emoji must not trip the high-risk check.
+  # mode=direct-PR for the same reason as the fp-skipped case above.
   add_gh_mock "$case_dir" \
     "This is a High priority fix.
 High impact, must ship." \
@@ -589,6 +613,130 @@ High impact, must ship." \
   expect_code 0 "$rc" "fp-high: should arm the poll"
   assert_not_contains "$out" "REFUSED" "fp-high: 'High' alone must not trigger refusal"
   pass "'High' alone in the body (no 🚨 emoji) does not trip the high-risk check"
+}
+
+# --- PR-body structure gate tests (mode=no-mistakes only) -------------------
+
+test_structure_conforming_body_armed() {
+  local case_dir rc out
+  case_dir=$(make_case structure-conforming)
+  add_gh_mock "$case_dir" \
+    "## Intent
+
+Fix the thing.
+
+## What Changed
+- Fixed the login bug.
+- Added a regression test.
+
+## Testing
+- Ran the new test locally." \
+    "CLEAN" "main"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/14 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "structure-conforming: should arm the poll"
+  assert_present "$case_dir/state/task-x1.check.sh" "structure-conforming: check.sh must be written"
+  assert_not_contains "$out" "REFUSED" "structure-conforming: must not be refused"
+  pass "mode=no-mistakes body with a conforming '## What Changed' section (plus other sections) is armed"
+}
+
+test_structure_missing_what_changed_refused() {
+  local case_dir rc out
+  case_dir=$(make_case structure-missing)
+  # An invented Intent/Summary/Testing/Review essay with no "What Changed"
+  # section at all -- the exact shape of the ENG-TASKS-166 PR #65 incident.
+  add_gh_mock "$case_dir" \
+    "## Intent
+
+Fix the thing.
+
+## Summary
+- Fixed the login bug.
+
+## Testing
+- Ran the new test locally." \
+    "CLEAN" "main"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/15 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "structure-missing: should refuse"
+  assert_contains "$out" "REFUSED" "structure-missing: refusal message missing"
+  assert_contains "$out" "What Changed" "structure-missing: should name the missing section"
+  assert_absent "$case_dir/state/task-x1.check.sh" "structure-missing: poll must not be armed"
+  pass "mode=no-mistakes body with no '## What Changed' section is refused"
+}
+
+test_structure_non_no_mistakes_mode_unaffected() {
+  local case_dir rc out
+  case_dir=$(make_case structure-direct-pr direct-PR)
+  # Same invented essay shape as the refused case above, but mode=direct-PR:
+  # the structure gate must not fire regardless of body shape.
+  add_gh_mock "$case_dir" \
+    "## Intent
+
+Fix the thing.
+
+## Summary
+- Fixed the login bug." \
+    "CLEAN" "main"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/16 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "structure-direct-pr: should arm the poll"
+  assert_present "$case_dir/state/task-x1.check.sh" "structure-direct-pr: check.sh must be written"
+  assert_not_contains "$out" "REFUSED" "structure-direct-pr: must not be refused"
+  pass "a direct-PR task's hand-written body is never touched by the structure gate"
+}
+
+test_structure_empty_body_no_mistakes_refused() {
+  local case_dir rc out
+  case_dir=$(make_case structure-empty)
+  add_gh_mock "$case_dir" "" "CLEAN" "main"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/17 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "structure-empty: should refuse"
+  assert_contains "$out" "REFUSED" "structure-empty: refusal message missing"
+  assert_contains "$out" "PR body is empty" "structure-empty: should name the empty-body cause"
+  assert_absent "$case_dir/state/task-x1.check.sh" "structure-empty: poll must not be armed"
+  pass "mode=no-mistakes task with an empty PR body is refused"
+}
+
+test_structure_force_ready_bypasses() {
+  local case_dir rc out
+  case_dir=$(make_case structure-force-ready)
+  add_gh_mock "$case_dir" \
+    "## Intent
+No What Changed section here at all." \
+    "CLEAN" "main"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" --force-ready task-x1 https://github.com/example/repo/pull/18 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "structure-force-ready: should succeed"
+  assert_present "$case_dir/state/task-x1.check.sh" "structure-force-ready: check.sh must be written"
+  assert_not_contains "$out" "REFUSED" "structure-force-ready: must not be refused"
+  pass "--force-ready bypasses the structure gate along with the other content checks"
 }
 
 # --- run --------------------------------------------------------------------
@@ -612,3 +760,8 @@ test_ls_remote_fails_refused
 test_ls_remote_no_symref_refused
 test_false_positive_skipped_word_alone
 test_false_positive_high_word_alone
+test_structure_conforming_body_armed
+test_structure_missing_what_changed_refused
+test_structure_non_no_mistakes_mode_unaffected
+test_structure_empty_body_no_mistakes_refused
+test_structure_force_ready_bypasses

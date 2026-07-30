@@ -31,12 +31,17 @@ make_case() {
   fakebin="$case_dir/fakebin"
   mkdir -p "$case_dir/state" "$case_dir/data" "$case_dir/project" "$fakebin"
   printf '%s\n' '- project [no-mistakes] base=main - fixture project' > "$case_dir/data/projects.md"
+  # mode=direct-PR: fm-pr-merge.sh re-invokes fm-pr-check.sh internally, and
+  # this file's gh mock never answers the body/mergeStateStatus/baseRefName
+  # queries fm-pr-check.sh's mode=no-mistakes structure gate depends on; this
+  # suite is about the merge flow's own recording and forwarding behavior, not
+  # PR body content.
   fm_write_meta "$case_dir/state/task-x1.meta" \
     "window=fm-task-x1" \
     "worktree=$case_dir/wt" \
     "project=$case_dir/project" \
     "kind=ship" \
-    "mode=no-mistakes"
+    "mode=direct-PR"
   # No worktree/project on disk; fm-pr-check.sh tolerates a worktree it cannot
   # stat and simply skips the pr_head lookup via `gh` in that case, so give it
   # one that resolves for cases that want pr_head recorded.

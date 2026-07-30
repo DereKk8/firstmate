@@ -18,8 +18,14 @@
 #   - the PR's base branch differs from the project's true remote default branch
 #   - the PR's base branch differs from the project's explicit base= registry value
 #     (the registry base wins over the repo default; used for repos targeting dev)
+#   - task meta records mode=no-mistakes and the PR body has no '## What
+#     Changed' bulleted section (or is empty) — see data/captain.md "PR bodies
+#     follow the no-mistakes structure, not a firstmate-invented one"
 # Absence of no-mistakes markers (hand-written PR, direct-PR mode) does NOT
-# trip the body checks; only the presence of specific markers refuses.
+# trip the body checks; only the presence of specific markers refuses. The
+# '## What Changed' structure check is the one exception: it is keyed off
+# mode=no-mistakes in task meta rather than marker presence, and does not fire
+# for a direct-PR or local-only task regardless of its body shape.
 # A GitLab merge request has no such content verification: glab exposes the
 # fields we would need only inside JSON output, which would need a JSON
 # processor firstmate does not require, so a GitLab task arms directly.
@@ -63,6 +69,21 @@ pr_check_refuse() {  # <message>
   echo "pr-check: REFUSED: $1" >&2
   echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
   exit 1
+}
+
+# Detect the no-mistakes pipeline's canonical "## What Changed" bulleted
+# section. Real merged no-mistakes PRs freely carry other sections around it
+# (Intent, Risk Assessment, Testing, per-stage Pipeline detail), so this only
+# requires the heading to exist and be followed by a markdown bullet list, not
+# that it is the body's only section.
+pr_check_what_changed_bulleted() {  # <body>
+  printf '%s\n' "$1" | awk '
+    /^## What Changed[ \t]*$/ { heading = 1; next }
+    heading && /^[ \t]*$/ { next }
+    heading && /^-[ \t]/ { bulleted = 1; heading = 0; next }
+    { heading = 0 }
+    END { exit(bulleted ? 0 : 1) }
+  '
 }
 
 if [ "$PROVIDER" = github ] && ! command -v gh >/dev/null 2>&1; then
@@ -133,6 +154,25 @@ if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
 
   REFUSE=0
   REASONS=""
+
+  MODE=""
+  if [ -f "$META" ]; then
+    MODE=$(grep '^mode=' "$META" | tail -1 | cut -d= -f2- || true)
+  fi
+
+  # PR-body structure check: no-mistakes-mode tasks only.  A direct-PR or
+  # local-only task's hand-written body is never touched by this, regardless
+  # of its shape.  The pipeline always generates a body for a no-mistakes-mode
+  # task, so an empty body refuses here too, unlike the marker checks below.
+  if [ "$MODE" = "no-mistakes" ]; then
+    if [ -z "$PR_BODY" ]; then
+      REFUSE=1
+      REASONS="${REASONS}${REASONS:+$'\n'}  - PR body is empty, but task mode=no-mistakes always generates one (was the body hand-written, or was the pipeline's pr stage skipped?)"
+    elif ! pr_check_what_changed_bulleted "$PR_BODY"; then
+      REFUSE=1
+      REASONS="${REASONS}${REASONS:+$'\n'}  - PR body has no '## What Changed' bulleted section (mode=no-mistakes PRs must follow the pipeline's own structure, not a hand-invented layout; see data/captain.md 'PR bodies follow the no-mistakes structure')"
+    fi
+  fi
 
   # Body marker checks.  Absent markers (hand-written PR, direct-PR mode) must
   # NOT trip the check.  An empty body (PR with no description) also passes.
