@@ -10,6 +10,7 @@
 # bin/fm-turnend-guard.sh uses the status fields here for its banner but performs
 # its end-of-turn block decision with the live watcher lock check in
 # bin/fm-wake-lib.sh.
+
 # Portable mtime; Linux stat lacks -f, macOS stat lacks -c.
 fm_sup_stat_mtime() {
   if [ "$(uname)" = Darwin ]; then
@@ -69,6 +70,7 @@ fm_supervision_needed() {
   fm_supervision_status "$@"
   [ "$FM_SUP_NEEDED" = true ]
 }
+
 # fm_supervision_unhealthy <state-dir> [grace-seconds]
 # Exit 0 (true) exactly in the dangerous state: in-flight work exists and no
 # watcher has a fresh beacon. Exit 1 (false) otherwise, including zero in-flight.

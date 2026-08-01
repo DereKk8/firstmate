@@ -9,6 +9,10 @@ STATE="${FM_STATE_OVERRIDE:-${STATE:-$FM_HOME/state}}"
 FM_WAKE_QUEUE="${FM_WAKE_QUEUE:-$STATE/.wake-queue}"
 FM_WAKE_QUEUE_LOCK="${FM_WAKE_QUEUE_LOCK:-$STATE/.wake-queue.lock}"
 FM_LOCK_STALE_AFTER="${FM_LOCK_STALE_AFTER:-2}"
+# Resolved once at source time: fm_pid_identity and fm_path_mtime run inside 0.2s
+# confirm and 0.5s attach polls, and forking uname per call is a measurable cost on
+# the platform (Git Bash/MSYS) that already pays the highest fork price.
+_FM_UNAME=$(uname 2>/dev/null || echo unknown)
 mkdir -p "$STATE"
 
 fm_current_pid() {
@@ -24,17 +28,19 @@ fm_pid_alive() {
 }
 
 fm_pid_identity() {
-  local pid=$1 out proc_root stat_line starttime cmdline_hex
+  local pid=$1 out proc_root stat_line starttime cmdline_hex identity_key
   local -a stat_fields
   case "$pid" in
     ''|*[!0-9]*) return 1 ;;
   esac
   proc_root=${FM_PROC_ROOT_OVERRIDE:-/proc}
-  # Prefer /proc on Linux: stat field 22 (starttime, clock ticks since boot) is
+  # Prefer a Linux-compatible /proc when present: stat field 22 (starttime, clock ticks since boot) is
   # immune to the wall-clock steps that re-render the ps lstart fallback's date
   # (observed as WSL2 btime drift) and would evict a live watcher; combining the
   # full NUL-separated cmdline keeps PID reuse a mismatch even on a tick collision.
-  if [ "$(uname)" = Linux ] && [ -r "$proc_root/$pid/stat" ] && [ -r "$proc_root/$pid/cmdline" ]; then
+  # Git Bash/MSYS exposes these compatible files but its Cygwin ps rejects the
+  # portable fallback's -o fields, so capability detection must not key on uname.
+  if [ -r "$proc_root/$pid/stat" ] && [ -r "$proc_root/$pid/cmdline" ]; then
     stat_line=$(cat "$proc_root/$pid/stat" 2>/dev/null) || return 1
     # After the final comm delimiter, array index 19 is proc stat field 22.
     read -r -a stat_fields <<< "${stat_line##*)}"
@@ -45,7 +51,9 @@ fm_pid_identity() {
     esac
     cmdline_hex=$(od -An -v -tx1 "$proc_root/$pid/cmdline" 2>/dev/null | tr -d '[:space:]') || return 1
     [ -n "$cmdline_hex" ] || return 1
-    printf 'linux-starttime=%s cmdline-hex=%s\n' "$starttime" "$cmdline_hex"
+    identity_key=proc-starttime
+    [ "$_FM_UNAME" != Linux ] || identity_key=linux-starttime
+    printf '%s=%s cmdline-hex=%s\n' "$identity_key" "$starttime" "$cmdline_hex"
     return 0
   fi
   # Pin LC_ALL=C so lstart's date format is locale-invariant: the identity is
@@ -57,7 +65,7 @@ fm_pid_identity() {
 }
 
 fm_path_mtime() {
-  if [ "$(uname)" = Darwin ]; then
+  if [ "$_FM_UNAME" = Darwin ]; then
     stat -f %m "$1" 2>/dev/null
   else
     stat -c %Y "$1" 2>/dev/null
@@ -97,40 +105,6 @@ fm_watcher_healthy() {
   # shellcheck disable=SC2034 # Read by callers after fm_watcher_healthy returns.
   FM_WATCHER_HEALTHY_PID=$pid
   return 0
-}
-
-# A turn-end guard may wait for an arm only when this identity-bound marker proves
-# that this home has a live arm process actively publishing a watcher.
-fm_watch_arm_confirmation_claim() {
-  local state=$1 home=${2:-$FM_HOME} lockdir pid identity
-  lockdir="$state/.watch-arm-confirm.lock"
-  fm_lock_try_acquire "$lockdir" || return 1
-  pid=$(cat "$lockdir/pid" 2>/dev/null || true)
-  identity=$(fm_pid_identity "$pid") || {
-    fm_lock_release "$lockdir"
-    return 1
-  }
-  if ! {
-    printf '%s\n' "$home" > "$lockdir/fm-home"
-    printf '%s\n' "$identity" > "$lockdir/pid-identity"
-  }; then
-    fm_lock_release "$lockdir"
-    return 1
-  fi
-  return 0
-}
-
-fm_watch_arm_confirmation_pending() {
-  local state=$1 home=${2:-$FM_HOME} lockdir pid expected_identity current_identity marker_home
-  lockdir="$state/.watch-arm-confirm.lock"
-  pid=$(cat "$lockdir/pid" 2>/dev/null || true)
-  marker_home=$(cat "$lockdir/fm-home" 2>/dev/null || true)
-  expected_identity=$(cat "$lockdir/pid-identity" 2>/dev/null || true)
-  [ "$marker_home" = "$home" ] || return 1
-  [ -n "$expected_identity" ] || return 1
-  fm_pid_alive "$pid" || return 1
-  current_identity=$(fm_pid_identity "$pid") || return 1
-  [ "$current_identity" = "$expected_identity" ]
 }
 
 fm_lock_clean_known_files() {

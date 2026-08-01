@@ -126,10 +126,97 @@ fm_backend_tmux_send_literal() {  # <target> <text>
   tmux send-keys -t "$1" -l "$2"
 }
 
-# fm_backend_tmux_kill: remove the task's window, best-effort. Mirrors
-# fm-teardown.sh's `tmux kill-window -t "$T" 2>/dev/null || true`.
+# fm_backend_tmux_kill: remove one explicitly named task window, best-effort.
+# Empty, omitted, and malformed targets return nonzero before invoking tmux so
+# tmux can never interpret an empty target as the caller's current window.
 fm_backend_tmux_kill() {  # <target>
-  tmux kill-window -t "$1" 2>/dev/null || true
+  local target=${1:-} session window
+  case "$target" in
+    *:*)
+      session=${target%%:*}
+      window=${target#*:}
+      ;;
+    *) return 1 ;;
+  esac
+  case "$session:$window" in
+    :*|*:|*:*:*) return 1 ;;
+  esac
+  tmux kill-window -t "=$session:=$window" 2>/dev/null || true
+}
+
+# fm_backend_tmux_current_command: <target>'s live foreground process name -
+# tmux's own `#{pane_current_command}`, already resolved from the pty's
+# foreground process group (verified empirically with real tmux 3.6a: a
+# harness invoked interactively stays the reported command even while it
+# shells out to subcommands that do not take over the pty - e.g. `bash -c
+# "sleep 30"` alone reports "sleep" because bash execs directly into it, but
+# a persisting parent script running `sleep` as a child reports the PARENT's
+# own name throughout; the value reverts to the shell's own name only once
+# the foreground command actually exits). Empty on any tmux error.
+fm_backend_tmux_current_command() {  # <target>
+  tmux display-message -p -t "$1" '#{pane_current_command}' 2>/dev/null
+}
+
+# fm_backend_tmux_agent_state: recovery-grade harness-agent state for one
+# recorded target. See bin/fm-backend.sh's fm_backend_agent_state for the
+# shared state vocabulary and docs/tmux-backend.md "Agent liveness probe" for
+# the empirical basis. Tmux silently falls back to the active window when a
+# named target is absent, so the exact recorded window must appear in a
+# successful session inventory before its foreground command can be trusted.
+# An omitted window or a definitive missing-session/server response is
+# `missing`; any other inventory or pane read failure is `unreadable`, so a
+# transient tmux problem never licenses a duplicate.
+fm_backend_tmux_agent_state() {  # <target>
+  local target=$1 comm session window windows inventory_status
+  case "$target" in
+    *:*:*|'':*|*:'') printf 'unreadable'; return 0 ;;
+    *:*) ;;
+    *) printf 'unreadable'; return 0 ;;
+  esac
+  session=${target%%:*}
+  window=${target#*:}
+  if windows=$(LC_ALL=C tmux list-windows -t "$session" -F '#{window_name}' 2>&1); then
+    inventory_status=0
+  else
+    inventory_status=$?
+  fi
+  if [ "$inventory_status" -ne 0 ]; then
+    case "$windows" in
+      *"can't find session:"*|*"no server running on "*|*"error connecting to "*" (No such file or directory)"|*"error connecting to "*" (Connection refused)")
+        printf 'missing'
+        ;;
+      *)
+        printf 'unreadable'
+        ;;
+    esac
+    return 0
+  fi
+  if ! printf '%s\n' "$windows" | grep -Fqx "$window"; then
+    printf 'missing'
+    return 0
+  fi
+
+  comm=$(fm_backend_tmux_current_command "$target") || {
+    printf 'unreadable'
+    return 0
+  }
+  comm=${comm#-}
+  case "$comm" in
+    *claude*|*codex*|*opencode*|*grok*|*kimi*|pi|pi-signed|pi-launcher|Pi) printf 'alive' ;;
+    zsh|bash|sh|dash|ash|ksh|mksh|tcsh|csh|fish) printf 'dead' ;;
+    '') printf 'unreadable' ;;
+    *) printf 'ambiguous' ;;
+  esac
+}
+
+# Backward-compatible three-state view for callers that only need a yes/no
+# agent verdict. The detailed state contract is owned by fm_backend_agent_state.
+fm_backend_tmux_agent_alive() {  # <target>
+  case "$(fm_backend_tmux_agent_state "$1")" in
+    alive) printf 'alive' ;;
+    dead|missing) printf 'dead' ;;
+    *) printf 'unknown' ;;
+  esac
 }
 
 # fm_backend_tmux_current_command: <target>'s live foreground process name -

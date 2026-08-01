@@ -18,9 +18,6 @@
 #   - composition: the script invokes the real fm-lock.sh/fm-bootstrap.sh/
 #     fm-wake-drain.sh (their real, distinctive output appears verbatim), it
 #     does not reimplement their logic
-#   - the reset-window handoff note: printed once when newer than the
-#     previous session start, not reprinted at the next session start, and
-#     not consumed by a read-only session that never acquired the lock
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -255,7 +252,6 @@ case "${1:-}" in
       case "$format" in
         *pane_current_path*) printf '%s\n' "$mate_home" ;;
         *pane_current_command*) printf '%s\n' node ;;
-        *session_name*) printf '%s\n' firstmate ;;
         *) printf '%s\n' "$target" ;;
       esac
       exit 0
@@ -317,6 +313,9 @@ SH
 
 make_fake_herdr_secondmate_recovery() {
   local fakebin=$1
+  # The recovery kill now requires the shared named-session lock and an exact
+  # focus snapshot. Keep a focused sibling tab so this test's husk close is
+  # provably non-workspace-emptying and never needs to signal a fake shell pid.
   cat > "$fakebin/herdr" <<'SH'
 #!/usr/bin/env bash
 set -u
@@ -330,16 +329,19 @@ case "${1:-} ${2:-}" in
   "status --json")
     printf '%s\n' '{"client":{"protocol":14,"version":"test"},"server":{"running":true}}'
     ;;
+  "session list")
+    printf '{"sessions":[{"name":"default","running":true,"socket_path":"%s.sock"}]}\n' "$state"
+    ;;
   "workspace list")
-    printf '{"result":{"workspaces":[{"workspace_id":"ws1","label":"2ndmate-%s"}]}}\n' "$mate_id"
+    printf '{"result":{"workspaces":[{"workspace_id":"ws1","label":"2ndmate-%s","focused":true,"active_tab_id":"t-focus"}]}}\n' "$mate_id"
     ;;
   "tab list")
     if [ -e "$spawned" ]; then
-      printf '{"result":{"tabs":[{"tab_id":"t-new","workspace_id":"ws1","label":"fm-%s"}]}}\n' "$mate_id"
+      printf '{"result":{"tabs":[{"tab_id":"t-focus","workspace_id":"ws1","label":"captain","focused":true},{"tab_id":"t-new","workspace_id":"ws1","label":"fm-%s","focused":false}]}}\n' "$mate_id"
     elif [ -e "$killed" ]; then
-      printf '%s\n' '{"result":{"tabs":[]}}'
+      printf '%s\n' '{"result":{"tabs":[{"tab_id":"t-focus","workspace_id":"ws1","label":"captain","focused":true}]}}'
     else
-      printf '{"result":{"tabs":[{"tab_id":"t-old","workspace_id":"ws1","label":"fm-%s"}]}}\n' "$mate_id"
+      printf '{"result":{"tabs":[{"tab_id":"t-focus","workspace_id":"ws1","label":"captain","focused":true},{"tab_id":"t-old","workspace_id":"ws1","label":"fm-%s","focused":false}]}}\n' "$mate_id"
     fi
     ;;
   "tab create")
@@ -358,9 +360,9 @@ case "${1:-} ${2:-}" in
   "pane get")
     pane=${3:-}
     if [ "$pane" = p-new ] && [ -e "$spawned" ]; then
-      printf '%s\n' '{"result":{"pane":{"pane_id":"p-new"}}}'
+      printf '%s\n' '{"result":{"pane":{"pane_id":"p-new","tab_id":"t-new","workspace_id":"ws1"}}}'
     elif [ "$pane" = p-old ] && [ ! -e "$killed" ]; then
-      printf '%s\n' '{"result":{"pane":{"pane_id":"p-old"}}}'
+      printf '%s\n' '{"result":{"pane":{"pane_id":"p-old","tab_id":"t-old","workspace_id":"ws1"}}}'
     else
       printf '%s\n' '{"error":{"code":"pane_not_found"}}' >&2
       exit 1
@@ -409,15 +411,22 @@ SH
 # run_session_start <home> <root> <path>
 # Drop every harness env marker from bin/fm-harness.sh detect_own so the
 # surrounding interactive shell cannot leak past the suite's fake ps harness.
-# Markers today: CLAUDECODE (claude), PI_CODING_AGENT (pi), GROK_AGENT (grok).
+# Markers today: CLAUDECODE (claude), PI_CODING_AGENT plus FM_PI_HARNESS
+# (Pi family), GROK_AGENT (grok).
 # codex and opencode have no env markers (ancestry only). Without this, a local
 # claude/pi/grok session fails cases that pin a different fake harness while CI
 # (no ambient markers) still passes.
 run_session_start() {
-  local home=$1 root=$2 path=$3
-  env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT \
-    FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$path" \
-    "$SESSION_START"
+  local home=$1 root=$2 path=$3 pi_harness=${4:-}
+  if [ -n "$pi_harness" ]; then
+    env -u CLAUDECODE -u GROK_AGENT PI_CODING_AGENT=true FM_PI_HARNESS="$pi_harness" \
+      FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$path" \
+      "$SESSION_START"
+  else
+    env -u CLAUDECODE -u PI_CODING_AGENT -u FM_PI_HARNESS -u GROK_AGENT \
+      FM_HOME="$home" FM_ROOT_OVERRIDE="$root" PATH="$path" \
+      "$SESSION_START"
+  fi
 }
 
 # prepare_session_start_secondmate <name>: a throwaway main home and Pi
@@ -456,7 +465,7 @@ EOF
 
 run_session_start_secondmate() {
   local root=$1 home=$2 fakebin=$3 mate=$4 log=$5 spawned=$6 mode=$7
-  FM_BACKEND=tmux FM_FAKE_TMUX_MODE="$mode" FM_FAKE_TMUX_LOG="$log" \
+  TMUX='' FM_BACKEND=tmux FM_FAKE_TMUX_MODE="$mode" FM_FAKE_TMUX_LOG="$log" \
     FM_FAKE_TMUX_SPAWNED="$spawned" FM_FAKE_SECOND_MATE_HOME="$mate" \
     FM_FAKE_SECOND_MATE_ID="$SESSION_START_SECOND_MATE_ID" \
     run_session_start "$home" "$root" "$fakebin:$BASE_PATH"
@@ -548,45 +557,6 @@ write_pi_loaded_markers() {
 }
 
 # --- context digest: absent vs empty vs present -----------------------------
-
-test_reset_handoff_note_read_only_session_does_not_consume_marker() {
-  local rec root home fakebin holder_pid out out2
-
-  rec=$(new_world reset-handoff-read-only)
-  IFS='|' read -r root home fakebin <<EOF
-$rec
-EOF
-  make_fake_toolchain "$fakebin"
-  make_fake_ps_claude "$fakebin"
-
-  mkdir -p "$home/data/reset-window"
-  printf '# Session reset 2026-07-25-1000\n\n## In-flight\n- fm-ro-task: watch build\n' \
-    > "$home/data/reset-window/2026-07-25-1000.md"
-
-  sleep 300 &
-  holder_pid=$!
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
-
-  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-
-  assert_contains "$out" "READ-ONLY SESSION" "expected a lock refusal for this test setup"
-  assert_contains "$out" "fm-ro-task: watch build" \
-    "read-only session did not still surface the reset-window note"
-  [ -f "$home/state/.last-session-start" ] && fail "read-only session advanced the .last-session-start marker, a durable mutation the read-only path must not perform"
-
-  # The session that actually holds the lock must still see the note.
-  rm -f "$home/state/.lock"
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
-
-  out2=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  assert_not_contains "$out2" "READ-ONLY SESSION" "second run should have acquired the lock cleanly"
-  assert_contains "$out2" "fm-ro-task: watch build" \
-    "the session holding the lock did not see the note a prior read-only session left untouched"
-  [ -f "$home/state/.last-session-start" ] || fail "the locked session did not advance the .last-session-start marker"
-
-  pass "a read-only session does not consume the reset-window note or advance its marker"
-}
 
 test_context_digest_absent_empty_present() {
   local rec root home fakebin out
@@ -1001,7 +971,7 @@ EOF
   out=$(run_session_start_secondmate "$root" "$home" "$fakebin" "$mate" "$log" "$spawned" shell)
 
   assert_not_contains "$out" "SECONDMATE_LIVENESS:" "successful bare-shell recovery should stay non-actionable"
-  assert_contains "$(cat "$log")" "kill-window -t firstmate:fm-$SESSION_START_SECOND_MATE_ID" \
+  assert_contains "$(cat "$log")" "kill-window -t =firstmate:=fm-$SESSION_START_SECOND_MATE_ID" \
     "the proven bare-shell path did not remove its existing dead endpoint"
   assert_contains "$(cat "$log")" "new-window" "the proven bare-shell path did not relaunch"
   assert_contains "$out" "endpoint: alive (backend=tmux window=firstmate:fm-$SESSION_START_SECOND_MATE_ID)" \
@@ -1294,6 +1264,29 @@ EOF
   pass "session start emits exactly one detected harness block and reports Pi extension load state"
 }
 
+test_pi_signed_primary_uses_pi_extensions_without_identity_normalization() {
+  local rec root home fakebin out
+  rec=$(new_world pi-signed-supervision-block)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_harness "$fakebin" pi-signed
+
+  out=$(FM_FAKE_HARNESS=pi-signed run_session_start "$home" "$root" "$fakebin:$BASE_PATH" pi-signed)
+
+  assert_contains "$out" "SUPERVISION OPERATING INSTRUCTIONS - primary harness: pi-signed" \
+    "session start normalized a pi-signed primary to pi"
+  assert_contains "$out" "Mode: Pi extension background wake." \
+    "pi-signed primary did not reuse Pi's supervision protocol"
+  assert_contains "$out" "PI_WATCH_EXTENSION: not loaded" \
+    "pi-signed primary skipped Pi extension validation"
+  assert_contains "$out" "restart pi-signed so $root/.pi/extensions/fm-primary-turnend-guard.ts and $root/.pi/extensions/fm-primary-pi-watch.ts auto-load" \
+    "pi-signed extension diagnostic did not preserve the executable identity"
+
+  pass "session start preserves pi-signed primary identity while applying Pi extension guarantees"
+}
+
 test_pi_diagnostic_rejects_stale_loaded_marker() {
   local rec root home fakebin out marker holder_pid
   rec=$(new_world pi-stale-loaded-marker)
@@ -1398,58 +1391,6 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
-# --- reset-window handoff note ----------------------------------------------
-
-test_reset_handoff_note_printed_when_newer_than_previous_session_start() {
-  local rec root home fakebin out
-  rec=$(new_world reset-handoff-newer)
-  IFS='|' read -r root home fakebin <<EOF
-$rec
-EOF
-  make_fake_toolchain "$fakebin"
-  make_fake_ps_claude "$fakebin"
-
-  mkdir -p "$home/data/reset-window"
-  printf '# Session reset 2026-07-25-1200\n\n## In-flight\n- fm-demo-task: watch CI\n' \
-    > "$home/data/reset-window/2026-07-25-1200.md"
-
-  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-
-  assert_contains "$out" "handoff note from the session this one replaced" \
-    "digest did not label the reset-window handoff note"
-  assert_contains "$out" "fm-demo-task: watch CI" \
-    "digest did not print the reset-window note content"
-  [ -f "$home/state/.last-session-start" ] || fail "session start did not record a .last-session-start marker"
-
-  pass "session start prints a reset-window note newer than the previous session start"
-}
-
-test_reset_handoff_note_not_reprinted_at_next_session_start() {
-  local rec root home fakebin out1 out2
-  rec=$(new_world reset-handoff-not-reprinted)
-  IFS='|' read -r root home fakebin <<EOF
-$rec
-EOF
-  make_fake_toolchain "$fakebin"
-  make_fake_ps_claude "$fakebin"
-
-  mkdir -p "$home/data/reset-window"
-  printf '# Session reset 2026-07-25-0900\n\n## In-flight\n- fm-old-task: watch tests\n' \
-    > "$home/data/reset-window/2026-07-25-0900.md"
-
-  out1=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  assert_contains "$out1" "fm-old-task: watch tests" \
-    "first session start did not print the reset-window note"
-
-  out2=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  assert_not_contains "$out2" "fm-old-task: watch tests" \
-    "second session start reprinted a reset-window note no newer than the previous session start"
-  assert_contains "$out2" "none (no reset note newer than the previous session start)" \
-    "second session start did not report the reset-window note as already surfaced"
-
-  pass "session start does not reprint a reset-window note that is not newer than the previous session start"
-}
-
 test_context_digest_absent_empty_present
 test_lock_refusal_read_only_path
 test_lock_write_failure_read_only_path
@@ -1473,10 +1414,8 @@ test_fleet_digest_empty_fleet
 test_next_step_sources_x_mode_cadence
 test_next_step_afk_delegates_to_daemon
 test_supervision_block_exactly_one_and_pi_diagnostic
+test_pi_signed_primary_uses_pi_extensions_without_identity_normalization
 test_pi_diagnostic_rejects_stale_loaded_marker
 test_pi_diagnostic_accepts_prelock_loaded_marker
 test_pi_diagnostic_rejects_missing_turnend_guard_marker
 test_pi_diagnostic_rejects_previous_session_loaded_marker
-test_reset_handoff_note_printed_when_newer_than_previous_session_start
-test_reset_handoff_note_not_reprinted_at_next_session_start
-test_reset_handoff_note_read_only_session_does_not_consume_marker
