@@ -877,6 +877,7 @@ real_path_or_raw() {  # <path>
 # herdr-sm-spaces-k4). Both branches converge on the same $T ("target") string
 # that every downstream operation (send/capture/kill) already treats as opaque
 # per-backend routing (fm_backend_resolve_selector).
+SPAWN_ISOLATED_WORKTREE=0
 validate_spawn_worktree() {  # <source> <inspect-target>
   local source=$1 inspect_target=$2 wt_real proj_real wt_top wt_top_real
   wt_real=
@@ -893,6 +894,7 @@ validate_spawn_worktree() {  # <source> <inspect-target>
     echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${wt_top:-none}'; primary '$PROJ_ABS'); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
     exit 1
   fi
+  SPAWN_ISOLATED_WORKTREE=1
 }
 
 herdr_projection_meta_field_exact() {  # <meta> <key>
@@ -1239,6 +1241,43 @@ spawn_send_key() {  # <target> <key>
     orca) fm_backend_orca_send_key "$1" "$2" ;;
     cmux) fm_backend_cmux_send_key "$1" "$2" "$W" ;;
   esac
+}
+
+# Endpoint creation is not proof that the target can still receive input.
+spawn_readiness_fail() {
+  local reason=$1
+  printf 'blocked: spawn readiness failed: %s\n' "$reason" >> "$STATE/$ID.status"
+  echo "error: spawn readiness failed for $ID: $reason; metadata retained at $STATE/$ID.meta" >&2
+  return 1
+}
+
+spawn_wait_ready() {
+  local target=$1 attempts=${FM_SPAWN_READY_ATTEMPTS:-20} delay=${FM_SPAWN_READY_SLEEP:-0.25}
+  local capture trust_seen=0
+  case "$attempts" in ''|*[!0-9]*|0) attempts=20 ;; esac
+  for _ in $(seq 1 "$attempts"); do
+    if ! fm_backend_target_exists "$BACKEND" "$target" "$W"; then
+      sleep "$delay"
+      continue
+    fi
+    if [ "$HARNESS" != codex ] || [ "$SPAWN_ISOLATED_WORKTREE" -ne 1 ]; then
+      return 0
+    fi
+    capture=$(fm_backend_capture "$BACKEND" "$target" 80 "$W" 2>/dev/null || true)
+    case "$capture" in
+      *'Do you trust the contents of this directory?'*)
+        trust_seen=1
+        spawn_send_key "$target" Enter || true
+        ;;
+      *) return 0 ;;
+    esac
+    sleep "$delay"
+  done
+  if [ "$trust_seen" -eq 1 ]; then
+    spawn_readiness_fail "Codex directory-trust prompt did not clear within ${attempts} checks at endpoint $target"
+  else
+    spawn_readiness_fail "backend endpoint $target was unreachable within ${attempts} checks (backend=$BACKEND)"
+  fi
 }
 
 kimi_capture() {
@@ -1688,6 +1727,9 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
+if ! spawn_wait_ready "$T"; then
+  exit 1
+fi
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"

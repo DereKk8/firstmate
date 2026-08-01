@@ -5,13 +5,22 @@
 # live only in a private sidecar and are never interpolated into shell source.
 # A GitHub pull request URL and a GitLab merge request URL are both accepted,
 # including a merge request on a self-hosted GitLab instance.
-# Usage: fm-pr-check.sh <task-id> <pr-url>
+# Before arming a GitHub PR, verifies the PR is clean and refuses skipped pipeline gates.
+# The no-mistakes structure check requires a bulleted "## What Changed" section.
+# --force-ready bypasses GitHub content checks and records an auditable override.
+# Usage: fm-pr-check.sh [--force-ready] <task-id> <pr-url>
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+
+FORCE_READY=0
+if [ "${1:-}" = "--force-ready" ]; then
+  FORCE_READY=1
+  shift
+fi
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
@@ -31,6 +40,26 @@ PROVIDER=$FM_PR_PROVIDER
 HOST=$FM_PR_HOST
 PROJECT_PATH=$FM_PR_PATH
 NUMBER=$FM_PR_NUMBER
+
+pr_check_refuse() {
+  echo "pr-check: REFUSED: $1" >&2
+  echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
+  exit 1
+}
+
+pr_check_what_changed_bulleted() {
+  printf '%s\n' "$1" | awk '
+    /^## What Changed[ \t]*$/ { heading = 1; next }
+    heading && /^[ \t]*$/ { next }
+    heading && /^-[ \t]/ { bulleted = 1; heading = 0; next }
+    { heading = 0 }
+    END { exit(bulleted ? 0 : 1) }
+  '
+}
+
+if [ "$PROVIDER" = github ] && ! command -v gh >/dev/null 2>&1; then
+  pr_check_refuse "gh is not on PATH; cannot verify PR content"
+fi
 
 # Task-derived paths are constructed only after the canonical ID validation.
 META="$STATE/$ID.meta"
@@ -78,6 +107,76 @@ if [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/d
   fi
 fi
 
+if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
+  PR_BODY=$(gh pr view "$URL" --json body -q .body 2>/dev/null) \
+    || pr_check_refuse "gh pr view failed for $URL"
+  PR_MERGE_STATE=$(gh pr view "$URL" --json mergeStateStatus -q .mergeStateStatus 2>/dev/null) \
+    || pr_check_refuse "failed to fetch merge state for $URL from GitHub"
+  PR_BASE=$(gh pr view "$URL" --json baseRefName -q .baseRefName 2>/dev/null) \
+    || pr_check_refuse "failed to fetch base branch for $URL from GitHub"
+  REFUSE=0
+  REASONS=
+  MODE=$(grep '^mode=' "$META" | tail -1 | cut -d= -f2- || true)
+  if [ "$MODE" = no-mistakes ]; then
+    if [ -z "$PR_BODY" ]; then
+      REFUSE=1
+      REASONS="  - PR body is empty, but task mode=no-mistakes always generates one"
+    elif ! pr_check_what_changed_bulleted "$PR_BODY"; then
+      REFUSE=1
+      REASONS="  - PR body has no '## What Changed' bulleted section"
+    fi
+  fi
+  case "$PR_BODY" in
+    *"Step was skipped."*) REFUSE=1; REASONS="${REASONS}${REASONS:+$'\n'}  - PR body shows a skipped pipeline gate (found 'Step was skipped.')" ;;
+  esac
+  case "$PR_BODY" in
+    *"⏭️"*"- skipped"*) REFUSE=1; REASONS="${REASONS}${REASONS:+$'\n'}  - PR body shows a skipped pipeline gate (found skip-gate marker '⏭️ ... - skipped')" ;;
+  esac
+  case "$PR_BODY" in
+    *"error still open"*) REFUSE=1; REASONS="${REASONS}${REASONS:+$'\n'}  - PR body reports an unresolved error ('error still open')" ;;
+  esac
+  case "$PR_BODY" in
+    *"🚨 High"*) REFUSE=1; REASONS="${REASONS}${REASONS:+$'\n'}  - PR body reports high risk ('🚨 High')" ;;
+  esac
+  [ "$PR_MERGE_STATE" = DIRTY ] && {
+    REFUSE=1
+    REASONS="${REASONS}${REASONS:+$'\n'}  - GitHub reports merge state DIRTY (PR likely needs a rebase)"
+  }
+  PROJ=$(grep '^project=' "$META" | tail -1 | cut -d= -f2- || true)
+  if [ -z "$PROJ" ]; then
+    REFUSE=1
+    REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify PR base branch: project= absent from task meta"
+  elif [ ! -d "$PROJ" ]; then
+    REFUSE=1
+    REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify PR base branch: project directory not found at $PROJ"
+  else
+    EXPECTED_BASE=$("$FM_ROOT/bin/fm-project-base.sh" "$(basename "$PROJ")" 2>/dev/null || true)
+    if [ -n "$EXPECTED_BASE" ] && [ "$PR_BASE" != "$EXPECTED_BASE" ]; then
+      REFUSE=1
+      REASONS="${REASONS}${REASONS:+$'\n'}  - WRONG BASE BRANCH: PR targets '$PR_BASE' but project registry expects '$EXPECTED_BASE'"
+    elif [ -z "$EXPECTED_BASE" ]; then
+      LS_OUT=$(git -C "$PROJ" ls-remote --symref origin HEAD 2>/dev/null) || {
+        REFUSE=1
+        REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: ls-remote failed"
+      }
+      TRUE_DEFAULT=$(printf '%s\n' "${LS_OUT:-}" | sed -n 's|^ref: refs/heads/\([^\t]*\)\tHEAD$|\1|p' | head -1)
+      if [ -z "$TRUE_DEFAULT" ]; then
+        REFUSE=1
+        REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: remote HEAD carries no symbolic ref"
+      elif [ "$PR_BASE" != "$TRUE_DEFAULT" ]; then
+        REFUSE=1
+        REASONS="${REASONS}${REASONS:+$'\n'}  - PR base '$PR_BASE' differs from project's true remote default '$TRUE_DEFAULT'"
+      fi
+    fi
+  fi
+  if [ "$REFUSE" -eq 1 ]; then
+    echo "pr-check: REFUSED to arm merge poll for $URL" >&2
+    printf '%s\n' "$REASONS" >&2
+    echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
+    exit 1
+  fi
+fi
+
 META_TMP=
 pr_check_cleanup() {
   fm_pr_poll_cleanup
@@ -92,12 +191,20 @@ META_DEVICE=$(fm_pr_file_device "$META") || exit 1
 STATE_DEVICE=$(fm_pr_file_device "$STATE") || exit 1
 [ "$META_DEVICE" = "$STATE_DEVICE" ] || { echo "error: task metadata is unavailable" >&2; exit 1; }
 META_TMP=$(mktemp "$STATE/.fm-pr-meta.XXXXXX") || exit 1
+HAD_OVERRIDE=0
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     pr=*|pr_head=*) ;;
+    pr_check_override=1)
+      HAD_OVERRIDE=1
+      printf '%s\n' "$line" >> "$META_TMP" || exit 1
+      ;;
     *) printf '%s\n' "$line" >> "$META_TMP" || exit 1 ;;
   esac
 done < "$META"
+if [ "$FORCE_READY" -eq 1 ] && [ "$HAD_OVERRIDE" -eq 0 ]; then
+  printf 'pr_check_override=1\n' >> "$META_TMP" || exit 1
+fi
 printf 'pr=%s\n' "$URL" >> "$META_TMP" || exit 1
 [ -z "$PR_HEAD" ] || printf 'pr_head=%s\n' "$PR_HEAD" >> "$META_TMP" || exit 1
 chmod 0600 "$META_TMP" || exit 1

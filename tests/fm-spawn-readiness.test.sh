@@ -88,7 +88,8 @@ run_spawn() { # <record>
   IFS='|' read -r dir home proj wt fakebin id log <<EOF
 $rec
 EOF
-  FM_ROOT_OVERRIDE='' FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+  env -u HERDR_ENV -u HERDR_PANE_ID -u HERDR_TAB_ID -u HERDR_WORKSPACE_ID -u HERDR_SOCKET_PATH \
+    FM_ROOT_OVERRIDE='' FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
     FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" FM_SPAWN_NO_GUARD=1 \
     FM_BACKEND=herdr FM_FAKE_LOG="$log" FM_FAKE_STATE="$dir/state" FM_FAKE_PANE_PATH="$wt" \
     FM_BACKEND_HERDR_SERVER_ATTEMPTS=1 FM_BACKEND_HERDR_SERVER_SLEEP=0 \
