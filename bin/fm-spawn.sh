@@ -1243,17 +1243,24 @@ spawn_send_key() {  # <target> <key>
   esac
 }
 
-# Endpoint creation is not proof that the target can still receive input.
-spawn_readiness_fail() {
+# A backend returning an endpoint id is not proof that the endpoint can still
+# receive input. In particular, Herdr can preserve a tab/pane record while the
+# selected server/socket is down. Keep the task metadata in place on a failure:
+# it gives recovery and the supervisor the exact target that needs attention.
+spawn_readiness_fail() {  # <reason>
   local reason=$1
   printf 'blocked: spawn readiness failed: %s\n' "$reason" >> "$STATE/$ID.status"
   echo "error: spawn readiness failed for $ID: $reason; metadata retained at $STATE/$ID.meta" >&2
   return 1
 }
 
-spawn_wait_ready() {
+# Do not print "spawned" until the recorded endpoint answers a passive liveness
+# read. Codex additionally has one documented first-run dialog that is safe to
+# resolve here: its exact directory-trust prompt, and only for a worktree this
+# invocation already proved isolated. No other prompt receives input here.
+spawn_wait_ready() {  # <target>
   local target=$1 attempts=${FM_SPAWN_READY_ATTEMPTS:-20} delay=${FM_SPAWN_READY_SLEEP:-0.25}
-  local capture trust_seen=0
+  local _ capture trust_seen=0
   case "$attempts" in ''|*[!0-9]*|0) attempts=20 ;; esac
   for _ in $(seq 1 "$attempts"); do
     if ! fm_backend_target_exists "$BACKEND" "$target" "$W"; then
@@ -1267,9 +1274,17 @@ spawn_wait_ready() {
     case "$capture" in
       *'Do you trust the contents of this directory?'*)
         trust_seen=1
-        spawn_send_key "$target" Enter || true
+        if ! spawn_send_key "$target" Enter; then
+          sleep "$delay"
+          continue
+        fi
         ;;
-      *) return 0 ;;
+      *)
+        # Endpoint reachability is the readiness gate. A Codex pane can be
+        # empty immediately after launch; only a previously observed trust
+        # prompt needs an additional capture to prove it cleared.
+        return 0
+        ;;
     esac
     sleep "$delay"
   done
@@ -1727,9 +1742,7 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
-if ! spawn_wait_ready "$T"; then
-  exit 1
-fi
+spawn_wait_ready "$T"
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"
