@@ -105,15 +105,16 @@ If configured harness data names an unverified adapter, report it and fall back 
 **Load `harness-adapters` before any spawn, recovery, trust-dialog handling, harness-specific skill invocation, interrupt, exit, resume, or adapter verification.**
 It owns per-adapter supervision knowledge (busy signature, exit, interrupt, dialogs, quirks, resume) and the launch profile axes table.
 
+Model discovery is harness-specific: `pi` uses `pi --list-models [search]`, while each other harness uses its own authoritative model catalog.
 `docs/configuration.md` owns dispatch-profile and runtime-backend schemas, `bin/fm-dispatch-select.sh` owns selector mechanics, `bin/fm-harness.sh` owns static resolution, and `bin/fm-spawn.sh` owns launch flags and fail-closed validation.
 
 Routing precedence is an explicit per-task captain override, then the best-fit configured rule, then the configured default, then the static crewmate harness.
-Firstmate alone resolves a matched profile array: run `quota-axi --json` at that intake, evaluate every configured candidate against that current output, and choose with inspectable effective headroom and usable runway, using pace and reserve only later when needed.
+Firstmate alone resolves a matched profile array: run `quota-axi --json` at that intake, evaluate every configured candidate against that current output, and choose the candidate with the most real headroom, using inspectable usable runway, pace, and reserve only later when needed.
 Account for every candidate; if any harness/model/provider relationship, applicable quota data, or interpretation cannot be established, stop and report that candidate instead of omitting it, guessing, falling back, or calling the result quota-informed.
 Preserve malformed profile configuration as an actionable error rather than selecting around it.
 When every candidate is tight, preserve the captain's strongest-reasoning class rather than silently downgrading it solely to conserve quota; stop and report the tight choice if that class cannot proceed.
 Break genuine headroom ties without array-order or harness bias.
-`quota-axi` owns how model or product windows relate to bounding account windows and remains data-only.
+`quota-axi` owns how model or product windows relate to bounding account windows and remains data-only; this is an explicitly interim rule until successor `quota-axi-interpretation-hints-h3` lands.
 Load `quota-array-dispatch` before choosing among a matched profile array; that skill is the single owner of the completion-aware selection procedure.
 
 The static crewmate harness default lives in `config/crew-harness` (absent or `default` = mirror your own harness).
