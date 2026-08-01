@@ -151,7 +151,7 @@ if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
     REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify PR base branch: project directory not found at $PROJ"
   else
     EXPECTED_BASE=$("$FM_ROOT/bin/fm-project-base.sh" "$(basename "$PROJ")" 2>/dev/null || true)
-    if [ -n "$EXPECTED_BASE" ] && [ "$PR_BASE" != "$EXPECTED_BASE" ]; then
+    if [ -n "$EXPECTED_BASE" ] && [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$EXPECTED_BASE" ]; then
       REFUSE=1
       REASONS="${REASONS}${REASONS:+$'\n'}  - WRONG BASE BRANCH: PR targets '$PR_BASE' but project registry expects '$EXPECTED_BASE'"
     elif [ -z "$EXPECTED_BASE" ]; then
@@ -163,7 +163,7 @@ if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
       if [ -z "$TRUE_DEFAULT" ]; then
         REFUSE=1
         REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: remote HEAD carries no symbolic ref"
-      elif [ "$PR_BASE" != "$TRUE_DEFAULT" ]; then
+      elif [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$TRUE_DEFAULT" ]; then
         REFUSE=1
         REASONS="${REASONS}${REASONS:+$'\n'}  - PR base '$PR_BASE' differs from project's true remote default '$TRUE_DEFAULT'"
       fi
