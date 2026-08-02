@@ -944,7 +944,7 @@ EOF
 # --- session-start secondmate recovery boundary -----------------------------
 
 test_session_start_relaunches_missing_pi_secondmate() {
-  local rec root home fakebin mate log spawned out first_calls second_calls
+  local rec root home fakebin mate log spawned out first_calls second_calls window
   rec=$(prepare_session_start_secondmate secondmate-missing-pi)
   IFS='|' read -r root home fakebin mate log spawned <<EOF
 $rec
@@ -955,7 +955,8 @@ EOF
   assert_not_contains "$out" "SECONDMATE_LIVENESS:" "successful missing-window recovery should stay non-actionable"
   assert_contains "$(cat "$log")" "new-window" "session start did not relaunch the missing Pi secondmate"
   assert_not_contains "$(cat "$log")" "kill-window" "session start tried to kill an already-absent window"
-  assert_contains "$out" "endpoint: alive (backend=tmux window=firstmate:fm-$SESSION_START_SECOND_MATE_ID)" \
+  window=$(grep '^window=' "$home/state/$SESSION_START_SECOND_MATE_ID.meta" | tail -1 | cut -d= -f2-)
+  assert_contains "$out" "endpoint: alive (backend=tmux window=$window)" \
     "the later fleet read did not confirm the relaunched window"
   assert_grep 'harness=pi' "$home/state/$SESSION_START_SECOND_MATE_ID.meta" \
     "the real respawn path did not preserve the Pi harness: $(cat "$home/state/$SESSION_START_SECOND_MATE_ID.meta")"
@@ -1004,7 +1005,7 @@ EOF
 }
 
 test_session_start_preserves_proven_bare_shell_recovery() {
-  local rec root home fakebin mate log spawned out
+  local rec root home fakebin mate log spawned out window
   rec=$(prepare_session_start_secondmate secondmate-bare-shell)
   IFS='|' read -r root home fakebin mate log spawned <<EOF
 $rec
@@ -1016,7 +1017,8 @@ EOF
   assert_contains "$(cat "$log")" "kill-window -t =firstmate:=fm-$SESSION_START_SECOND_MATE_ID" \
     "the proven bare-shell path did not remove its existing dead endpoint"
   assert_contains "$(cat "$log")" "new-window" "the proven bare-shell path did not relaunch"
-  assert_contains "$out" "endpoint: alive (backend=tmux window=firstmate:fm-$SESSION_START_SECOND_MATE_ID)" \
+  window=$(grep '^window=' "$home/state/$SESSION_START_SECOND_MATE_ID.meta" | tail -1 | cut -d= -f2-)
+  assert_contains "$out" "endpoint: alive (backend=tmux window=$window)" \
     "the later fleet read did not confirm the bare-shell relaunch"
   pass "session start: the proven bare-shell recovery path remains intact"
 }
