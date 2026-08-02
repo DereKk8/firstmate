@@ -18,6 +18,8 @@
 #   - the PR's base branch differs from the project's true remote default branch
 #   - the PR's base branch differs from the project's explicit base= registry value
 #     (the registry base wins over the repo default; used for repos targeting dev)
+#   - task metadata declares stacked_base=<branch>, but the remote parent branch
+#     does not exist or the PR targets a branch other than that declaration
 #   - task meta records mode=no-mistakes and the PR body has no '## What
 #     Changed' bulleted section (or is empty) — see data/captain.md "PR bodies
 #     follow the no-mistakes structure, not a firstmate-invented one"
@@ -209,14 +211,16 @@ if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
     REASONS="${REASONS}${REASONS:+$'\n'}  - GitHub reports merge state DIRTY (PR likely needs a rebase)"
   fi
 
-  # Base branch check: registry base wins over repo default.
-  # The registry base=<branch> is the authoritative expected target for
-  # projects that do not accept PRs against the repo default (e.g. aide-*
-  # repos target dev, not main). When set it must match; when unset the
-  # repo's true remote default applies.
+  # A stacked_base= declaration is written only by fm-spawn.sh before the
+  # worker starts. It replaces the registry/default comparison only after the
+  # declared remote branch exists and GitHub reports it as the exact PR base.
+  # A merged parent often loses its branch, so that state refuses until the task
+  # is re-declared against its current intended base.
   PROJ=""
+  STACKED_BASE=""
   if [ -f "$META" ]; then
     PROJ=$(grep '^project=' "$META" | tail -1 | cut -d= -f2- || true)
+    STACKED_BASE=$(grep '^stacked_base=' "$META" | tail -1 | cut -d= -f2- || true)
   fi
   if [ -z "$PROJ" ]; then
     REFUSE=1
@@ -224,7 +228,23 @@ if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
   elif [ ! -d "$PROJ" ]; then
     REFUSE=1
     REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify PR base branch: project directory not found at ${PROJ}"
+  elif [ -n "$STACKED_BASE" ]; then
+    if ! git check-ref-format "refs/heads/$STACKED_BASE" >/dev/null 2>&1; then
+      REFUSE=1
+      REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify stacked PR base: task declaration '${STACKED_BASE}' is not a valid branch name"
+    elif ! git -C "$PROJ" ls-remote --exit-code --heads origin "refs/heads/$STACKED_BASE" >/dev/null 2>&1; then
+      REFUSE=1
+      REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify stacked PR base: declared parent branch '${STACKED_BASE}' does not exist on origin (re-declare the task against its current intended base)"
+    elif [ -z "$PR_BASE" ] || [ "$PR_BASE" != "$STACKED_BASE" ]; then
+      REFUSE=1
+      REASONS="${REASONS}${REASONS:+$'\n'}  - WRONG STACKED BASE BRANCH: PR targets '${PR_BASE}' but task declares '${STACKED_BASE}'"
+    fi
   else
+    # Registry base wins over repo default.
+    # The registry base=<branch> is the authoritative expected target for
+    # projects that do not accept PRs against the repo default (e.g. aide-*
+    # repos target dev, not main). When set it must match; when unset the
+    # repo's true remote default applies.
     EXPECTED_BASE=$("$FM_ROOT/bin/fm-project-base.sh" "$(basename "$PROJ")" 2>/dev/null || true)
     if [ -n "$EXPECTED_BASE" ] && [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$EXPECTED_BASE" ]; then
       REFUSE=1

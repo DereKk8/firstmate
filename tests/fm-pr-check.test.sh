@@ -97,17 +97,20 @@ STUBEOF
   chmod +x "$case_dir/fakebin/gh"
 }
 
-# add_git_mock <case_dir> <true_default>: install a git stub whose only
-# non-passthrough behaviour is answering ls-remote --symref HEAD with the
-# given branch name.
+# add_git_mock <case_dir> <true_default> [stacked_base]: install a git stub
+# whose only non-passthrough behaviour is answering the remote branch queries.
 add_git_mock() {
-  local case_dir=$1 true_default=$2
+  local case_dir=$1 true_default=$2 stacked_base=${3:-}
   cat > "$case_dir/fakebin/git" <<STUBEOF
 #!/usr/bin/env bash
 case " \$* " in
   *"ls-remote --symref origin HEAD"*)
     printf 'ref: refs/heads/%s\tHEAD\n' "$true_default"
     printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\tHEAD\n'
+    ;;
+  *"ls-remote --exit-code --heads origin refs/heads/$stacked_base"*)
+    [ -n "$stacked_base" ] || exit 2
+    printf 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\trefs/heads/%s\n' "$stacked_base"
     ;;
   *)
     exec "$(command -v git)" "\$@"
@@ -251,6 +254,60 @@ test_base_branch_mismatch_refused() {
   assert_contains "$out" "dev" "base-mismatch: should name the true default"
   assert_absent "$case_dir/state/task-x1.check.sh" "base-mismatch: poll must not be armed"
   pass "PR whose base differs from project's true remote default is refused"
+}
+
+test_stacked_base_armed_when_declared_parent_exists() {
+  local case_dir rc out
+  case_dir=$(make_case stacked-base direct-PR)
+  printf 'stacked_base=fm/parent\n' >> "$case_dir/state/task-x1.meta"
+  add_gh_mock "$case_dir" "Normal PR description." "CLEAN" "fm/parent"
+  add_git_mock "$case_dir" main fm/parent
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/61 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "stacked-base: should arm the poll"
+  assert_present "$case_dir/state/task-x1.check.sh" "stacked-base: check.sh must be written"
+  assert_not_contains "$out" "REFUSED" "stacked-base: must not be refused"
+  pass "declared stacked base with an existing parent branch is armed"
+}
+
+test_stacked_base_mismatch_refused() {
+  local case_dir rc out
+  case_dir=$(make_case stacked-base-mismatch direct-PR)
+  printf 'stacked_base=fm/parent\n' >> "$case_dir/state/task-x1.meta"
+  add_gh_mock "$case_dir" "Normal PR description." "CLEAN" "main"
+  add_git_mock "$case_dir" main fm/parent
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/62 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "stacked-base-mismatch: should refuse"
+  assert_contains "$out" "WRONG STACKED BASE BRANCH" "stacked-base-mismatch: refusal should name the mismatch"
+  assert_absent "$case_dir/state/task-x1.check.sh" "stacked-base-mismatch: poll must not be armed"
+  pass "declared stacked base that differs from the PR base is refused"
+}
+
+test_stacked_base_missing_parent_refused() {
+  local case_dir rc out
+  case_dir=$(make_case stacked-base-missing direct-PR)
+  printf 'stacked_base=fm/parent\n' >> "$case_dir/state/task-x1.meta"
+  add_gh_mock "$case_dir" "Normal PR description." "CLEAN" "fm/parent"
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/63 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "stacked-base-missing: should refuse"
+  assert_contains "$out" "declared parent branch 'fm/parent' does not exist" "stacked-base-missing: refusal should name the missing parent"
+  assert_absent "$case_dir/state/task-x1.check.sh" "stacked-base-missing: poll must not be armed"
+  pass "declared stacked base whose parent branch disappeared is refused"
 }
 
 test_clean_pr_armed() {
@@ -747,6 +804,9 @@ test_error_still_open_refused
 test_high_risk_refused
 test_dirty_merge_state_refused
 test_base_branch_mismatch_refused
+test_stacked_base_armed_when_declared_parent_exists
+test_stacked_base_mismatch_refused
+test_stacked_base_missing_parent_refused
 test_clean_pr_armed
 test_handwritten_pr_no_markers_armed
 test_force_ready_bypasses_checks
