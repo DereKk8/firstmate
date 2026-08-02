@@ -36,13 +36,8 @@
 #   3. wake-drain     - mutates the durable wake queue, so it also only runs
 #                       when locked.
 #   4. context digest - data/projects.md, data/secondmates.md, data/captain.md,
-#                       data/captain-shared.md, data/learnings.md, and the most
-#                       recent data/reset-window/*.md handoff note (only when
-#                       newer than the previous session start, tracked via
-#                       state/.last-session-start): read-only, always safe,
-#                       always runs. The marker itself only advances on the
-#                       locked path - a read-only session must not consume the
-#                       note before the session holding the lock ever sees it.
+#                       data/captain-shared.md, data/learnings.md: read-only,
+#                       always safe, always runs.
 #   5. fleet digest   - a compact data/backlog.md identity/metadata listing,
 #                       every state/*.meta, a bounded state/*.status tail,
 #                       state/.afk, and a cheap per-task endpoint-liveness read:
@@ -108,6 +103,8 @@ PRIMARY_HARNESS=$("$SCRIPT_DIR/fm-harness.sh" 2>/dev/null || printf unknown)
 . "$SCRIPT_DIR/fm-backend.sh"
 # shellcheck source=bin/fm-tasks-axi-lib.sh
 . "$SCRIPT_DIR/fm-tasks-axi-lib.sh"
+# shellcheck source=bin/fm-public-followup-lib.sh
+. "$SCRIPT_DIR/fm-public-followup-lib.sh"
 
 STATUS_TAIL=${FM_SESSION_START_STATUS_TAIL:-5}
 case "$STATUS_TAIL" in ''|*[!0-9]*) STATUS_TAIL=5 ;; esac
@@ -138,34 +135,6 @@ print_file_or_absent() {
   else
     printf 'ABSENT\n'
   fi
-}
-
-
-# print_reset_handoff_note <reset-window-dir> <marker> <read-only>: the most
-# recent data/reset-window/*.md handoff note left by a session this one
-# replaced, printed only when it is newer than the marker recorded at the
-# previous session start - so a note is surfaced exactly once, not at every
-# session start for the rest of time. Advances the marker to now afterward
-# ONLY when this session is not read-only: a lock-refused session must not
-# perform a durable mutation, and advancing the marker here would consume the
-# note before the session that actually holds the lock ever sees it.
-print_reset_handoff_note() {
-  local dir=$1 marker=$2 read_only=$3 latest=""
-  subsection "data/reset-window (handoff note from the session this one replaced)"
-  if [ -d "$dir" ]; then
-    if [ -f "$marker" ]; then
-      latest=$(find "$dir" -maxdepth 1 -type f -name '*.md' -newer "$marker" 2>/dev/null | sort | tail -n1)
-    else
-      latest=$(find "$dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null | sort | tail -n1)
-    fi
-  fi
-  if [ -n "$latest" ]; then
-    printf '%s\n' "$latest"
-    cat "$latest"
-  else
-    printf 'none (no reset note newer than the previous session start)\n'
-  fi
-  [ "$read_only" -eq 1 ] || touch "$marker"
 }
 
 print_backlog_pointer() {
@@ -344,17 +313,19 @@ AFK_PRESENT=0
 X_MODE_PRESENT=0
 [ -f "$CONFIG/x-mode.env" ] && X_MODE_PRESENT=1
 
-if [ "$PRIMARY_HARNESS" = pi ]; then
+if [ "$PRIMARY_HARNESS" = pi ] || [ "$PRIMARY_HARNESS" = pi-signed ]; then
   PI_EXT="$FM_ROOT/.pi/extensions/fm-primary-pi-watch.ts"
   PI_TURNEND_EXT="$FM_ROOT/.pi/extensions/fm-primary-turnend-guard.ts"
   PI_WATCH_MARKER="$STATE/.pi-watch-extension-loaded"
   PI_TURNEND_MARKER="$STATE/.pi-turnend-extension-loaded"
   PI_LOCK="$STATE/.lock"
+  PI_RESTART_COMMAND=$PRIMARY_HARNESS
+  [ "$PRIMARY_HARNESS" != pi ] || PI_RESTART_COMMAND='plain pi'
   PI_WATCH_VERSION=$(hash_file "$PI_EXT" || printf '')
   PI_TURNEND_VERSION=$(hash_file "$PI_TURNEND_EXT" || printf '')
   if ! pi_extension_loaded "$PI_WATCH_MARKER" "$PI_WATCH_VERSION" "$PI_LOCK" \
     || ! pi_extension_loaded "$PI_TURNEND_MARKER" "$PI_TURNEND_VERSION" "$PI_LOCK"; then
-    printf 'PI_WATCH_EXTENSION: not loaded - approve Pi project trust once per clone, then restart plain pi so %s and %s auto-load for turn-end guard and background wake coverage; use -e %s -e %s only if project hooks are not trusted\n' "$PI_TURNEND_EXT" "$PI_EXT" "$PI_TURNEND_EXT" "$PI_EXT"
+    printf 'PI_WATCH_EXTENSION: not loaded - approve Pi project trust once per clone, then restart %s so %s and %s auto-load for turn-end guard and background wake coverage; use -e %s -e %s only if project hooks are not trusted\n' "$PI_RESTART_COMMAND" "$PI_TURNEND_EXT" "$PI_EXT" "$PI_TURNEND_EXT" "$PI_EXT"
   fi
 fi
 "$SCRIPT_DIR/fm-supervision-instructions.sh" \
@@ -370,7 +341,6 @@ print_file_or_absent "$DATA/secondmates.md" "data/secondmates.md"
 print_file_or_absent "$DATA/captain.md" "data/captain.md"
 print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
 print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
-print_reset_handoff_note "$DATA/reset-window" "$STATE/.last-session-start" "$READ_ONLY"
 
 # --- 5. fleet-state digest ---------------------------------------------
 section "FLEET STATE"
@@ -426,6 +396,23 @@ else
   printf 'absent\n'
 fi
 
+# Public commitments made through the myfirstmate relay. A promise to reply in a
+# public thread must survive compaction and restart, so it is surfaced from disk
+# here rather than from conversation memory. fm-public-followup-lib.sh owns both
+# gates: a home that never opted into the relay runs one [ -f ] test, prints no
+# subsection, and never reaches fm-public-followup.sh.
+if fm_pf_relay_active "$FM_HOME" \
+  && { fm_pf_has_registrations "$STATE" || fm_pf_has_events "$STATE"; }; then
+  PUBLIC_FOLLOWUP=$("$SCRIPT_DIR/fm-public-followup.sh" pending 2>/dev/null) || PUBLIC_FOLLOWUP=
+  if [ -n "$PUBLIC_FOLLOWUP" ]; then
+    subsection "Public commitments awaiting delivery"
+    printf '%s\n' "$PUBLIC_FOLLOWUP"
+    printf '\nEach line is a public reply this home still owes. Reconcile terminal results with\n'
+    printf '%s/bin/fm-public-followup.sh consume, then deliver a ready one with\n' "$FM_ROOT"
+    printf '%s/bin/fm-public-followup.sh deliver <id>. Load fmx-respond for the procedure.\n' "$FM_ROOT"
+  fi
+fi
+
 # --- 6. closing reminder -----------------------------------------------
 section "NEXT STEP"
 if [ "$READ_ONLY" -eq 1 ]; then
@@ -459,7 +446,7 @@ fi
 cat <<'EOF'
 The digest above is complete for this session start. Do NOT re-read
 data/projects.md, data/secondmates.md, data/captain.md,
-data/captain-shared.md, data/learnings.md, the reset-window handoff note,
+data/captain-shared.md, data/learnings.md,
 or state/*.meta now - they were just printed in full.
 Do NOT bulk-read data/backlog.md now either: the compact identity/metadata
 listing was just printed with a pointer for targeted full-body follow-up.

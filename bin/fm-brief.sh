@@ -6,7 +6,7 @@
 # description, acceptance criteria, and context, and may adjust other sections
 # when the task genuinely deviates (e.g. working an existing external PR instead
 # of shipping a new one).
-# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab] [--harness <name>]
+# Usage: fm-brief.sh <task-id> <repo-name> [--scout] [--herdr-lab]
 #        fm-brief.sh <task-id> --secondmate {<project>...|--no-projects}
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
@@ -26,10 +26,6 @@
 #   The flag must be explicit because {TASK} is filled after scaffolding and the
 #   caller-supplied repo string cannot reliably identify this repo. Briefs made
 #   without it carry a loud declaration so an omitted contract cannot be silent.
-#   --harness <name> selects the target crew harness (claude, codex, opencode, pi, grok;
-#   absent = claude-compatible default). Renders skill invocations with the correct
-#   prefix ($ for codex, / for others) in generated briefs. Applies only to ship and
-#   scout briefs; secondmate charters are harness-agnostic.
 # For ship tasks, the definition of done is shaped by the project's delivery mode
 # (data/projects.md via fm-project-mode.sh; see the project-management skill
 # and AGENTS.md task lifecycle):
@@ -39,8 +35,6 @@
 #                captain approves, firstmate merges to local main
 # Ship briefs begin with a worktree-isolation assertion before the branch step.
 # Scout tasks ignore mode - their deliverable is a report, not a merge.
-# They still carry the same crash-durability rule: keep notes or scratch
-# artifacts current and commit each completed slice before moving on.
 # Every scaffold's status protocol distinguishes the configured
 # declared-external-wait verb (FM_CLASSIFY_PAUSED_VERB, default "paused") from
 # "blocked:": pause for a known external wait expected to clear on its own,
@@ -50,11 +44,6 @@
 # it carries the AGENTS.md authoring bar (widely useful knowledge only, pointers
 # over copied detail) and has the crewmate add the fm-ensure-agents-md.sh
 # self-governance section when a touched project AGENTS.md lacks it.
-# Ship and scout tasks must keep crash-durable progress on disk as they work.
-# Status appends stay reserved for supervisor-actionable phase changes, while
-# the crewmate's own notes, scratch artifacts, and slice commits carry the work.
-# A committed slice is context you can safely forget, and trivial one-file work
-# should stay a single slice instead of being forced into artificial commits.
 # Refuses to overwrite an existing brief.
 set -eu
 
@@ -77,23 +66,42 @@ esac
 # shellcheck source=bin/fm-classify-lib.sh
 . "$SCRIPT_DIR/fm-classify-lib.sh"
 PAUSED_VERB=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
+
+resolve_directory_input() {
+  local name=$1 path=$2 resolved
+  case "$path" in
+    /*) printf '%s\n' "$path"; return 0 ;;
+  esac
+  resolved=$(CDPATH='' cd -- "$path" 2>/dev/null && pwd -P) || {
+    echo "error: $name directory cannot be resolved: $path" >&2
+    return 1
+  }
+  printf '%s\n' "$resolved"
+}
+
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
-DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
-STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+FM_HOME=$(resolve_directory_input FM_HOME "${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}") || exit 1
+if [ -n "${FM_DATA_OVERRIDE:-}" ]; then
+  DATA=$(resolve_directory_input FM_DATA_OVERRIDE "$FM_DATA_OVERRIDE") || exit 1
+else
+  DATA="$FM_HOME/data"
+fi
+if [ -n "${FM_STATE_OVERRIDE:-}" ]; then
+  STATE=$(resolve_directory_input FM_STATE_OVERRIDE "$FM_STATE_OVERRIDE") || exit 1
+else
+  STATE="$FM_HOME/state"
+fi
 KIND=ship
 HERDR_LAB=0
 NO_PROJECTS=0
-HARNESS=claude
 POS=()
-while [ "$#" -gt 0 ]; do
-  case "$1" in
-    --scout) KIND=scout; shift ;;
-    --secondmate) KIND=secondmate; shift ;;
-    --herdr-lab) HERDR_LAB=1; shift ;;
-    --no-projects) NO_PROJECTS=1; shift ;;
-    --harness) HARNESS="$2"; shift 2 ;;
-    *) POS+=("$1"); shift ;;
+for a in "$@"; do
+  case "$a" in
+    --scout) KIND=scout ;;
+    --secondmate) KIND=secondmate ;;
+    --herdr-lab) HERDR_LAB=1 ;;
+    --no-projects) NO_PROJECTS=1 ;;
+    *) POS+=("$a") ;;
   esac
 done
 ID=${POS[0]}
@@ -107,21 +115,6 @@ if [ "$NO_PROJECTS" -eq 1 ] && [ "$KIND" != secondmate ]; then
   echo "error: --no-projects applies only to --secondmate charters" >&2
   exit 1
 fi
-
-case "$HARNESS" in
-  claude|codex|opencode|pi|grok) ;;
-  *)
-    echo "error: invalid harness '$HARNESS' (must be one of: claude, codex, opencode, pi, grok)" >&2
-    exit 1
-    ;;
-esac
-
-if [ "$HARNESS" = codex ]; then
-  SKILL_PREFIX='$'
-else
-  SKILL_PREFIX='/'
-fi
-
 
 BRIEF="$DATA/$ID/brief.md"
 [ -e "$BRIEF" ] && { echo "error: $BRIEF already exists" >&2; exit 1; }
@@ -222,59 +215,6 @@ fi
 
 REPO=${POS[1]}
 
-# Detect if the target project is firstmate itself.  This can carry a
-# supervisor manual that can confuse a worker about its role, so it needs
-# detecting independent of whether this home registers firstmate under
-# projects/ at all -- most homes do not, since firstmate is not normally
-# a project of itself.  IS_FIRSTMATE fires when any of three signals
-# resolves to the same real directory as $FM_ROOT, always compared as
-# fully resolved physical paths (never a raw string or basename-only
-# comparison):
-#   1. the existing projects/$REPO registry entry, when one exists
-#   2. an absolute or relative path argument that itself resolves to $FM_ROOT
-#   3. the normal case -- a bare repo name naming firstmate's own checkout
-#      directory, confirmed by resolving that name as a sibling of $FM_ROOT
-IS_FIRSTMATE=0
-ROOT_REAL=$(cd "$FM_ROOT" 2>/dev/null && pwd -P) || true
-if [ -n "$ROOT_REAL" ]; then
-  FIRSTMATE_PROJ_PATH="$FM_HOME/projects/$REPO"
-  if [ -e "$FIRSTMATE_PROJ_PATH" ]; then
-    PROJ_REAL=$(cd "$FIRSTMATE_PROJ_PATH" 2>/dev/null && pwd -P) || true
-    if [ -n "$PROJ_REAL" ] && [ "$PROJ_REAL" = "$ROOT_REAL" ]; then
-      IS_FIRSTMATE=1
-    fi
-  fi
-  if [ "$IS_FIRSTMATE" -eq 0 ] && [ -e "$REPO" ]; then
-    REPO_REAL=$(cd "$REPO" 2>/dev/null && pwd -P) || true
-    if [ -n "$REPO_REAL" ] && [ "$REPO_REAL" = "$ROOT_REAL" ]; then
-      IS_FIRSTMATE=1
-    fi
-  fi
-  if [ "$IS_FIRSTMATE" -eq 0 ]; then
-    SIBLING_PATH="$(dirname "$ROOT_REAL")/$REPO"
-    if [ -e "$SIBLING_PATH" ]; then
-      SIBLING_REAL=$(cd "$SIBLING_PATH" 2>/dev/null && pwd -P) || true
-      if [ -n "$SIBLING_REAL" ] && [ "$SIBLING_REAL" = "$ROOT_REAL" ]; then
-        IS_FIRSTMATE=1
-      fi
-    fi
-  fi
-fi
-
-FIRSTMATE_DISCLAIMER=""
-if [ "$IS_FIRSTMATE" -eq 1 ]; then
-  FIRSTMATE_DISCLAIMER=$(cat <<'EOF'
-
-# Working on the firstmate repository - read this first
-
-**AGENTS.md and CLAUDE.md document the SUPERVISOR role. That role is not yours.** You are a worker.
-Never run `bin/fm-session-start.sh` or any `bin/fm-*.sh` fleet command, never acquire the fleet lock, never operate "read-only because another session holds the lock".
-A treehouse pool path, Orca-managed worktree, or any other path under a pool or scratch directory IS your isolated worktree and is NOT the primary checkout.
-Read `AGENTS.md` and `CLAUDE.md` only as documentation of the code you are changing.
-EOF
-)
-fi
-
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
 # shellcheck disable=SC2016  # single quotes are deliberate: these lines are literal brief text whose backtick-wrapped $(...) and "$HERDR_LAB_SESSION" snippets must reach the reading agent verbatim, not expand at scaffold time; only the '"$VAR"' break-outs interpolate.
@@ -298,19 +238,18 @@ HERDR_SECTION=$(printf '%s\n' \
 'Never bypass the helper, even for a read-only lifecycle probe or cleanup after failure.' \
 'The captain fleet uses the running `default` session.')
 else
-HERDR_SECTION=$(cat <<'EOF'
+IFS= read -r -d '' HERDR_SECTION <<'EOF' || true
 # Herdr lifecycle declaration - NOT ENABLED
 **HARD SAFETY GATE:** this scaffold cannot inspect the task text that replaces `{TASK}` later.
 If the task will start, stop, delete, restart, profile, or otherwise drive Herdr lifecycle behavior, stop and regenerate the brief with `--herdr-lab` before dispatch.
 Do not add Herdr lifecycle commands to this unguarded brief by hand.
 EOF
-)
+HERDR_SECTION=${HERDR_SECTION%$'\n'}
 fi
 
 if [ "$KIND" = scout ]; then
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
-$FIRSTMATE_DISCLAIMER
 
 # Task
 {TASK}
@@ -322,9 +261,6 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 This is a SCOUT task: the deliverable is a written report, not a PR.
 The worktree is your laboratory - install, run, edit, and make scratch commits freely; all of it is discarded at teardown.
 The report is the only thing that survives, so anything worth keeping must be in it.
-Keep durable progress on disk as you work by updating notes or scratch artifacts and committing each completed slice on the task branch before moving on.
-Use status appends only for supervisor-actionable phase changes, not as a progress log.
-If the work is trivial, keep it to one slice instead of manufacturing artificial commits.
 
 # Rules
 1. Never push to any remote and never open a PR.
@@ -366,52 +302,43 @@ read -r MODE _ <<EOF
 $("$FM_ROOT/bin/fm-project-mode.sh" "$REPO")
 EOF
 
-BASE=$("$FM_ROOT/bin/fm-project-base.sh" "$REPO" 2>/dev/null || true)
-
 case "$MODE" in
   direct-PR)
     SETUP2=""
     RULE1='1. Never push to the default branch (push only your `fm/'"$ID"'` branch). Never merge a PR.'
-    DOD=$(cat <<EOF
+    IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
 This project ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
-When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
-If the work is trivial, keep it as a single slice rather than inventing artificial commits.
 When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
-)
     ;;
   local-only)
     SETUP2=""
     RULE1="1. Never push to any remote and never open a PR. Work only on your \`fm/$ID\` branch; firstmate handles the merge into local \`main\`."
-    DOD=$(cat <<EOF
+    IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
 This project ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$ID\`. Do NOT push, do NOT open a PR, do NOT merge.
-Keep your branch rebased onto the current default branch so the eventual squash merge has a clean base.
-When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
-If the work is trivial, keep it as a single slice rather than inventing artificial commits.
+Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
 When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop.
 The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
-)
     ;;
   *)  # no-mistakes (default)
     SETUP2="
 2. Run \`no-mistakes doctor\`; if it reports the repo is not initialized here, run \`no-mistakes init\`."
     RULE1='1. Never push to the default branch. Never merge a PR.'
-    DOD=$(cat <<EOF
+    IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
 The task is complete only when committed on your branch.
-When the task naturally breaks into slices, commit each completed slice before moving on so a crash loses at most the current in-progress slice.
-If the work is trivial, keep it as a single slice rather than inventing artificial commits.
 When you believe it is complete, append \`done: {summary}\` to the status file and stop.
-Firstmate will then instruct you to run ${SKILL_PREFIX}no-mistakes to validate and ship a PR.
+Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
 
 You drive no-mistakes by responding to its gates, not by implementing fixes.
-Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke ${SKILL_PREFIX}no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
+Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
+When starting no-mistakes, make \`--intent\` preserve all relevant content from this brief's \`# Task\` section plus every later accepted Firstmate requirement, clarification, constraint, exclusion, and supersession, carrying only each requirement's current accepted form; retain direct requirements instead of substituting a diff summary, and exclude generic operational, status, delivery, and other scaffold boilerplate unless it is task-specific.
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
 Two firstmate-specific rules layer on top of that guidance:
@@ -420,29 +347,18 @@ Two firstmate-specific rules layer on top of that guidance:
   When the decision comes back, feed it to the gate with \`no-mistakes axi respond\` and let the pipeline apply it - do not route the question to "the user" or implement the fix yourself.
 - Avoid \`--yes\`: it would silently bypass firstmate's authority check and any required captain escalation.
 
-After ${SKILL_PREFIX}no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
+After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
 EOF
-)
     ;;
 esac
 
-if [ -n "$BASE" ]; then
-  STEP1="1. First action: create your branch from origin/$BASE: \`git checkout -b fm/$ID origin/$BASE\`"
-  if [ "$MODE" != "local-only" ]; then
-    BASE_NOTE="
-
-Important: the expected PR base for this project is \`$BASE\`. Use \`--base $BASE\` when opening a PR."
-  else
-    BASE_NOTE=""
-  fi
-else
-  STEP1="1. First action: create your branch: \`git checkout -b fm/$ID\`"
-  BASE_NOTE=""
-fi
+# read -r -d '' preserves the heredoc's trailing newline that the removed
+# $(...) command substitution used to strip. Drop that one newline so generated
+# briefs stay byte-identical to the historical Bash 5 output.
+DOD=${DOD%$'\n'}
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
-$FIRSTMATE_DISCLAIMER
 
 # Task
 {TASK}
@@ -456,7 +372,7 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
-$STEP1$SETUP2$BASE_NOTE
+1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
 
 # Rules
 $RULE1

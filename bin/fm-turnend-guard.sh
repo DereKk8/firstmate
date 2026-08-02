@@ -11,8 +11,10 @@
 # This script is push-based: verified harness turn-end hooks invoke it every time
 # the primary is about to end a turn.
 # Claude and codex can block directly by preserving exit status 2 and stderr.
-# OpenCode, pi, and grok adapters use the same predicate and force one bounded
-# follow-up because their turn-end events are passive.
+# OpenCode and pi adapters use the same predicate and force one bounded
+# follow-up because their turn-end events are passive. Grok delegates native
+# blocking when its running Stop payload advertises that capability, with one
+# bounded resume fallback for payloads from pre-native processes.
 # See docs/turnend-guard.md for the per-harness mechanics, validation evidence,
 # and fail-open tradeoffs.
 #
@@ -26,10 +28,10 @@
 # primary checkout - the main home or a genuinely marked secondmate home - and
 # stay a silent, fast no-op inside child task worktrees.
 #
-# Loop-guard, codex (default) mode: never block twice in the same turn. Codex
-# Stop payloads carry stop_hook_active=true when the CURRENT stop attempt was
-# itself already forced by an earlier block this turn; on that signal we always
-# allow the stop, whether or not watcher supervision actually got resumed.
+# Loop-guard, codex/Grok (default) mode: never block twice in the same turn.
+# Codex uses stop_hook_active and Grok uses stopHookActive; typed camel-case
+# takes precedence when both spellings are present. A true value means the
+# current stop attempt already follows a block, so this guard always allows it.
 # Passive harness adapters provide their own one-follow-up guard before calling
 # this script.
 # That bounds those harnesses to at most one forced continuation per turn -
@@ -68,11 +70,9 @@ CLAUDE_MODE=0
 SYNC_WAIT_MS=${FM_CLAUDE_AUTOARM_SYNC_WAIT_MS:-800}
 EPOCH_FRESH=${FM_CLAUDE_AUTOARM_EPOCH_FRESH:-15}
 BLOCK_BUDGET=${FM_CLAUDE_TURNEND_BLOCK_BUDGET:-3}
-ARM_CONFIRM_TIMEOUT=${FM_ARM_CONFIRM_TIMEOUT:-10}
 case "$SYNC_WAIT_MS" in ''|*[!0-9]*) SYNC_WAIT_MS=800 ;; esac
 case "$EPOCH_FRESH" in ''|*[!0-9]*|0) EPOCH_FRESH=15 ;; esac
 case "$BLOCK_BUDGET" in ''|*[!0-9]*|0) BLOCK_BUDGET=3 ;; esac
-case "$ARM_CONFIRM_TIMEOUT" in ''|*[!0-9]*|0) ARM_CONFIRM_TIMEOUT=10 ;; esac
 
 for arg in "$@"; do
   case "$arg" in
@@ -85,6 +85,7 @@ done
 . "$SCRIPT_DIR/fm-supervision-lib.sh"
 # shellcheck source=bin/fm-primary-scope-lib.sh
 . "$SCRIPT_DIR/fm-primary-scope-lib.sh"
+
 # Read the whole turn-end hook payload once; never block on unreadable/absent
 # stdin.
 PAYLOAD=$(cat 2>/dev/null || true)
@@ -95,10 +96,19 @@ PAYLOAD=$(cat 2>/dev/null || true)
 # loop-guard field, so we must never block - fail open, not noisy.
 command -v jq >/dev/null 2>&1 || exit 0
 
-STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '.stop_hook_active // false' 2>/dev/null) || exit 0
+STOP_HOOK_ACTIVE=$(printf '%s' "$PAYLOAD" | jq -r '
+  if type != "object" then error("payload")
+  elif has("stopHookActive") then
+    if ((.stopHookActive | type) == "boolean") then .stopHookActive else error("stopHookActive") end
+  elif has("stop_hook_active") then
+    if ((.stop_hook_active | type) == "boolean") then .stop_hook_active else error("stop_hook_active") end
+  else false
+  end
+' 2>/dev/null) || exit 0
 if [ "$CLAUDE_MODE" -eq 0 ] && [ "$STOP_HOOK_ACTIVE" = "true" ]; then
   exit 0
 fi
+
 # --- scope precisely to a PRIMARY checkout ----------------------------------
 # A genuinely-marked secondmate home runs its OWN primary firstmate session, so
 # force-INCLUDE it as a guarded primary whether treehouse leased it as a linked
@@ -112,6 +122,7 @@ fi
 # checkout has the two equal. Child worktrees never carry the gitignored marker,
 # so this exempts them while guarding every real secondmate home.
 fm_primary_scope_matches "$FM_ROOT" "$STATE" || exit 0
+
 # --- the actual predicate ----------------------------------------------------
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
@@ -139,31 +150,8 @@ if fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME"; then
   exit 0
 fi
 
-# The final action in a supervised turn starts fm-watch-arm in a tracked
-# background task. A stop hook can run while that arm is still publishing its
-# child lock, so wait only for a live, identity-bound arm marker and require the
-# ordinary healthy-watcher proof before allowing the turn to end. The wait is
-# bounded by the arm's own confirmation timeout (10 seconds by default); a
-# missing, stale, or unverified marker never suppresses this alarm.
-wait_for_arm_confirmation() {
-  local deadline
-  fm_watch_arm_confirmation_pending "$STATE" "$FM_HOME" || return 1
-  deadline=$(( $(date +%s) + ARM_CONFIRM_TIMEOUT + 1 ))
-  while :; do
-    fm_watcher_healthy "$STATE" "$WATCH" "$GRACE" "$FM_HOME" && return 0
-    fm_watch_arm_confirmation_pending "$STATE" "$FM_HOME" || return 1
-    [ "$(date +%s)" -ge "$deadline" ] && return 1
-    sleep 0.1
-  done
-}
-
-if wait_for_arm_confirmation; then
-  budget_reset
-  exit 0
-fi
-
 block_stop() {
-  local afk x_mode reason rule beacon_note
+  local afk x_mode reason rule
   afk=0
   [ -e "$STATE/.afk" ] && afk=1
   x_mode=0
@@ -171,15 +159,13 @@ block_stop() {
   reason=$("$SCRIPT_DIR/fm-supervision-instructions.sh" --afk "$afk" --x-mode "$x_mode" --repair-line 2>/dev/null \
     || printf '%s\n' 'tasks in flight, no live watcher - repair missing watcher supervision according to the session-start operating block before ending the turn')
   rule='━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
-  beacon_note='no watcher beacon exists'
-  [ -e "$STATE/.last-watcher-beat" ] && beacon_note='watcher beacon is orphaned'
   {
     printf '●%s\n' "$rule"
     printf '●  TURN WOULD END BLIND - SUPERVISION IS OFF\n'
     if [ "$FM_SUP_IN_FLIGHT" -gt 0 ]; then
-      printf '●  %s task(s) in flight, but no live watcher holds this home lock (%s).\n' "$FM_SUP_IN_FLIGHT" "$beacon_note"
+      printf '●  %s task(s) in flight, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_IN_FLIGHT" "$FM_SUP_BEACON_DESC"
     else
-      printf '●  X-mode relay polling needs supervision, but no live watcher holds this home lock (%s).\n' "$beacon_note"
+      printf '●  X-mode relay polling needs supervision, but no live watcher holds this home lock (last beat: %s).\n' "$FM_SUP_BEACON_DESC"
     fi
     if [ "$CLAUDE_MODE" -eq 1 ]; then
       printf '●  The Stop-owned auto-arm did not claim this home either, so recovery is NOT already under way.\n'

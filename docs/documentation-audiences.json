@@ -104,10 +104,6 @@
   ],
   "surfaces": [
     {
-      "path": ".agents/skills/afk/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": ".agents/skills/cardio/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -149,6 +145,10 @@
     },
     {
       "path": ".agents/skills/x-mode/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/afk/SKILL.md",
       "audience": "agent-runtime"
     },
     {
@@ -197,6 +197,14 @@
     },
     {
       "path": ".agents/skills/project-management/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/pr-merge-board/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/quota-array-dispatch/SKILL.md",
       "audience": "agent-runtime"
     },
     {
@@ -344,7 +352,19 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/verification/dispatch-auth.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/verification/public-followup.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/verification/runtime-backends.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/verification/stow-memory.md",
       "audience": "maintainer-verification"
     },
     {
