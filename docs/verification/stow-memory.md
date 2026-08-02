@@ -2,7 +2,7 @@
 
 Audience: maintainer verification.
 
-This record supports the active bounded-memory and whole-file curation guarantees for Firstmate's internal `/stow` skill.
+This record supports the active advisory-memory-review and whole-file curation guarantees for Firstmate's internal `/stow` skill.
 [`docs/configuration.md`](../configuration.md) owns the current operator-facing setting and estimate.
 The internal skill owns curation and completion-receipt behavior.
 Task chronology, fixture paths, and delivery evidence remain outside this record.
@@ -214,4 +214,4 @@ repeat sha256=d08ce8e35b17c8342773d551b5c1551a5a6ded5f45ab0f7ed5b6ef91ea1d408c m
 The first pass preserved current preferences, shared-memory and safety authority, a stable operating fact, and authoritative configuration and incident-report pointers while removing duplicate, superseded, stale, and chronological material.
 The secondmate fixture passed the production home validator before the existing inheritance owner installed the main-authoritative file read-only.
 Both secondmate passes preserved its unique local preference and learning while leaving those inherited bytes and mode untouched.
-This verifies the real instruction path consolidates to budget, reports truthful deltas, preserves the primary-owned shared boundary, and does not grow on an identical second pass.
+This verifies the real instruction path compacts duplicate material, reports truthful deltas, preserves the primary-owned shared boundary, and does not grow on an identical second pass.

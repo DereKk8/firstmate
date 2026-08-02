@@ -24,20 +24,17 @@ name any verified harness (see `harness-adapters`); Opus is `claude-opus-4-8`.
 
 ## Procedure
 
-### 1. Flush volatile context to its durable home
+### 1. Curate durable knowledge
 
-Everything the successor needs must be on disk, because its conversation memory
-starts empty. Route each fact to its **proper** home — do not dump everything into
-the reset note:
+Invoke `/stow` before writing the continuation note.
+`/stow` is the sole owner of the complete startup-memory curation and knowledge-routing pass.
+Do not perform its routing steps separately here, because that would route the same finding twice.
+Continue only after `/stow` has captured all durable findings and reported any unresolved curation exception.
 
-- New standing captain preference → `data/captain.md`.
-- New durable fleet lesson → `data/learnings.md`.
-- Live state of each in-flight task **and what the successor must watch** →
-  that task's status/brief/backlog note (e.g. "validating on deepseek; watch the
-  first real pr/ci stage"). Keep volatile specifics out of prose per note hygiene.
-- Anything changed this session that is not self-evident from state files →
-  the reset note below (model overrides written, crewmates steered, a branch
-  parked awaiting a decision, the day's scope such as "aide repos only").
+### 2. Write the continuation note
+
+Everything the successor needs must be on disk, because its conversation memory starts empty.
+Record only volatile context that is not already represented by the durable state and routing completed by `/stow`.
 
 Write the continuation note to `data/reset-window/<YYYY-MM-DD-HHMM>.md`:
 
@@ -58,23 +55,23 @@ Write the continuation note to `data/reset-window/<YYYY-MM-DD-HHMM>.md`:
 ```
 
 This note is transient scaffolding for the next session, not a permanent record;
-older ones can be pruned freely. Keep the exact path you wrote — step 5 names it
+older ones can be pruned freely. Keep the exact path you wrote — step 6 names it
 directly in the successor's launch prompt.
 
-### 2. Back up fleet data
+### 3. Back up fleet data
 
 `git -C data add -A && git -C data commit -m "session reset" && git -C data push`
 (best-effort; never let a push failure block the reset — report a persistent
 failure to the captain).
 
-### 3. Quiesce this session
+### 4. Quiesce this session
 
 Stop the supervision cycle: do **not** re-arm the watcher after this point, and
 start no new work. The successor will own supervision. Any wake that fires in the
 gap is safely enqueued to `state/.wake-queue` and drained by the successor —
 no wake is ever lost, so a brief unsupervised gap is fine.
 
-### 4. Release the fleet lock
+### 5. Release the fleet lock
 
 The successor cannot take over while this session still holds the lock (it would
 be forced read-only). Release it so session-start acquires cleanly:
@@ -85,7 +82,7 @@ rm -f "${FM_HOME:-$PWD}/state/.lock"
 
 Release the lock **before** launching the successor — never the other way round.
 
-### 5. Launch the successor
+### 6. Launch the successor
 
 Backend-aware. Resolve the backend from `config/backend` (herdr is this fleet's
 default). The successor launches at the firstmate repo root, on the requested
@@ -118,7 +115,7 @@ For a non-Claude successor harness, use that adapter's launch shape from
 `harness-adapters` (positional prompt vs `--prompt`, autonomy flag, model/effort
 flags) instead of the Claude form above.
 
-### 6. Hand off to the captain
+### 7. Hand off to the captain
 
 Tell the captain, in plain outcomes:
 - the successor is up and which tab/window to switch to;
@@ -132,8 +129,7 @@ Then stop. This session does nothing further.
 
 - **Release the lock before launching the successor.** Two live firstmates fighting
   over one lock forces the second into read-only — the opposite of a reset.
-- **Durable facts go to their real home, not the reset note.** The note is only for
-  volatile "where we are right now" context that would otherwise be lost.
+- **Durable facts go to their real home, not the reset note.** `/stow` owns that routing and the note is only for volatile "where we are right now" context that would otherwise be lost.
 - **Never discard unlanded work as part of a reset.** Parked branches, uncommitted
   crewmate work, and open PRs are handed off by *recording* them, never by tearing
   them down.

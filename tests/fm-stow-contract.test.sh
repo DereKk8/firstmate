@@ -16,6 +16,30 @@ test_stow_skill_task_note_contract() {
   pass "stow skill task-note contract includes recoverable body archival"
 }
 
+test_recurring_startup_memory_curation_contract() {
+  local stow="$ROOT/.agents/skills/stow/SKILL.md"
+  local reset="$ROOT/.agents/skills/reset-window/SKILL.md"
+  local sync="$ROOT/.agents/skills/syncfirstmate/SKILL.md"
+
+  assert_grep 'archive each editable existing memory file verbatim' "$stow" \
+    "stow no longer archives memory before curation"
+  assert_grep 'Audit the archived content section by section' "$stow" \
+    "stow no longer requires a section-by-section retention audit"
+  assert_grep 'advisory review trigger, not a deletion target' "$stow" \
+    "stow treats the memory threshold as a hard deletion budget"
+  # shellcheck disable=SC2016 # The literal backticks are part of the skill contract.
+  assert_grep 'Invoke `/stow` before writing the continuation note' "$reset" \
+    "reset no longer requires startup-memory curation"
+  assert_grep 'Do not perform its routing steps separately here' "$reset" \
+    "reset can route durable findings twice"
+  assert_grep 'bin/fm-startup-memory-budget.sh report' "$sync" \
+    "weekly sync no longer checks whether startup-memory curation is due"
+  # shellcheck disable=SC2016 # The literal backticks are part of the skill contract.
+  assert_grep 'recommend `/stow` before the next reset' "$sync" \
+    "weekly sync no longer recommends the curation owner"
+  pass "startup-memory curation is archived, audited, and wired to reset and weekly review"
+}
+
 test_agents_backlog_task_note_contract() {
   local agents="$ROOT/AGENTS.md"
 
@@ -34,4 +58,5 @@ test_agents_backlog_task_note_contract() {
 }
 
 test_stow_skill_task_note_contract
+test_recurring_startup_memory_curation_contract
 test_agents_backlog_task_note_contract

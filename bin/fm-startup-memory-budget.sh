@@ -5,8 +5,9 @@
 #   fm-startup-memory-budget.sh report
 #
 # `read` prints the one validated effective budget from
-# config/startup-memory-budget.  `report` prints the stable local estimate for
-# data/captain.md, data/captain-shared.md, and data/learnings.md together.
+# config/startup-memory-budget.  `report` prints the stable local estimate and
+# advisory curation review status for data/captain.md, data/captain-shared.md,
+# and data/learnings.md together.
 # Bootstrap owns default materialization; this command never creates or repairs
 # configuration, so an absent, malformed, symlinked, hardlinked, or otherwise
 # unsafe value is a concrete error rather than an inferred default.
@@ -66,8 +67,10 @@ report() {
   printf 'total_estimated_tokens=%s\n' "$total"
   if fm_startup_memory_decimal_le "$total" "$budget"; then
     printf 'budget_status=within-budget\n'
+    printf 'curation_review=not-recommended\n'
   else
     printf 'budget_status=over-budget\n'
+    printf 'curation_review=recommended\n'
   fi
   if [ "$role" = secondmate ] \
     && ! fm_startup_memory_decimal_le "$shared_tokens" "$budget"; then

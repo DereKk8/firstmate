@@ -176,10 +176,14 @@ test_budget_accounting_reports_all_three_files_and_safe_failure() {
     "report did not account for absent learnings"
   assert_contains "$out" 'total_estimated_tokens=5' "report total was not the sum of all three files"
   assert_contains "$out" 'budget_status=within-budget' "report did not classify the initial total"
+  assert_contains "$out" 'curation_review=not-recommended' \
+    "report did not mark an in-threshold total as not needing curation"
 
   printf 'abcdefabcdefabcdefabcdef\n' > "$home/data/learnings.md"
   out=$(FM_HOME="$home" "$BUDGET" report)
   assert_contains "$out" 'budget_status=over-budget' "report did not surface an over-budget total"
+  assert_contains "$out" 'curation_review=recommended' \
+    "report did not make an over-threshold total an advisory curation recommendation"
 
   outside="$TMP_ROOT/accounting-outside"
   printf 'outside\n' > "$outside"
