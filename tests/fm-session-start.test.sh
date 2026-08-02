@@ -18,6 +18,9 @@
 #   - composition: the script invokes the real fm-lock.sh/fm-bootstrap.sh/
 #     fm-wake-drain.sh (their real, distinctive output appears verbatim), it
 #     does not reimplement their logic
+#   - the reset-window handoff note: printed once when newer than the
+#     previous session start, not reprinted at the next session start, and
+#     not consumed by a read-only session that never acquired the lock
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -557,6 +560,45 @@ write_pi_loaded_markers() {
 }
 
 # --- context digest: absent vs empty vs present -----------------------------
+
+test_reset_handoff_note_read_only_session_does_not_consume_marker() {
+  local rec root home fakebin holder_pid out out2
+
+  rec=$(new_world reset-handoff-read-only)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  mkdir -p "$home/data/reset-window"
+  printf '# Session reset 2026-07-25-1000\n\n## In-flight\n- fm-ro-task: watch build\n' \
+    > "$home/data/reset-window/2026-07-25-1000.md"
+
+  sleep 300 &
+  holder_pid=$!
+  printf '%s\n' "$holder_pid" > "$home/state/.lock"
+
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+
+  assert_contains "$out" "READ-ONLY SESSION" "expected a lock refusal for this test setup"
+  assert_contains "$out" "fm-ro-task: watch build" \
+    "read-only session did not still surface the reset-window note"
+  [ -f "$home/state/.last-session-start" ] && fail "read-only session advanced the .last-session-start marker, a durable mutation the read-only path must not perform"
+
+  # The session that actually holds the lock must still see the note.
+  rm -f "$home/state/.lock"
+  kill "$holder_pid" 2>/dev/null || true
+  wait "$holder_pid" 2>/dev/null || true
+
+  out2=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_not_contains "$out2" "READ-ONLY SESSION" "second run should have acquired the lock cleanly"
+  assert_contains "$out2" "fm-ro-task: watch build" \
+    "the session holding the lock did not see the note a prior read-only session left untouched"
+  [ -f "$home/state/.last-session-start" ] || fail "the locked session did not advance the .last-session-start marker"
+
+  pass "a read-only session does not consume the reset-window note or advance its marker"
+}
 
 test_context_digest_absent_empty_present() {
   local rec root home fakebin out
@@ -1179,6 +1221,58 @@ EOF
 
 # --- fleet-state digest: no in-flight tasks ----------------------------------
 
+# --- reset-window handoff note ----------------------------------------------
+
+test_reset_handoff_note_printed_when_newer_than_previous_session_start() {
+  local rec root home fakebin out
+  rec=$(new_world reset-handoff-newer)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  mkdir -p "$home/data/reset-window"
+  printf '# Session reset 2026-07-25-1200\n\n## In-flight\n- fm-demo-task: watch CI\n' \
+    > "$home/data/reset-window/2026-07-25-1200.md"
+
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+
+  assert_contains "$out" "handoff note from the session this one replaced" \
+    "digest did not label the reset-window handoff note"
+  assert_contains "$out" "fm-demo-task: watch CI" \
+    "digest did not print the reset-window note content"
+  [ -f "$home/state/.last-session-start" ] || fail "session start did not record a .last-session-start marker"
+
+  pass "session start prints a reset-window note newer than the previous session start"
+}
+
+test_reset_handoff_note_not_reprinted_at_next_session_start() {
+  local rec root home fakebin out1 out2
+  rec=$(new_world reset-handoff-not-reprinted)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  mkdir -p "$home/data/reset-window"
+  printf '# Session reset 2026-07-25-0900\n\n## In-flight\n- fm-old-task: watch tests\n' \
+    > "$home/data/reset-window/2026-07-25-0900.md"
+
+  out1=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out1" "fm-old-task: watch tests" \
+    "first session start did not print the reset-window note"
+
+  out2=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_not_contains "$out2" "fm-old-task: watch tests" \
+    "second session start reprinted a reset-window note no newer than the previous session start"
+  assert_contains "$out2" "none (no reset note newer than the previous session start)" \
+    "second session start did not report the reset-window note as already surfaced"
+
+  pass "session start does not reprint a reset-window note that is not newer than the previous session start"
+}
+
 test_fleet_digest_empty_fleet() {
   local rec root home fakebin out
   rec=$(new_world empty-fleet)
@@ -1391,6 +1485,9 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
+test_reset_handoff_note_printed_when_newer_than_previous_session_start
+test_reset_handoff_note_not_reprinted_at_next_session_start
+test_reset_handoff_note_read_only_session_does_not_consume_marker
 test_context_digest_absent_empty_present
 test_lock_refusal_read_only_path
 test_lock_write_failure_read_only_path
