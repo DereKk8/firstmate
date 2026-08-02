@@ -1040,7 +1040,6 @@ import { encodeFirstmateOperationalInput } from "./.pi/extensions/lib/fm-operati
 let phase: "idle" | "captain" | "monitor" = "idle";
 let label = "";
 let adjacent = false;
-let latestInputRole: "user" | "custom" | undefined;
 
 const EXACT_WATCHER_INPUT =
   "\u2063FIRSTMATE_OP: v1 watcher: FIRSTMATE WATCHER WAKE: signal: /home/fixture/github/kunchenguid/firstmate/state/oss-triage-t4.status\n\n" +
@@ -1068,9 +1067,6 @@ function contentText(content: unknown): string {
 
 export default function (pi: ExtensionAPI): void {
   pi.on("message_start", (event) => {
-    if (event.message.role === "user" || event.message.role === "custom") {
-      latestInputRole = event.message.role;
-    }
     if (event.message.role !== "assistant" || phase !== "captain") return;
     phase = "monitor";
     pi.sendUserMessage(monitorInput("ONE"), { deliverAs: "followUp" });
@@ -1098,13 +1094,11 @@ export default function (pi: ExtensionAPI): void {
         .filter((message) => message.role === "user")
         .map((message) => contentText(message.content))
         .join("\n");
-      const responseText = latestInputRole === "custom"
-        ? `CAPTAIN_ANSWER_${label}`
-        : allUserText.includes(monitorInput("ONE"))
-          ? adjacent && allUserText.includes(monitorInput("TWO"))
-            ? `MONITOR_HANDLED_${label}_ONE_TWO`
-            : `MONITOR_HANDLED_${label}_ONE`
-          : `CAPTAIN_ANSWER_${label}`;
+      const responseText = allUserText.includes(monitorInput("ONE"))
+        ? adjacent && allUserText.includes(monitorInput("TWO"))
+          ? `MONITOR_HANDLED_${label}_ONE_TWO`
+          : `MONITOR_HANDLED_${label}_ONE`
+        : `CAPTAIN_ANSWER_${label}`;
       const output: AssistantMessage = {
         role: "assistant",
         content: [],
@@ -1206,7 +1200,7 @@ TS
       fail "Pi follow-up $label case did not process the monitoring notification"
     fi
 
-    pane=$(tmux -L "$TMUX_SOCKET" capture-pane -p -t "$TMUX_SESSION" -S - 2>/dev/null || true)
+    pane=$(tmux -L "$TMUX_SOCKET" capture-pane -p -t "$TMUX_SESSION" -S -600 2>/dev/null || true)
     [ "$(printf '%s\n' "$pane" | grep -Fc "CAPTAIN_ANSWER_$label" || true)" -eq 1 ] \
       || fail "Pi follow-up $label case rendered a duplicate captain answer"
     assert_contains "$pane" "CAPTAIN_PROMPT_$label" "Pi follow-up $label case hid the genuine captain prompt"
