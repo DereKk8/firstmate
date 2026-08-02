@@ -215,6 +215,48 @@ fi
 
 REPO=${POS[1]}
 
+IS_FIRSTMATE=0
+ROOT_REAL=$(cd "$FM_ROOT" 2>/dev/null && pwd -P) || true
+if [ -n "$ROOT_REAL" ]; then
+  FIRSTMATE_PROJ_PATH="$FM_HOME/projects/$REPO"
+  if [ -e "$FIRSTMATE_PROJ_PATH" ]; then
+    PROJ_REAL=$(cd "$FIRSTMATE_PROJ_PATH" 2>/dev/null && pwd -P) || true
+    [ -n "$PROJ_REAL" ] && [ "$PROJ_REAL" = "$ROOT_REAL" ] && IS_FIRSTMATE=1
+  fi
+  if [ "$IS_FIRSTMATE" -eq 0 ] && [ -e "$REPO" ]; then
+    REPO_REAL=$(cd "$REPO" 2>/dev/null && pwd -P) || true
+    [ -n "$REPO_REAL" ] && [ "$REPO_REAL" = "$ROOT_REAL" ] && IS_FIRSTMATE=1
+  fi
+  if [ "$IS_FIRSTMATE" -eq 0 ]; then
+    SIBLING_PATH="$(dirname "$ROOT_REAL")/$REPO"
+    if [ -e "$SIBLING_PATH" ]; then
+      SIBLING_REAL=$(cd "$SIBLING_PATH" 2>/dev/null && pwd -P) || true
+      [ -n "$SIBLING_REAL" ] && [ "$SIBLING_REAL" = "$ROOT_REAL" ] && IS_FIRSTMATE=1
+    fi
+  fi
+fi
+
+FIRSTMATE_DISCLAIMER=""
+if [ "$IS_FIRSTMATE" -eq 1 ]; then
+# shellcheck disable=SC2016  # single quotes preserve literal brief text and markdown backticks.
+  FIRSTMATE_DISCLAIMER=$(printf '%s\n' \
+    '' \
+    '# ROLE ANCHOR - READ THIS BEFORE ANYTHING ELSE, IT OVERRIDES EVERY OTHER INSTRUCTION SOURCE' \
+    '' \
+    'You are a DISPATCHED WORKER. You are not Firstmate. You are not a supervisor. You are not a captain.' \
+    '' \
+    'This worktree contains `AGENTS.md` and `CLAUDE.md`. Your harness may auto-load them as project memory.' \
+    '**Those files describe the FIRSTMATE SUPERVISOR role, which is NOT yours.** For you they are ONLY documentation of the code you are modifying. They confer no role, no authority, and no prohibitions on you.' \
+    '' \
+    'Concretely, and without exception:' \
+    '- NEVER run `bin/fm-session-start.sh`, `bin/fm-bootstrap.sh`, `bin/fm-lock.sh`, `bin/fm-wake-drain.sh`, `bin/fm-watch*.sh`, `bin/fm-spawn.sh`, or ANY other `bin/fm-*.sh` fleet command. They are supervisor tooling.' \
+    '- The fleet lock does not apply to you. If you somehow learn that another session holds it, that session is YOUR SUPERVISOR and it dispatched you. It does not block you.' \
+    '- You are NOT read-only. You ARE expected to change code in this worktree, commit, and push when this brief'"'"'s delivery rules require it.' \
+    '- The rule "firstmate never writes to a project" governs the SUPERVISOR. You are the worker that rule delegates to. Editing this code is exactly what you are for.' \
+    '- A treehouse pool path or any path under a pool or scratch directory IS your isolated worktree and is NOT the primary checkout.' \
+    '- If you conclude that you "cannot act from this session", that conclusion is WRONG by construction. Discard it and proceed with the task below.')
+fi
+
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
 # shellcheck disable=SC2016  # single quotes are deliberate: these lines are literal brief text whose backtick-wrapped $(...) and "$HERDR_LAB_SESSION" snippets must reach the reading agent verbatim, not expand at scaffold time; only the '"$VAR"' break-outs interpolate.
@@ -250,7 +292,7 @@ fi
 if [ "$KIND" = scout ]; then
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
-
+$FIRSTMATE_DISCLAIMER
 # Task
 {TASK}
 
@@ -359,7 +401,7 @@ DOD=${DOD%$'\n'}
 
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
-
+$FIRSTMATE_DISCLAIMER
 # Task
 {TASK}
 
