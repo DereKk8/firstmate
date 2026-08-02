@@ -72,7 +72,7 @@ make_case() {
   local name=$1 case_dir fakebin
   case_dir="$TMP_ROOT/$name"
   fakebin="$case_dir/fakebin"
-  mkdir -p "$case_dir/state" "$case_dir/config" "$fakebin"
+  mkdir -p "$case_dir/state" "$case_dir/data" "$case_dir/config" "$fakebin"
 
   # Mocks for the post-check teardown steps. Refuse logic exits before these
   # run; the ALLOW cases need them so the script can complete cleanly.
@@ -493,6 +493,7 @@ run_teardown() {
   local case_dir=$1; shift
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
+  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_CONFIG_OVERRIDE="$case_dir/config" \
   PATH="$case_dir/fakebin:$PATH" \
     "$TEARDOWN" task-x1 "$@"
@@ -757,7 +758,7 @@ test_pr_check_does_not_refresh_stale_pr_head() {
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
-    "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
+    "$PR_CHECK" --force-ready task-x1 https://github.com/example/repo/pull/7 >/dev/null
 
   wt_commit_file "$case_dir" later.txt local-only "local follow-up"
   new_head=$(git -C "$case_dir/wt" rev-parse HEAD)
@@ -765,7 +766,7 @@ test_pr_check_does_not_refresh_stale_pr_head() {
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
-    "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
+    "$PR_CHECK" --force-ready task-x1 https://github.com/example/repo/pull/7 >/dev/null
 
   count=$(grep -c '^pr_head=' "$case_dir/state/task-x1.meta" || true)
   expect_code 1 "$count" "pr-check-stale: stale rerun should not append a second pr_head"
@@ -794,7 +795,7 @@ test_pr_check_records_remote_head_when_local_lags() {
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
-    "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
+    "$PR_CHECK" --force-ready task-x1 https://github.com/example/repo/pull/7 >/dev/null
 
   grep -qxF "pr_head=$pr_head" "$case_dir/state/task-x1.meta" \
     || fail "pr-check-local-lags: did not record GitHub PR head"

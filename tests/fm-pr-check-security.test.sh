@@ -55,12 +55,15 @@ make_case() {
   dir="$TMP_ROOT/$name"
   fakebin="$dir/fakebin"
   fake_root="$dir/root"
-  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/wt" "$fakebin" "$fake_root/bin"
+  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/project" "$dir/wt" "$fakebin" "$fake_root/bin"
+  printf '%s\n' '- project [no-mistakes] base=main - fixture project' > "$dir/home/data/projects.md"
   cat > "$fake_root/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"
 SH
   chmod +x "$fake_root/bin/fm-guard.sh"
+  cp "$ROOT/bin/fm-project-base.sh" "$fake_root/bin/fm-project-base.sh"
+  chmod +x "$fake_root/bin/fm-project-base.sh"
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
@@ -96,14 +99,14 @@ SH
 }
 
 write_task_meta() {
-  local dir=$1 id=${2:-task-a}
+  local dir=$1 id=${2:-task-a} mode=${3:-no-mistakes}
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=firstmate:fm-$id" \
     "endpoint_task_id=$id" \
     "worktree=$dir/wt" \
     "project=$dir/project" \
     "kind=ship" \
-    "mode=no-mistakes"
+    "mode=$mode"
 }
 
 write_poll_meta() {
@@ -516,7 +519,8 @@ test_invalid_entrypoints_have_zero_side_effects() {
 test_valid_recording_and_merge_derivation() {
   local dir expected sidecar count rc
   dir=$(make_case valid-recording)
-  write_task_meta "$dir"
+  # This test covers static-poll recording, not no-mistakes PR-body verification.
+  write_task_meta "$dir" task-a direct-PR
   expected=0123456789abcdef0123456789abcdef01234567
   FM_TEST_GH_HEAD=$expected run_check_entry "$dir" task-a https://github.com/my-org/repo_name.with-dots/pull/37 \
     > "$dir/stdout" 2> "$dir/stderr" || fail "valid direct check failed"
@@ -563,7 +567,8 @@ test_valid_recording_and_merge_derivation() {
     || fail "guarded merge retirement removed pr_head metadata"
 
   dir=$(make_case newline-head)
-  write_task_meta "$dir"
+  # This test covers malformed head rejection, not no-mistakes PR-body verification.
+  write_task_meta "$dir" task-a direct-PR
   FM_TEST_GH_HEAD=$'0123456789abcdef0123456789abcdef01234567\nwindow=unexpected' \
     run_check_entry "$dir" task-a https://github.com/o/r/pull/2 >/dev/null 2>/dev/null \
     || fail "valid check with malformed remote head failed"
@@ -571,7 +576,8 @@ test_valid_recording_and_merge_derivation() {
   assert_no_grep 'window=unexpected' "$dir/home/state/task-a.meta" "newline metadata key was injected"
 
   dir=$(make_case lifecycle-compatible-id)
-  write_task_meta "$dir" Task_A.1
+  # This test covers lifecycle-compatible IDs, not no-mistakes PR-body verification.
+  write_task_meta "$dir" Task_A.1 direct-PR
   run_merge_entry "$dir" Task_A.1 https://github.com/o/r/pull/3 \
     > "$dir/stdout" 2> "$dir/stderr" \
     || fail "safe lifecycle-compatible task ID could not use the PR merge flow"
@@ -652,7 +658,8 @@ run_watcher_bounded() {
 test_rejected_metacharacter_bytes_are_inert() {
   local dir family rc before after
   dir=$(make_case rejected-metacharacters)
-  write_task_meta "$dir"
+  # This test covers hostile input rejection, not no-mistakes PR-body verification.
+  write_task_meta "$dir" task-a direct-PR
   write_poll_meta "$dir/home/state" safe-check https://github.com/o/r/pull/99
   families=(
     'https://github.com/o$/r/pull/1'
@@ -795,7 +802,8 @@ test_concurrent_watcher_sees_only_complete_publication() {
   n=1
   while [ "$n" -le 3 ]; do
     dir=$(make_case "concurrent-$n")
-    write_task_meta "$dir"
+    # This test covers atomic publication, not no-mistakes PR-body verification.
+    write_task_meta "$dir" task-a direct-PR
     cat > "$dir/fakebin/cp" <<SH
 #!/usr/bin/env bash
 '$REAL_CP' "\$@" || exit 1
@@ -1438,6 +1446,7 @@ test_ambiguous_failure_accepts_validated_replacement() {
   dir=$(make_case ambiguous-validated-replacement)
   state="$dir/home/state"
   write_ambiguous_poll "$dir"
+  printf 'project=%s\n' "$dir/project" >> "$state/task-a.meta"
   mkdir "$state/task-a.pr-poll"
 
   set +e
@@ -1548,7 +1557,8 @@ test_complete_single_link_validation() {
   for artifact in check.sh pr-poll pr-poll-registration; do
     dir=$(make_case "single-link-live-${artifact//./-}")
     state="$dir/home/state"
-    write_task_meta "$dir"
+    # This test covers artifact-link validation, not no-mistakes PR-body verification.
+    write_task_meta "$dir" task-a direct-PR
     run_check_entry "$dir" task-a https://github.com/o/r/pull/10 >/dev/null 2>/dev/null \
       || fail "could not publish $artifact hard-link fixture"
     fm_pr_poll_artifacts_valid "$state" task-a "$POLL" \
@@ -2237,7 +2247,7 @@ test_direct_registration_refreshes_v1_x_shim() {
     dir=$(make_case "direct-registration-x-transition-$marker_kind")
     state="$dir/home/state"
     shim="$state/x-watch.check.sh"
-    fm_write_meta "$state/task-a.meta" 'window=fm-task-a'
+    fm_write_meta "$state/task-a.meta" 'window=fm-task-a' "project=$dir/project"
     write_v1_x_shim "$shim" "$dir/home" "$dir/root"
     chmod 0755 "$shim"
     case "$marker_kind" in
@@ -2276,7 +2286,7 @@ test_direct_registration_refreshes_v1_x_shim() {
   dir=$(make_case direct-registration-x-lookalike)
   state="$dir/home/state"
   shim="$state/x-watch.check.sh"
-  fm_write_meta "$state/task-a.meta" 'window=fm-task-a'
+  fm_write_meta "$state/task-a.meta" 'window=fm-task-a' "project=$dir/project"
   write_v1_x_shim "$shim" "$dir/home" "$dir/root"
   printf '# unrecognized version\n' >> "$shim"
   chmod 0755 "$shim"
