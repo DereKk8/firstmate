@@ -15,32 +15,37 @@ This skill writes only through the existing Firstmate ownership and write bounda
 
 ## Required startup-memory pass
 
-Every `/stow` invocation performs this complete pass, even when the session contains no new finding:
+Every `/stow` invocation performs this complete pass, even when the session contains no new finding.
+The configured startup-memory budget is an advisory review trigger, not a deletion target or a reset-safety gate.
 
 1. Run `bin/fm-startup-memory-budget.sh report` before considering a write.
-   Record its effective budget and each file's estimated-token total.
+   Record its effective budget, review status, and each file's estimated-token total.
    The helper's stable estimate is the documented conservative local approximation, not provider-exact accounting.
    If it rejects the setting or a memory file, do not infer a default or silently continue.
-   Report that concrete exception and do not call the session reset-safe.
+   Report that concrete exception.
 2. Read every current memory file completely: `data/captain.md`, `data/captain-shared.md`, and `data/learnings.md`.
    Treat an absent local file as absent, not as an invitation to manufacture content.
    In a primary home, all three are curation inputs under their existing ownership rules.
    In a secondmate home, `data/captain-shared.md` is a read-only primary-owned input: count it, never edit it, and curate only the editable local files.
-3. Build one whole-file retention plan before editing.
-   Retain, in order: current captain preferences, authority and safety boundaries, and recurring working style; stable home-local operating facts that repeatedly affect future work and are expensive to rediscover; then concise pointers to an existing authoritative report, project document, configuration, or backlog item.
-   Retain lower-priority material only while budget remains.
-4. Consolidate every editable memory file as needed, not only the file apparently related to a new finding.
+3. Before editing, archive each editable existing memory file verbatim under `data/startup-memory-archive/<YYYY-MM-DD-HHMM>/` using its current filename.
+   The dated archive must exist before any consolidation so every prior fact remains recoverable.
+4. Build one whole-file retention plan before editing.
+   Retain current captain preferences, authority and safety boundaries, recurring working style, stable home-local operating facts that repeatedly affect future work and are expensive to rediscover, and concise pointers to existing authoritative material.
+   Preserve every live rule and accumulated learning by reframing it for context efficiency or routing it to its more specific owner.
+5. Consolidate every editable memory file as needed, not only the file apparently related to a new finding.
    Prefer one concise current rule or authoritative pointer over duplicate prose.
-   Remove, merge, or route completed incident and release chronology, stale versions and paths, transient task state, resolved alternatives, old metrics, superseded claims, duplicates, and report-sized procedures.
+   Replace completed incident and release chronology, stale versions and paths, transient task state, resolved alternatives, old metrics, superseded claims, duplicates, and report-sized procedures with their current fact or stronger owner.
    Do not remove a unique current fact unless it is preserved directly elsewhere through a stronger existing owner.
-5. Run `bin/fm-startup-memory-budget.sh report` again after the complete pass.
-   Finish at or below the effective budget unless a concrete inability remains.
-   A secondmate must explicitly report `primary-owned-shared-file-alone-exceeds-budget` when the inherited shared file alone exceeds its allowance, because local curation cannot resolve it.
-   Any other unresolved excess must identify the fact that cannot safely be removed or routed and why.
+6. Audit the archived content section by section after consolidation.
+   Confirm every live rule and accumulated learning remains in a current memory file or its stronger owner.
+   Repair any missing destination before completing the pass.
+7. Run `bin/fm-startup-memory-budget.sh report` again after the complete pass.
+   Report its effective budget, review status, and total estimated tokens.
+   A secondmate must explicitly report `primary-owned-shared-file-alone-exceeds-budget` when the inherited shared file alone exceeds its advisory allowance, because local curation cannot resolve it.
+   Any remaining review recommendation must identify the retained facts and their current owners.
 
 A net increase is allowed only for a genuinely new current fact with no stronger owner.
-Before allowing it, consolidate enough lower-priority material to remain within budget.
-Never describe the session as reset-safe while the memory total is over budget or an exception is unresolved.
+Never delete, omit, or weaken a live rule or accumulated learning solely to reduce the estimate.
 
 ## Knowledge sweep and routing
 
@@ -70,13 +75,13 @@ Never describe the session as reset-safe while the memory total is over budget o
 
 Report the outcome in plain captain-facing language with all of these facts:
 
-- effective startup-memory budget and total estimated tokens before and after;
+- effective startup-memory budget, review status, and total estimated tokens before and after;
 - one or more actions for each of `data/captain.md`, `data/captain-shared.md`, and `data/learnings.md`: `unchanged`, `added`, `rewritten`, `pruned`, or `routed`;
 - each durable finding filed outside memory and its authoritative owner;
 - every unresolved exception, including a primary-owned shared-file constraint in a secondmate home;
-- whether the session is safe to reset, only when all durable findings are captured and the post-pass result is within budget with no exception.
+- whether the session is safe to reset when all durable findings are captured and no curation exception remains.
 
-Do not hide an over-budget result behind a reset-safe claim.
+Do not hide a remaining review recommendation or curation exception behind a reset-safe claim.
 
 ## Scope exclusion: no skill storage
 

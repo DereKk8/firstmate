@@ -42,12 +42,12 @@ Running `/updatefirstmate` after a `/syncfirstmate` sync propagates the merged a
 No crewmate, no writes to tracked files.
 This is also what the weekly heartbeat runs non-interactively.
 
-Run `bin/fm-upstream-check.sh`.
-It outputs:
-- ahead/behind commit counts between `main` and `upstream/main`.
-- A grouped summary of notable new upstream commits (features, backends, watcher, daemon, session-start, etc.) since the merge-base.
+Run `bin/fm-upstream-check.sh`, `bin/fm-external-tooling-check.sh`, and `bin/fm-startup-memory-budget.sh report`.
+The startup-memory report is read-only and its advisory review status makes the weekly check a recurring curation prompt.
+When it recommends review, recommend `/stow` before the next reset.
+Do not perform curation during check mode because `/stow` owns that write path.
 
-Report to the captain in plain outcomes language: what new capabilities landed upstream, how far behind this fork is.
+Report to the captain in plain outcomes language: what new capabilities landed upstream, how far behind this fork is, external tooling drift, and any startup-memory curation recommendation.
 Stop here.
 The captain decides whether to proceed to full sync.
 
@@ -210,11 +210,11 @@ the git sync from landing.
 
 ## Weekly heartbeat
 
-Check mode runs two read-only scripts:
-`bin/fm-upstream-check.sh` (git gap) and `bin/fm-external-tooling-check.sh` (external tooling drift).
-Both are designed to run non-interactively as a weekly heartbeat job.
-Neither writes to tracked files or pushes.
-Both output to stdout so the scheduler can surface them.
+Check mode runs three read-only scripts:
+`bin/fm-upstream-check.sh` (git gap), `bin/fm-external-tooling-check.sh` (external tooling drift), and `bin/fm-startup-memory-budget.sh report` (startup-memory curation recommendation).
+All are designed to run non-interactively as a weekly heartbeat job.
+None writes to tracked files or pushes.
+All output to stdout so the scheduler can surface them.
 The weekly schedule is wired by firstmate separately; this skill does not set it up.
 
 ## Safety
