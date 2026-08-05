@@ -30,6 +30,16 @@ EOF
 #!/usr/bin/env bash
 printf '%s\n' 'v2.1.1'
 EOF
+  for tool in gh-axi lavish-axi chrome-devtools-axi; do
+    cat > "$fakebin/$tool" <<EOF
+#!/usr/bin/env bash
+printf '%s\\n' '0.1.0'
+EOF
+  done
+  cat > "$fakebin/ntn" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' 'v0.21.7'
+EOF
   cat > "$fakebin/claude" <<'EOF'
 #!/usr/bin/env bash
 printf '%s\n' '2.1.220 (Claude Code)'
@@ -40,11 +50,20 @@ printf '%s\n' '{}'
 EOF
   cat > "$fakebin/npm" <<'EOF'
 #!/usr/bin/env bash
-exit 1
+case "$*" in
+  *'gh-axi'*) printf '%s\n' '0.1.1' ;;
+  *'lavish-axi'*) printf '%s\n' '0.1.1' ;;
+  *'chrome-devtools-axi'*) printf '%s\n' '0.1.1' ;;
+  *'notion-axi'*) printf '%s\n' '0.1.1' ;;
+  *) exit 1 ;;
+esac
 EOF
   cat > "$fakebin/curl" <<'EOF'
 #!/usr/bin/env bash
-printf '%s\n' '{"tag_name":"v2.1.1"}'
+case "$*" in
+  *ntn.dev/latest.txt*) printf '%s\n' 'v0.21.8' ;;
+  *) printf '%s\n' '{"tag_name":"v2.1.1"}' ;;
+esac
 EOF
   cat > "$fakebin/jq" <<'EOF'
 #!/usr/bin/env bash
@@ -99,7 +118,36 @@ test_runtime_backends_are_checked() {
   pass "runtime backends are checked"
 }
 
+test_axi_family_and_ntn_are_checked() {
+  local root="$TMP_ROOT/axi-family" fakebin out
+  fakebin=$(make_fixture "$root")
+  out=$(run_check "$root" "$fakebin")
+  for expected in \
+    'gh-axi: 0.1.0; outdated (latest 0.1.1)' \
+    'lavish-axi: 0.1.0; outdated (latest 0.1.1)' \
+    'chrome-devtools-axi: 0.1.0; outdated (latest 0.1.1)' \
+    'notion-axi: unknown (npx-local version not determinable; latest 0.1.1)' \
+    'ntn: v0.21.7; outdated (latest 0.21.8)'; do
+    printf '%s\n' "$out" | grep -q "$expected" || fail "$expected"
+  done
+  pass "axi family, npx, and ntn tools are checked"
+}
+
+test_missing_tool_is_nonfatal() {
+  local root="$TMP_ROOT/missing" fakebin out
+  fakebin=$(make_fixture "$root")
+  rm "$fakebin/gh-axi"
+  out=$(PATH="$fakebin:/usr/bin:/bin" FM_ROOT_OVERRIDE="$root" "$CHECK")
+  printf '%s\n' "$out" | grep -q 'gh-axi: not installed' \
+    || fail "missing gh-axi was not reported"
+  printf '%s\n' "$out" | grep -q 'ntn: v0.21.7' \
+    || fail "the check stopped after a missing tool"
+  pass "missing tools are nonfatal"
+}
+
 test_outdated_tool
 test_pinned_tool
 test_unreachable_source
 test_runtime_backends_are_checked
+test_axi_family_and_ntn_are_checked
+test_missing_tool_is_nonfatal

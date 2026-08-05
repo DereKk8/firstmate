@@ -60,6 +60,11 @@ tool_source() {
     opencode) printf 'npm opencode-ai\n' ;;
     pi|pi-signed) printf 'npm @earendil-works/pi-coding-agent\n' ;;
     quota-axi) printf 'npm quota-axi\n' ;;
+    gh-axi) printf 'npm gh-axi\n' ;;
+    lavish-axi) printf 'npm lavish-axi\n' ;;
+    chrome-devtools-axi) printf 'npm chrome-devtools-axi\n' ;;
+    notion-axi) printf 'npm notion-axi\n' ;;
+    ntn) printf 'ntn_latest_txt https://ntn.dev/latest.txt\n' ;;
     *) printf 'unknown -\n' ;;
   esac
 }
@@ -67,7 +72,9 @@ tool_source() {
 latest_npm() {
   local package=$1
   command -v npm >/dev/null 2>&1 || return 1
-  npm view "$package" version --json 2>/dev/null | sed -E 's/^"|"$//g' | head -n 1
+  command -v timeout >/dev/null 2>&1 || return 1
+  timeout --signal=TERM "${FM_EXTERNAL_TOOLING_TIMEOUT:-10}" \
+    npm view "$package" version --json 2>/dev/null | sed -E 's/^"|"$//g' | head -n 1
 }
 
 latest_brew() {
@@ -90,18 +97,37 @@ latest_github() {
   printf '%s' "$json" | jq -r '.tag_name // empty' | sed 's/^v//'
 }
 
+latest_ntn() {
+  command -v curl >/dev/null 2>&1 || return 1
+  curl -fsSL --max-time "${FM_EXTERNAL_TOOLING_TIMEOUT:-10}" \
+    https://ntn.dev/latest.txt 2>/dev/null | head -n 1 | sed 's/^v//'
+}
+
 latest_version() {
   local kind=$1 package=$2
   case "$kind" in
     npm) latest_npm "$package" ;;
     brew_formula|brew_cask) latest_brew "$kind" "$package" ;;
     github_release) latest_github "$package" ;;
+    ntn_latest_txt) latest_ntn ;;
     *) return 1 ;;
   esac
 }
 
 check_tool() {
   local name=$1 installed source kind package latest pin
+  if [ "$name" = notion-axi ]; then
+    source=$(tool_source "$name")
+    kind=${source%% *}
+    package=${source#* }
+    latest=$(latest_version "$kind" "$package" 2>/dev/null || true)
+    if [ -n "$latest" ]; then
+      printf '  %s: unknown (npx-local version not determinable; latest %s)\n' "$name" "$latest"
+    else
+      printf '  %s: unknown (npx-local version not determinable; release source unavailable)\n' "$name"
+    fi
+    return 0
+  fi
   installed=$(version_of "$name" 2>/dev/null) || {
     printf '  %s: not installed\n' "$name"
     return 0
@@ -176,7 +202,7 @@ check_pi_packages
 printf '\n'
 printf '=== tools ===\n'
 seen=''
-for name in herdr treehouse quota-axi $(verified_harness_names); do
+for name in herdr treehouse quota-axi gh-axi lavish-axi chrome-devtools-axi notion-axi ntn $(verified_harness_names); do
   case " $seen " in *" $name "*) continue ;; esac
   seen="$seen $name"
   check_tool "$name"
