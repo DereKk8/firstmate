@@ -132,6 +132,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/refactor-review/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/supervision/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -357,6 +361,10 @@
     },
     {
       "path": "docs/verification/public-followup.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/verification/refactor-review.md",
       "audience": "maintainer-verification"
     },
     {
