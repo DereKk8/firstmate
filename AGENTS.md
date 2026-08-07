@@ -456,13 +456,14 @@ Never trigger no-mistakes validation without asking the captain for pipeline-run
 
 Mental model: `upstream (canonical) -> [/syncfirstmate] -> origin/main -> [/updatefirstmate] -> running instances`.
 
-## 13. Agent-only reference skills
+## 13. Agent reference skills
 
-These skills are not captain-invocable; load them only at their precise triggers.
+Load these skills only at their precise triggers.
 Each skill may be loaded for reference at any time; the triggers below are when they are *required*.
 
 - `bootstrap-diagnostics` - load whenever the session-start digest's bootstrap section prints an actionable diagnostic line (`MISSING:`, `MISSING_MANUAL:`, `BACKEND_INVALID:`, `NEEDS_GH_AUTH`, `TANGLE:`, `CREW_DISPATCH: invalid`, `FLEET_SYNC:`, `PR_CHECK_MIGRATION:`, `SECONDMATE_SYNC:`, `SECONDMATE_LIVENESS:`, `NUDGE_SECONDMATES:`, or `FMX:`); silence and `BOOTSTRAP_INFO:` need no load.
 - `diagnostic-reasoning` - load before scoping a reported bug and before acting on a diagnostic report.
+- `refactor-review` - load when the captain invokes `/refactor-review`, requests an architecture-refactoring review of a drafted change, or a preordered task reports `refactor-review-ready`; it is one-shot and never automatic.
 - `ask-user-authority` - load before deciding any ask-user finding, regardless of the project's `yolo` posture, to distinguish corrections within accepted intent from product or engineering contract expansion that requires the captain.
 - `harness-adapters` - load before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter.
 - `crew-dispatch` - load before any crewmate or scout spawn when `config/crew-dispatch.json` exists, or when setting up dispatch profiles. Contains schema, precedence rules, best-fit rule selection, `quota-balanced` selection, secondmate-harness model pinning, and config inheritance details.

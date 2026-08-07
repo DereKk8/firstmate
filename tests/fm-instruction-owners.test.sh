@@ -9,6 +9,7 @@ set -u
 
 DIAG="$ROOT/.agents/skills/diagnostic-reasoning/SKILL.md"
 PROJECT="$ROOT/.agents/skills/project-management/SKILL.md"
+REFACTOR_REVIEW="$ROOT/.agents/skills/refactor-review/SKILL.md"
 HARNESS="$ROOT/.agents/skills/harness-adapters/SKILL.md"
 CODING="$ROOT/.agents/skills/firstmate-coding-guidelines/SKILL.md"
 RECOVERY="$ROOT/.agents/skills/stuck-crewmate-recovery/SKILL.md"
@@ -39,6 +40,32 @@ test_new_skill_metadata_and_triggers() {
   assert_grep '`project-management` - load before adding, creating, removing, or initializing a project.' "$ROOT/AGENTS.md" \
     "AGENTS.md lost the project-management trigger"
   pass "new internal skills have one precise AGENTS.md trigger each"
+}
+
+test_refactor_review_owner_is_internal_and_one_shot() {
+  local count
+  assert_present "$REFACTOR_REVIEW" "refactor-review skill is missing"
+  assert_grep 'name: refactor-review' "$REFACTOR_REVIEW" "refactor-review metadata has the wrong name"
+  assert_grep 'user-invocable: true' "$REFACTOR_REVIEW" "refactor-review must be user-invocable"
+  assert_grep '  internal: true' "$REFACTOR_REVIEW" "refactor-review must remain internal"
+  count=$(grep -Fc -- '- `refactor-review` -' "$AGENTS")
+  [ "$count" -eq 1 ] || fail "refactor-review must have exactly one AGENTS.md trigger entry, found $count"
+  assert_grep 'one-shot and never automatic' "$AGENTS" "refactor-review trigger must reject automatic invocation"
+  assert_grep '/refactor-review' "$ROOT/README.md" "README must expose refactor-review"
+  assert_grep '"path": ".agents/skills/refactor-review/SKILL.md"' "$ROOT/docs/documentation-audiences.json" \
+    "documentation inventory must classify refactor-review"
+  assert_absent "$ROOT/skills/refactor-review" \
+    "refactor-review must not be published as a public skill"
+  for phrase in \
+    'immutable source commit' \
+    'before merge' \
+    'at most three recommendations' \
+    'at most five dispatch cards' \
+    'decision-hold-lifecycle' \
+    'recommendation is not implementation authority'; do
+    assert_grep "$phrase" "$REFACTOR_REVIEW" "refactor-review owner is missing '$phrase'"
+  done
+  pass "refactor-review is one-shot, internal, discoverable, and owns its review contract"
 }
 
 test_diagnostic_owner_covers_causal_procedure() {
@@ -288,6 +315,7 @@ test_compressed_agents_retains_authority_and_supervision_safety() {
 }
 
 test_new_skill_metadata_and_triggers
+test_refactor_review_owner_is_internal_and_one_shot
 test_diagnostic_owner_covers_causal_procedure
 test_project_management_owner_covers_guarded_operations
 test_generic_effort_fallback_respects_precedence
