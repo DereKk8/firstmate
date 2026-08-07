@@ -456,9 +456,9 @@ Never trigger no-mistakes validation without asking the captain for pipeline-run
 
 Mental model: `upstream (canonical) -> [/syncfirstmate] -> origin/main -> [/updatefirstmate] -> running instances`.
 
-## 13. Agent-only reference skills
+## 13. Agent reference skills
 
-These skills are not captain-invocable; load them only at their precise triggers.
+Load these skills only at their precise triggers.
 Each skill may be loaded for reference at any time; the triggers below are when they are *required*.
 
 - `bootstrap-diagnostics` - load whenever the session-start digest's bootstrap section prints an actionable diagnostic line (`MISSING:`, `MISSING_MANUAL:`, `BACKEND_INVALID:`, `NEEDS_GH_AUTH`, `TANGLE:`, `CREW_DISPATCH: invalid`, `FLEET_SYNC:`, `PR_CHECK_MIGRATION:`, `SECONDMATE_SYNC:`, `SECONDMATE_LIVENESS:`, `NUDGE_SECONDMATES:`, or `FMX:`); silence and `BOOTSTRAP_INFO:` need no load.
