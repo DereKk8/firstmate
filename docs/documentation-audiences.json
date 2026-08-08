@@ -108,10 +108,6 @@
       "audience": "agent-runtime"
     },
     {
-      "path": ".agents/skills/claude-remote/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": ".agents/skills/crew-dispatch/SKILL.md",
       "audience": "agent-runtime"
     },
