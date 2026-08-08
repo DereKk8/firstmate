@@ -192,7 +192,7 @@ test_ahoy_owns_only_the_visible_session_recap() {
     "ahoy does not pin the altered-startup behavioral near miss"
   assert_grep 'System, developer, tool, watcher, guard, away-mode, and other injected operational messages are not captain messages.' "$AHOY" \
     "ahoy incorrectly treats synthetic operational messages as captain messages"
-  assert_grep 'The normal recap branch is session-history-only.' "$AHOY" \
+  assert_grep 'The normal recap branch is session-history-only, apart from the step 0 helm check.' "$AHOY" \
     "later ahoy invocation is not explicitly session-history-only"
   assert_grep 'Do not call Bearings, shell commands, fleet snapshots, status readers, GitHub or browser APIs, tools, or file reads or writes.' "$AHOY" \
     "normal recap does not prohibit fresh fleet, file, and tool reads"

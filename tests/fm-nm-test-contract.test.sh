@@ -101,7 +101,7 @@ test_ci_still_runs_broad_behavior_suite() {
     || fail "CI must invoke portable parallel shard 1 through fm-test-run.sh"
   grep -Fq 'bin/fm-test-run.sh --lane portable-parallel-2' "$CI" \
     || fail "CI must invoke portable parallel shard 2 through fm-test-run.sh"
-  grep -Fq 'bin/fm-test-run.sh --lane portable-serial' "$CI" \
+  grep -Fq 'FM_SERIAL_LANE: portable-serial-' "$CI" \
     || fail "CI must invoke the portable serial remainder through fm-test-run.sh"
   grep -Fq 'bin/fm-test-run.sh --check-coverage' "$CI" \
     || fail "CI must prove complete lane coverage through fm-test-run.sh"

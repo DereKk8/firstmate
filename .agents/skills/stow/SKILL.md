@@ -15,11 +15,12 @@ This skill writes only through the existing Firstmate ownership and write bounda
 
 ## Required startup-memory pass
 
-Every `/stow` invocation performs this complete pass, even when the session contains no new finding.
-The configured startup-memory budget is an advisory review trigger, not a deletion target or a reset-safety gate.
+Every `/stow` invocation performs this complete pass, even when the session contains no new finding:
 
 1. Run `bin/fm-startup-memory-budget.sh report` before considering a write.
    Record its effective budget, review status, and each file's estimated-token total.
+   The budget is per home: this home's three files against this home's own allowance, never a fleet total.
+   The configured startup-memory budget is an advisory review trigger, not a deletion target or a reset-safety gate.
    The helper's stable estimate is the documented conservative local approximation, not provider-exact accounting.
    If it rejects the setting or a memory file, do not infer a default or silently continue.
    Report that concrete exception.
@@ -30,11 +31,11 @@ The configured startup-memory budget is an advisory review trigger, not a deleti
 3. Before editing, archive each editable existing memory file verbatim under `data/startup-memory-archive/<YYYY-MM-DD-HHMM>/` using its current filename.
    The dated archive must exist before any consolidation so every prior fact remains recoverable.
 4. Build one whole-file retention plan before editing.
-   Retain current captain preferences, authority and safety boundaries, recurring working style, stable home-local operating facts that repeatedly affect future work and are expensive to rediscover, and concise pointers to existing authoritative material.
-   Preserve every live rule and accumulated learning by reframing it for context efficiency or routing it to its more specific owner.
+   Retain, in order: current captain preferences, authority and safety boundaries, and recurring working style; stable home-local operating facts that repeatedly affect future work and are expensive to rediscover; then concise pointers to an existing authoritative report, project document, configuration, or backlog item.
+   Retain lower-priority material only while budget remains.
 5. Consolidate every editable memory file as needed, not only the file apparently related to a new finding.
    Prefer one concise current rule or authoritative pointer over duplicate prose.
-   Replace completed incident and release chronology, stale versions and paths, transient task state, resolved alternatives, old metrics, superseded claims, duplicates, and report-sized procedures with their current fact or stronger owner.
+   Remove, merge, or route completed incident and release chronology, stale versions and paths, transient task state, resolved alternatives, old metrics, superseded claims, duplicates, and report-sized procedures.
    Do not remove a unique current fact unless it is preserved directly elsewhere through a stronger existing owner.
 6. Audit the archived content section by section after consolidation.
    Confirm every live rule and accumulated learning remains in a current memory file or its stronger owner.
@@ -82,6 +83,34 @@ Report the outcome in plain captain-facing language with all of these facts:
 - whether the session is safe to reset when all durable findings are captured and no curation exception remains.
 
 Do not hide a remaining review recommendation or curation exception behind a reset-safe claim.
+In a primary home the receipt is written after the cascade below, not instead of it.
+
+## Automatic cascade to secondmates
+
+In a primary home, every `/stow` cascades to every registered secondmate after this home's own required pass and knowledge sweep are complete.
+In a secondmate home, `/stow` curates that home only and never cascades further.
+The cascade changes nothing until `/stow` is invoked: it adds no notification, no digest section, and no background work.
+
+Run `bin/fm-stow-cascade.sh` once the primary's own pass is done.
+It enumerates each registered secondmate exactly once, reports that home's own budget accounting, and resolves how the sweep reaches it; its header owns the stanza fields, the bound, and the exit codes.
+Every home is judged against its own `config/startup-memory-budget` allowance, so never add homes together or treat one home's excess as another's.
+
+Act on each home by its reported `transport`:
+
+- `agent` - send the marked request with `bin/fm-send.sh fm-<id> "<request>"` so the live secondmate performs its own `/stow`, including the uncaptured knowledge that exists only in its session.
+  Ask it for the same completion receipt this skill defines, and read its reply from its status file or the document it points to, never from its chat.
+- `direct` - curate that local home's editable memory files yourself under the same retention plan, then re-run the cascade to confirm the after totals.
+  `data/captain-shared.md` stays a read-only counted input there, exactly as it is in any secondmate home.
+- `deferred` - a remote home with no live agent. Its memory is accounted read-only and cannot be curated from here, because there is no generic remote write path for a home's own memory files.
+  Report it as an unresolved exception and leave it to its next cascade.
+  Relaunching that secondmate is a separate decision owned by `secondmate-provisioning`, never something `/stow` does on its own.
+- `unavailable` - that home's own accounting did not complete. Report the concrete exception and continue; a slow or unreachable home never blocks this home's `/stow`.
+
+A newly discovered shared captain preference still routes to the primary's `data/captain-shared.md` under the existing primary-authoritative contract, whichever home found it.
+
+Extend the completion receipt with one entry per secondmate alongside the primary's own, carrying that home's budget before and after, its per-file actions, its exceptions, and whether that home swept itself or was curated from here.
+Keep those entries in the same plain captain-facing language the rest of the receipt uses.
+The session is reset-safe only when every home has completed its own pass with no unresolved exception.
 
 ## Scope exclusion: no skill storage
 
