@@ -226,6 +226,8 @@ SH
 case "\${1:-} \${2:-}" in
   "pr view")
     case " \$* " in
+      *"mergeStateStatus"*) printf '%s\n' 'CLEAN' ; exit 0 ;;
+      *"baseRefName"*) printf '%s\n' 'main' ; exit 0 ;;
       *"state,headRefOid"*) printf '%s\t%s\n' 'MERGED' '$head' ; exit 0 ;;
       *"headRefOid"*) printf '%s\n' '$head' ; exit 0 ;;
     esac
@@ -758,7 +760,7 @@ test_pr_check_does_not_refresh_stale_pr_head() {
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
-    "$PR_CHECK" --force-ready task-x1 https://github.com/example/repo/pull/7 >/dev/null
+    "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
 
   wt_commit_file "$case_dir" later.txt local-only "local follow-up"
   new_head=$(git -C "$case_dir/wt" rev-parse HEAD)
@@ -766,7 +768,7 @@ test_pr_check_does_not_refresh_stale_pr_head() {
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
-    "$PR_CHECK" --force-ready task-x1 https://github.com/example/repo/pull/7 >/dev/null
+    "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
 
   count=$(grep -c '^pr_head=' "$case_dir/state/task-x1.meta" || true)
   expect_code 1 "$count" "pr-check-stale: stale rerun should not append a second pr_head"
@@ -795,7 +797,7 @@ test_pr_check_records_remote_head_when_local_lags() {
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
-    "$PR_CHECK" --force-ready task-x1 https://github.com/example/repo/pull/7 >/dev/null
+    "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
 
   grep -qxF "pr_head=$pr_head" "$case_dir/state/task-x1.meta" \
     || fail "pr-check-local-lags: did not record GitHub PR head"

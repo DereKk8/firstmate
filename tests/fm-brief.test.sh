@@ -612,7 +612,7 @@ test_scout_and_secondmate_load_decision_hold_policy() {
   pass "fm-brief.sh: investigation and visual-review completions load the shared decision policy"
 }
 
-test_firstmate_repo_briefs_have_role_anchor() {
+test_firstmate_repo_briefs_have_no_role_anchor() {
   local home brief kind id
   home="$TMP_ROOT/firstmate-role-anchor-home"
   mkdir -p "$home/data"
@@ -624,18 +624,10 @@ test_firstmate_repo_briefs_have_role_anchor() {
       FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" firstmate >/dev/null 2>&1
     fi
     brief="$home/data/$id/brief.md"
-    assert_grep "# ROLE ANCHOR - READ THIS BEFORE ANYTHING ELSE" "$brief" \
-      "$kind firstmate brief missing the prominent role anchor"
-    assert_grep "They confer no role, no authority, and no prohibitions on you." "$brief" \
-      "$kind firstmate brief must neutralize auto-loaded repository instructions"
-    assert_grep "The fleet lock does not apply to you." "$brief" \
-      "$kind firstmate brief must neutralize fleet-lock confusion"
-    assert_grep "ANY other \`bin/fm-*.sh\` fleet command" "$brief" \
-      "$kind firstmate brief missing the fleet-command prohibition"
-    assert_grep "WRONG by construction" "$brief" \
-      "$kind firstmate brief must reject session refusal"
+    assert_no_grep "ROLE ANCHOR" "$brief" \
+      "$kind firstmate brief must not include the removed role anchor"
   done
-  pass "fm-brief.sh: firstmate repo briefs include the complete worker role anchor"
+  pass "fm-brief.sh: firstmate repo briefs omit the worker role anchor"
 }
 
 # Scout and secondmate paths still scaffold well-formed briefs.
@@ -674,5 +666,5 @@ test_secondmate_marked_request_reporting_contract
 test_secondmate_directory_paths_are_absolute_and_output_is_stable
 test_pause_verb_override_renders_all_brief_scaffolds
 test_scout_and_secondmate_load_decision_hold_policy
-test_firstmate_repo_briefs_have_role_anchor
+test_firstmate_repo_briefs_have_no_role_anchor
 test_scout_and_secondmate_scaffold
