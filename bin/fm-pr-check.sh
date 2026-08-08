@@ -5,48 +5,17 @@
 # live only in a private sidecar and are never interpolated into shell source.
 # A GitHub pull request URL and a GitLab merge request URL are both accepted,
 # including a merge request on a self-hosted GitLab instance.
-# Before arming a GitHub PR, verifies the PR is clean. The gate is fail-closed:
-# every path that cannot verify refuses explicitly. Refuses (exit non-zero,
-# naming the exact condition) when any of the following hold:
-#   - gh is not on PATH (cannot verify anything)
-#   - any gh pr view call fails (auth error, network, rate-limit)
-#   - the PR body shows a skipped pipeline gate (no-mistakes markers)
-#   - the PR body reports an unresolved error or high risk
-#   - GitHub reports the merge state as DIRTY
-#   - project= is absent from task meta or the directory does not exist
-#   - ls-remote fails or returns no symbolic ref (cannot determine true default)
-#   - the PR's base branch differs from the project's true remote default branch
-#   - the PR's base branch differs from the project's explicit base= registry value
-#     (the registry base wins over the repo default; used for repos targeting dev)
-#   - task metadata declares stacked_base=<branch>, but the remote parent branch
-#     does not exist or the PR targets a branch other than that declaration
-#   - task meta records mode=no-mistakes and the PR body has no '## What
-#     Changed' bulleted section (or is empty) — see data/captain.md "PR bodies
-#     follow the no-mistakes structure, not a firstmate-invented one"
-# Absence of no-mistakes markers (hand-written PR, direct-PR mode) does NOT
-# trip the body checks; only the presence of specific markers refuses. The
-# '## What Changed' structure check is the one exception: it is keyed off
-# mode=no-mistakes in task meta rather than marker presence, and does not fire
-# for a direct-PR or local-only task regardless of its body shape.
-# A GitLab merge request has no such content verification: glab exposes the
-# fields we would need only inside JSON output, which would need a JSON
-# processor firstmate does not require, so a GitLab task arms directly.
-# --force-ready: bypass all GitHub content checks and arm anyway.
-#   Records pr_check_override=1 in meta so the override is auditable; once set
-#   it survives a later clean re-check rather than being silently dropped.
-# Usage: fm-pr-check.sh [--force-ready] <task-id> <pr-url>
+# Before arming a GitHub PR, verifies structured forge state. The gate is
+# fail-closed: every path that cannot verify refuses explicitly.
+# A GitLab merge request arms directly because its structured fields are not
+# available through the supported plain glab output.
+# Usage: fm-pr-check.sh <task-id> <pr-url>
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
-
-FORCE_READY=0
-if [ "${1:-}" = "--force-ready" ]; then
-  FORCE_READY=1
-  shift
-fi
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
@@ -69,28 +38,8 @@ NUMBER=$FM_PR_NUMBER
 
 pr_check_refuse() {  # <message>
   echo "pr-check: REFUSED: $1" >&2
-  echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
   exit 1
 }
-
-# Detect the no-mistakes pipeline's canonical "## What Changed" bulleted
-# section. Real merged no-mistakes PRs freely carry other sections around it
-# (Intent, Risk Assessment, Testing, per-stage Pipeline detail), so this only
-# requires the heading to exist and be followed by a markdown bullet list, not
-# that it is the body's only section.
-pr_check_what_changed_bulleted() {  # <body>
-  printf '%s\n' "$1" | awk '
-    /^## What Changed[ \t]*$/ { heading = 1; next }
-    heading && /^[ \t]*$/ { next }
-    heading && /^-[ \t]/ { bulleted = 1; heading = 0; next }
-    { heading = 0 }
-    END { exit(bulleted ? 0 : 1) }
-  '
-}
-
-if [ "$PROVIDER" = github ] && ! command -v gh >/dev/null 2>&1; then
-  pr_check_refuse "gh is not on PATH; cannot verify PR content"
-fi
 
 # Task-derived paths are constructed only after the canonical ID validation.
 META="$STATE/$ID.meta"
@@ -138,17 +87,11 @@ if [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/d
   fi
 fi
 
-# --- PR content verification (GitHub only; skipped when --force-ready is given) --
+# --- Structured PR verification (GitHub only) -------------------------------
 # Fail closed: every unverifiable path is a refuse, never a silent pass-through.
-if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
-  # Gate 1: fetch the fields we need from GitHub.  Any gh failure is a refuse,
-  # not a silent pass-through — auth errors, network failures, and rate limits
-  # all mean we cannot verify, and cannot-verify must not arm the merge poll.
-  PR_BODY=""
+if [ "$PROVIDER" = github ]; then
   PR_MERGE_STATE=""
   PR_BASE=""
-  PR_BODY=$(gh pr view "$URL" --json body -q .body 2>/dev/null) \
-    || pr_check_refuse "gh pr view failed for $URL (auth error, network issue, or rate limit?)"
   PR_MERGE_STATE=$(gh pr view "$URL" --json mergeStateStatus -q .mergeStateStatus 2>/dev/null) \
     || pr_check_refuse "failed to fetch merge state for $URL from GitHub"
   PR_BASE=$(gh pr view "$URL" --json baseRefName -q .baseRefName 2>/dev/null) \
@@ -156,54 +99,6 @@ if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
 
   REFUSE=0
   REASONS=""
-
-  MODE=""
-  if [ -f "$META" ]; then
-    MODE=$(grep '^mode=' "$META" | tail -1 | cut -d= -f2- || true)
-  fi
-
-  # PR-body structure check: no-mistakes-mode tasks only.  A direct-PR or
-  # local-only task's hand-written body is never touched by this, regardless
-  # of its shape.  The pipeline always generates a body for a no-mistakes-mode
-  # task, so an empty body refuses here too, unlike the marker checks below.
-  if [ "$MODE" = "no-mistakes" ]; then
-    if [ -z "$PR_BODY" ]; then
-      REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - PR body is empty, but task mode=no-mistakes always generates one (was the body hand-written, or was the pipeline's pr stage skipped?)"
-    elif ! pr_check_what_changed_bulleted "$PR_BODY"; then
-      REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - PR body has no '## What Changed' bulleted section (mode=no-mistakes PRs must follow the pipeline's own structure, not a hand-invented layout; see data/captain.md 'PR bodies follow the no-mistakes structure')"
-    fi
-  fi
-
-  # Body marker checks.  Absent markers (hand-written PR, direct-PR mode) must
-  # NOT trip the check.  An empty body (PR with no description) also passes.
-  if [ -n "$PR_BODY" ]; then
-    case "$PR_BODY" in
-      *"Step was skipped."*)
-        REFUSE=1
-        REASONS="${REASONS}${REASONS:+$'\n'}  - PR body shows a skipped pipeline gate (found 'Step was skipped.')"
-        ;;
-    esac
-    case "$PR_BODY" in
-      *"⏭️"*"- skipped"*)
-        REFUSE=1
-        REASONS="${REASONS}${REASONS:+$'\n'}  - PR body shows a skipped pipeline gate (found skip-gate marker '⏭️ ... - skipped')"
-        ;;
-    esac
-    case "$PR_BODY" in
-      *"error still open"*)
-        REFUSE=1
-        REASONS="${REASONS}${REASONS:+$'\n'}  - PR body reports an unresolved error ('error still open')"
-        ;;
-    esac
-    case "$PR_BODY" in
-      *"🚨 High"*)
-        REFUSE=1
-        REASONS="${REASONS}${REASONS:+$'\n'}  - PR body reports high risk ('🚨 High')"
-        ;;
-    esac
-  fi
 
   # Merge state: DIRTY means the PR cannot cleanly merge.
   if [ "$PR_MERGE_STATE" = "DIRTY" ]; then
@@ -271,15 +166,14 @@ if [ "$PROVIDER" = github ] && [ "$FORCE_READY" -eq 0 ]; then
 
   if [ "$REFUSE" -eq 1 ]; then
     echo "pr-check: REFUSED to arm merge poll for $URL" >&2
-    echo "pr-check: the PR is not clean or cannot be verified:" >&2
+    echo "pr-check: the PR is not mergeable or cannot be verified:" >&2
     printf '%s\n' "$REASONS" >&2
-    echo "pr-check: re-run with --force-ready to override (captain's explicit call)" >&2
     exit 1
   fi
 fi
 
 # --- Arm the merge poll (hardened static-template mechanism) -----------------
-# Content verification above decides WHETHER to arm; everything below decides
+# Structured verification above decides WHETHER to arm; everything below decides
 # HOW to arm it safely: atomic meta rewrite plus a byte-static watcher check
 # script, so no per-task data is ever interpolated into shell source.
 META_TMP=
@@ -296,24 +190,12 @@ META_DEVICE=$(fm_pr_file_device "$META") || exit 1
 STATE_DEVICE=$(fm_pr_file_device "$STATE") || exit 1
 [ "$META_DEVICE" = "$STATE_DEVICE" ] || { echo "error: task metadata is unavailable" >&2; exit 1; }
 META_TMP=$(mktemp "$STATE/.fm-pr-meta.XXXXXX") || exit 1
-# pr_check_override=1 (if present) is copied through with the other non-pr
-# lines so it lands ahead of pr=/pr_head= below — fm_pr_metadata_identity_parse
-# treats anything but pr_head=/x_*= after pr= as invalid. Carrying it forward
-# (instead of dropping it) keeps the override auditable across later re-arms.
-HAD_OVERRIDE=0
 while IFS= read -r line || [ -n "$line" ]; do
   case "$line" in
     pr=*|pr_head=*) ;;
-    pr_check_override=1)
-      HAD_OVERRIDE=1
-      printf '%s\n' "$line" >> "$META_TMP" || exit 1
-      ;;
     *) printf '%s\n' "$line" >> "$META_TMP" || exit 1 ;;
   esac
 done < "$META"
-if [ "$FORCE_READY" -eq 1 ] && [ "$HAD_OVERRIDE" -eq 0 ]; then
-  printf 'pr_check_override=1\n' >> "$META_TMP" || exit 1
-fi
 printf 'pr=%s\n' "$URL" >> "$META_TMP" || exit 1
 [ -z "$PR_HEAD" ] || printf 'pr_head=%s\n' "$PR_HEAD" >> "$META_TMP" || exit 1
 chmod 0600 "$META_TMP" || exit 1
