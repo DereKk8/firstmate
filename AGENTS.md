@@ -59,8 +59,6 @@ Task ids are short kebab slugs with a random suffix, e.g. `fix-login-k3`; for th
 The task's backend endpoint, window target, and meta fields (`harness=`, `model=`, `effort=`, `kind=`, `mode=`, `yolo=`, `backend=`, `pr=`) live in `state/<id>.meta`.
 The shell working directory persists between commands, so after any `cd` away from the home, invoke `bin/` scripts by the absolute path to this repo's `bin/` directory.
 
-Load `layout-reference` when you need the full file-by-file inventory, backend-specific path details, or help locating a specific file.
-
 ## 3. Session start (run once at every session start)
 
 Run `bin/fm-session-start.sh` exactly once at session start.
@@ -106,14 +104,14 @@ If configured harness data names an unverified adapter, report it and fall back 
 It owns per-adapter supervision knowledge (busy signature, exit, interrupt, dialogs, quirks, resume) and the launch profile axes table.
 
 Model discovery is harness-specific: `pi` uses `pi --list-models [search]`, while each other harness uses its own authoritative model catalog.
-`docs/configuration.md` owns dispatch-profile and runtime-backend schemas, `bin/fm-dispatch-select.sh` owns selector mechanics, `bin/fm-harness.sh` owns static resolution, and `bin/fm-spawn.sh` owns launch flags and fail-closed validation.
+`docs/configuration.md` owns dispatch-profile and runtime-backend schemas, `bin/fm-harness.sh` owns static resolution, and `bin/fm-spawn.sh` owns launch flags and fail-closed validation.
 
 Routing precedence is an explicit per-task captain override, then the best-fit configured rule, then the configured default, then the static crewmate harness.
-Firstmate alone resolves a matched profile array: run `quota-axi --json` at that intake, evaluate every configured candidate against that current output, and choose the candidate with the most real headroom, using inspectable usable runway, pace, and reserve only later when needed.
+Firstmate alone resolves a matched profile array: run `quota-axi --json` at that intake, evaluate every configured candidate against that current output, and choose the candidate with the most real headroom.
 Account for every candidate; if any harness/model/provider relationship, applicable quota data, or interpretation cannot be established, stop and report that candidate instead of omitting it, guessing, falling back, or calling the result quota-informed.
 Preserve malformed profile configuration as an actionable error rather than selecting around it.
 When every candidate is tight, preserve the captain's strongest-reasoning class rather than silently downgrading it solely to conserve quota; stop and report the tight choice if that class cannot proceed.
-Break genuine headroom ties without array-order or harness bias.
+Break genuine headroom ties without array-order or harness bias; if inspectable evidence remains tied, escalate rather than selecting arbitrarily.
 `quota-axi` owns how model or product windows relate to bounding account windows and remains data-only; this is an explicitly interim rule until successor `quota-axi-interpretation-hints-h3` lands.
 Load `quota-array-dispatch` before choosing among a matched profile array; that skill is the single owner of the completion-aware selection procedure.
 
@@ -121,7 +119,6 @@ The static crewmate harness default lives in `config/crew-harness` (absent or `d
 Resolve `default` with `bin/fm-harness.sh`; resolve the active static crewmate harness with `bin/fm-harness.sh crew`.
 
 If `config/crew-dispatch.json` exists, read it before every crewmate or scout dispatch and pick the best-fit rule; `bin/fm-spawn.sh` enforces that an explicit harness is passed when this file exists.
-Load `crew-dispatch` for the dispatch profile schema, precedence rules, best-fit selection algorithm, `quota-balanced` selection via `bin/fm-dispatch-select.sh`, secondmate-harness model pinning, and config inheritance details.
 The primary-session turn-end guard contract lives in `docs/turnend-guard.md`.
 Secondmate launches are exempt from dispatch-profile rules (they resolve through `bin/fm-harness.sh secondmate`); `config/secondmate-harness` is the primary's own setting and is never inherited by secondmate homes.
 
@@ -144,8 +141,6 @@ Reconcile reality with your records before doing anything else, working from the
 6. If `state/.afk` exists: load `/afk`, ensure the daemon is running, do not separately arm the watcher.
 7. Surface only what needs the captain: pending decisions, PRs ready, failures, needed credentials. Say nothing if there is nothing actionable.
 8. Follow the digest's emitted supervision operating block (section 8); if the lock was refused or `state/.afk` exists, follow the digest's no-direct-supervision guidance.
-
-Load `task-lifecycle` for full recovery step details and backend-specific reconciliation mechanics.
 
 A firstmate restart must be a non-event.
 All truth lives in each task's backend live-task inventory (tmux by hard default; herdr or cmux when explicitly selected or auto-detected; zellij or orca only when explicitly selected), state files, data/backlog.md, data/captain.md, data/captain-shared.md, data/learnings.md, data/secondmates.md, persistent secondmate homes, treehouse, and Orca's recorded worktree/terminal ids; your conversation memory is a cache.
@@ -353,8 +348,6 @@ Inline facts that must survive without a loaded skill:
 
 Load `stuck-crewmate-recovery` after a stale wake, looping or confused pane, answered-by-brief question, unresponsive worker, or failed steer.
 
-Load `supervision` for wake triage absorption logic, heartbeat backoff, worktree-tangle guard details, and token discipline.
-
 ## 9. Escalation and captain etiquette
 
 **Talk in outcomes, not mechanics.**
@@ -466,7 +459,6 @@ Each skill may be loaded for reference at any time; the triggers below are when 
 - `refactor-review` - load when the captain invokes `/refactor-review`, requests an architecture-refactoring review of a drafted change, or a preordered task reports `refactor-review-ready`; it is one-shot and never automatic.
 - `ask-user-authority` - load before deciding any ask-user finding, regardless of the project's `yolo` posture, to distinguish corrections within accepted intent from product or engineering contract expansion that requires the captain.
 - `harness-adapters` - load before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter.
-- `crew-dispatch` - load before any crewmate or scout spawn when `config/crew-dispatch.json` exists, or when setting up dispatch profiles. Contains schema, precedence rules, best-fit rule selection, `quota-balanced` selection, secondmate-harness model pinning, and config inheritance details.
 - `stuck-crewmate-recovery` - load when the session-start digest reports an ordinary direct report's endpoint dead or its metadata has no window, or after a stale wake, looping pane, repeated confusion, an answered-by-brief question, an unresponsive crewmate, or a failed steer.
 - `secondmate-provisioning` - load before creating, seeding, validating, launching, handing backlog to, recovering, pushing inherited local material into, or retiring a secondmate home, and before editing `data/secondmates.md`.
 - `decision-hold-lifecycle` - load before treating an investigation or visual review as complete, before ending a visual review that exposed a decision, and when recording or routing the captain's answer. This owns the reconciled durable captain-decision completion gate, using firstmate's trust-firstmate model for unresolved decisions.
@@ -474,12 +466,8 @@ Each skill may be loaded for reference at any time; the triggers below are when 
 - `firstmate-orca` - load before switching to Orca, spawning or supervising Orca-backed work, smoke-testing Orca backend behavior, debugging Orca task state, or reconciling Orca-backed task metadata.
 - `firstmate-codexapp` - load before coordinating a visible Codex Desktop thread, evaluating a Codex App backend request, or reconciling Codex Desktop host-tool smoke evidence for firstmate work.
 - `firstmate-coding-guidelines` - load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
-- `layout-reference` - load when you need the full file-by-file state/data/config inventory, backend-specific path naming, or help locating a specific artifact.
 - `project-management` - load before adding, creating, removing, or initializing a project.
 - `pr-merge-board` - load when the captain asks to regenerate the Notion PR merge board, or when a session that touches tracked PRs starts or ends per the captain's standing instruction to keep the board current.
-- `task-lifecycle` - load for full spawn flag reference; validate procedure and run-step states; PR-ready and teardown safety checks; scout promotion; crewmate brief contract; and full recovery step details.
-- `supervision` - load for wake triage absorption logic, watcher mechanics, heartbeat backoff, worktree-tangle guard details, away-mode daemon specifics, and token discipline.
-- `x-mode` - load when `.env` has `FMX_PAIRING_TOKEN`, when bootstrap prints `FMX:`, or when a watcher cadence transition (opt-in or opt-out) is needed. Contains X mode setup, activation, cadence arm/restart, completion follow-up contract, conversation handling, and dry-run details.
 
 ## 14. X mode
 
