@@ -6,12 +6,12 @@
 #
 # Scope and false-negative limits (read before trusting a clean result):
 #   - Only .sh, .mjs, and .md files are inspected.
-#   - Only top-level shell functions matching `name() {` (this codebase's
-#     sole style; the `function name {` form is not used anywhere in bin/)
+#   - Only top-level shell functions matching `name() {`, JavaScript function
+#     declarations matching `function name(...) {` or `export function name(...) {`,
 #     and markdown `##`/`###` headings are tracked as "named content".
-#   - Only paths that differ between the two parents are considered, since a
-#     file untouched by either side of the merge cannot have lost content to
-#     this merge.
+#   - Candidate paths differ between either parent and the merge result, or
+#     between the two parents, so merge-only edits and whole-file deletions are
+#     included.
 #   - This is a mechanical content-loss detector, not a correctness checker.
 #     It does NOT catch: reordered or duplicated calls to a still-present
 #     function (e.g. a sweep invoked twice because a merge kept both
@@ -76,21 +76,62 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-cd "$FM_ROOT"
+if cd "$FM_ROOT"; then
+  :
+else
+  printf 'error: unable to enter repository root %s\n' "$FM_ROOT" >&2
+  exit 2
+fi
 
-MERGE_SHA="$(git rev-parse --verify "$MERGE_REF" 2>/dev/null)" || {
+if MERGE_SHA="$(git rev-parse --verify "${MERGE_REF}^{commit}" 2>/dev/null)"; then
+  :
+else
   printf 'error: %s does not resolve to a commit\n' "$MERGE_REF" >&2
   exit 2
-}
+fi
 
-PARENT_COUNT="$(git rev-list --parents -n 1 "$MERGE_SHA" | awk '{print NF-1}')"
+if PARENT_LINE="$(git rev-list --parents -n 1 "$MERGE_SHA" 2>/dev/null)"; then
+  :
+else
+  printf 'error: unable to inspect parents for %s\n' "$MERGE_SHA" >&2
+  exit 2
+fi
+PARENT_COUNT="$(awk '{print NF-1}' <<<"$PARENT_LINE")"
+case "$PARENT_COUNT" in
+  ''|*[!0-9]*)
+    printf 'error: unable to determine parent count for %s\n' "$MERGE_SHA" >&2
+    exit 2
+    ;;
+esac
 if [ "$PARENT_COUNT" -ne 2 ]; then
   printf 'error: %s is not a two-parent merge commit (has %s parent(s))\n' "$MERGE_SHA" "$PARENT_COUNT" >&2
   exit 2
 fi
 
-P1="$(git rev-parse "${MERGE_SHA}^1")"
-P2="$(git rev-parse "${MERGE_SHA}^2")"
+if P1="$(git rev-parse --verify "${MERGE_SHA}^1^{commit}" 2>/dev/null)"; then
+  :
+else
+  printf 'error: unable to resolve first parent of %s\n' "$MERGE_SHA" >&2
+  exit 2
+fi
+if P2="$(git rev-parse --verify "${MERGE_SHA}^2^{commit}" 2>/dev/null)"; then
+  :
+else
+  printf 'error: unable to resolve second parent of %s\n' "$MERGE_SHA" >&2
+  exit 2
+fi
+if P1_SHORT="$(git rev-parse --short "$P1" 2>/dev/null)"; then
+  :
+else
+  printf 'error: unable to abbreviate first parent of %s\n' "$MERGE_SHA" >&2
+  exit 2
+fi
+if P2_SHORT="$(git rev-parse --short "$P2" 2>/dev/null)"; then
+  :
+else
+  printf 'error: unable to abbreviate second parent of %s\n' "$MERGE_SHA" >&2
+  exit 2
+fi
 
 is_allowed() {
   local path=$1 allowed
@@ -104,12 +145,26 @@ is_allowed() {
 # the given file at the given ref, or nothing if the path does not exist
 # there. Shell/mjs -> top-level function names; markdown -> heading lines.
 extract_names() {
-  local ref=$1 path=$2 content
-  content="$(git show "${ref}:${path}" 2>/dev/null)" || return 0
+  local ref=$1 path=$2 content path_entry
+  if path_entry="$(git ls-tree -r --name-only "$ref" -- "$path" 2>/dev/null)"; then
+    [ -n "$path_entry" ] || return 0
+  else
+    return 2
+  fi
+  if content="$(git show "${ref}:${path}" 2>/dev/null)"; then
+    :
+  else
+    return 2
+  fi
   case "$path" in
-    *.sh|*.mjs)
+    *.sh)
       printf '%s\n' "$content" | grep -oE '^[a-zA-Z_][a-zA-Z0-9_]*\(\)[[:space:]]*\{' \
         | sed -E 's/\(\).*//'
+      ;;
+    *.mjs)
+      printf '%s\n' "$content" \
+        | grep -oE '^(export[[:space:]]+)?function[[:space:]]+[a-zA-Z_$][a-zA-Z0-9_$]*[[:space:]]*\(' \
+        | sed -E 's/^(export[[:space:]]+)?function[[:space:]]+//; s/[[:space:]]*\($//'
       ;;
     *.md)
       printf '%s\n' "$content" | grep -E '^#{2,3}[[:space:]]+.+$' \
@@ -118,7 +173,26 @@ extract_names() {
   esac
 }
 
-CHANGED_PATHS="$(git diff --name-only "$P1" "$P2")"
+if PARENT_PATHS="$(git diff --name-only "$P1" "$P2" 2>/dev/null)"; then
+  :
+else
+  printf 'error: unable to compare merge parents\n' >&2
+  exit 2
+fi
+if P1_RESULT_PATHS="$(git diff --name-only "$P1" "$MERGE_SHA" 2>/dev/null)"; then
+  :
+else
+  printf 'error: unable to compare first parent with merge result\n' >&2
+  exit 2
+fi
+if P2_RESULT_PATHS="$(git diff --name-only "$P2" "$MERGE_SHA" 2>/dev/null)"; then
+  :
+else
+  printf 'error: unable to compare second parent with merge result\n' >&2
+  exit 2
+fi
+CHANGED_PATHS="$(printf '%s\n%s\n%s\n' "$PARENT_PATHS" "$P1_RESULT_PATHS" "$P2_RESULT_PATHS" \
+  | sed '/^$/d' | sort -u)"
 
 FOUND=0
 
@@ -128,13 +202,26 @@ while IFS= read -r path; do
     *.sh|*.mjs|*.md) ;;
     *) continue ;;
   esac
-  # only in-scope if the merge result actually kept this path
-  git cat-file -e "${MERGE_SHA}:${path}" 2>/dev/null || continue
   is_allowed "$path" && continue
 
-  p1_names="$(extract_names "$P1" "$path")"
-  p2_names="$(extract_names "$P2" "$path")"
-  result_names="$(extract_names "$MERGE_SHA" "$path")"
+  if p1_names="$(extract_names "$P1" "$path")"; then
+    :
+  else
+    printf 'error: unable to read %s from first parent\n' "$path" >&2
+    exit 2
+  fi
+  if p2_names="$(extract_names "$P2" "$path")"; then
+    :
+  else
+    printf 'error: unable to read %s from second parent\n' "$path" >&2
+    exit 2
+  fi
+  if result_names="$(extract_names "$MERGE_SHA" "$path")"; then
+    :
+  else
+    printf 'error: unable to read %s from merge result\n' "$path" >&2
+    exit 2
+  fi
 
   union_names="$(printf '%s\n%s\n' "$p1_names" "$p2_names" | sed '/^$/d' | sort -u)"
   [ -n "$union_names" ] || continue
@@ -150,11 +237,11 @@ while IFS= read -r path; do
 
     parents_desc=""
     if [ "$in_p1" = true ] && [ "$in_p2" = true ]; then
-      parents_desc="$(git rev-parse --short "$P1") and $(git rev-parse --short "$P2")"
+      parents_desc="$P1_SHORT and $P2_SHORT"
     elif [ "$in_p1" = true ]; then
-      parents_desc="$(git rev-parse --short "$P1")"
+      parents_desc="$P1_SHORT"
     else
-      parents_desc="$(git rev-parse --short "$P2")"
+      parents_desc="$P2_SHORT"
     fi
 
     case "$path" in

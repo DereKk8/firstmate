@@ -175,9 +175,100 @@ EOF
   pass "--allow <path> suppresses findings for that exact path"
 }
 
+# fixture_conflicting_merge <path> <content>: create a merge whose parents
+# both retain the named file unchanged while an unrelated conflict requires a
+# manual resolution. The caller decides whether the merge edits or deletes it.
+fixture_conflicting_merge() {
+  local path=$1 content=$2 dir base
+  dir=$(fm_test_tmproot fm-merge-content-check-merge-only)
+  fm_git_identity
+  git -C "$dir" init -q >/dev/null 2>&1 || { git init -q "$dir"; }
+  printf '%s\n' "$content" > "$dir/$path"
+  printf 'base\n' > "$dir/conflict.txt"
+  git -C "$dir" add .
+  git -C "$dir" commit -q -m base
+  base=$(git -C "$dir" rev-parse HEAD)
+
+  git -C "$dir" checkout -q -b left
+  printf 'left\n' > "$dir/conflict.txt"
+  git -C "$dir" commit -qam left
+
+  git -C "$dir" checkout -q -b right "$base"
+  printf 'right\n' > "$dir/conflict.txt"
+  git -C "$dir" commit -qam right
+
+  git -C "$dir" checkout -q left
+  git -C "$dir" merge -q right >/dev/null 2>&1 || true
+  printf '%s\n' "$dir"
+}
+
+test_merge_result_only_drop_on_parent_identical_file() {
+  local dir out rc
+  dir=$(fixture_conflicting_merge lib.sh 'dropped() { :; }')
+  printf 'resolved\n' > "$dir/conflict.txt"
+  printf 'kept() { :; }\n' > "$dir/lib.sh"
+  git -C "$dir" add conflict.txt lib.sh
+  git -C "$dir" -c core.editor=true commit -q --no-edit || fail "merge-only drop fixture commit failed"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD 2>&1)
+  rc=$?
+  [ "$rc" -eq 1 ] || fail "merge-result-only drop must exit 1, got $rc: $out"
+  assert_contains "$out" "lib.sh" "merge-result-only drop must name lib.sh"
+  assert_contains "$out" "dropped" "merge-result-only drop must name dropped"
+  pass "detects content dropped from a parent-identical file by the merge result"
+}
+
+test_whole_file_deleted_by_merge() {
+  local dir out rc
+  dir=$(fixture_conflicting_merge lib.sh 'dropped() { :; }')
+  printf 'resolved\n' > "$dir/conflict.txt"
+  rm "$dir/lib.sh"
+  git -C "$dir" add -u
+  git -C "$dir" -c core.editor=true commit -q --no-edit || fail "whole-file deletion fixture commit failed"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD 2>&1)
+  rc=$?
+  [ "$rc" -eq 1 ] || fail "whole-file deletion must exit 1, got $rc: $out"
+  assert_contains "$out" "lib.sh" "whole-file deletion must name lib.sh"
+  assert_contains "$out" "dropped" "whole-file deletion must name every dropped function"
+  pass "detects every named item in a file deleted by the merge"
+}
+
+test_mjs_function_declarations_detected() {
+  local dir out rc
+  dir=$(fixture_conflicting_merge lib.mjs $'function dropped() {}\nexport function exported() {}')
+  printf 'resolved\n' > "$dir/conflict.txt"
+  printf 'function kept() {}\n' > "$dir/lib.mjs"
+  git -C "$dir" add conflict.txt lib.mjs
+  git -C "$dir" -c core.editor=true commit -q --no-edit || fail ".mjs fixture commit failed"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD 2>&1)
+  rc=$?
+  [ "$rc" -eq 1 ] || fail "dropped .mjs function must exit 1, got $rc: $out"
+  assert_contains "$out" "dropped" "dropped .mjs function must be reported"
+  assert_contains "$out" "exported" "exported .mjs function must be reported"
+  pass "detects plain and exported .mjs function declarations"
+}
+
+test_non_commit_object_is_usage_error() {
+  local dir blob out rc
+  dir=$(fixture_repo)
+  blob=$(git -C "$dir" hash-object "$dir/lib.sh")
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" "$blob" 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "non-commit object must exit 2, got $rc: $out"
+  assert_contains "$out" "does not resolve to a commit" "non-commit object must have a clear error"
+  pass "non-commit object ref exits 2 with a controlled error"
+}
+
 test_help_exits_0
 test_no_args_is_usage_error
 test_real_historical_defect_detected
 test_non_merge_commit_is_usage_error
 test_synthetic_clean_merge_exits_0
 test_synthetic_dropped_function_and_allow
+test_merge_result_only_drop_on_parent_identical_file
+test_whole_file_deleted_by_merge
+test_mjs_function_declarations_detected
+test_non_commit_object_is_usage_error
