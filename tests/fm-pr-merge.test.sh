@@ -14,6 +14,8 @@
 #   (f) malformed PR URL fails fast without calling gh-axi
 #   (g) explicit merge method is not overridden by the default --squash
 #   (h) repo override args fail fast because the repo comes from the URL
+#   (i) a recorded PR-check override survives the merge path's re-check
+#   (j) an unrecorded PR-check override still refuses a bad PR body
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -67,6 +69,25 @@ case "\${1:-} \${2:-}" in
     ;;
 esac
 exit 0
+SH
+  chmod +x "$case_dir/fakebin/gh-axi" "$case_dir/fakebin/gh"
+}
+
+# gh-axi and gh mocks for a PR body that should fail the normal content checks.
+add_gh_mocks_bad_body() {
+  local case_dir=$1
+  cat > "$case_dir/fakebin/gh-axi" <<'SH'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FM_TEST_GH_AXI_LOG"
+exit 0
+SH
+  cat > "$case_dir/fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  *'--json body'*) printf '%s\n' 'Step was skipped.' ;;
+  *'--json mergeStateStatus'*) printf '%s\n' 'CLEAN' ;;
+  *'--json baseRefName'*) printf '%s\n' 'main' ;;
+esac
 SH
   chmod +x "$case_dir/fakebin/gh-axi" "$case_dir/fakebin/gh"
 }
@@ -161,6 +182,47 @@ test_extra_merge_args_forwarded() {
   grep -qxF 'pr merge 15 --repo example/repo --squash --delete-branch' "$case_dir/gh-axi.log" \
     || fail "extra-args: extra gh-axi pr merge flags were not forwarded"
   pass "fm-pr-merge forwards extra flags to gh-axi pr merge after the -- separator"
+}
+
+test_recorded_override_forces_merge_recheck() {
+  local case_dir rc
+  case_dir=$(make_case recorded-override)
+  sed -i 's/mode=direct-PR/mode=no-mistakes/' "$case_dir/state/task-x1.meta"
+  printf '%s\n' 'pr_check_override=1' >> "$case_dir/state/task-x1.meta"
+  add_gh_mocks_bad_body "$case_dir"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/31 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "recorded-override: merge should honor the durable override"
+  grep -qxF 'pr merge 31 --repo example/repo --squash' "$case_dir/gh-axi.log" \
+    || fail "recorded-override: merge was not reached after the bad PR body"
+  pass "fm-pr-merge preserves a recorded PR-check override across its re-check"
+}
+
+test_unrecorded_override_still_refuses_bad_body() {
+  local case_dir rc
+  case_dir=$(make_case unrecorded-override)
+  sed -i 's/mode=direct-PR/mode=no-mistakes/' "$case_dir/state/task-x1.meta"
+  add_gh_mocks_bad_body "$case_dir"
+  : > "$case_dir/gh-axi.log"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/31 \
+    > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "unrecorded-override: merge should refuse the bad PR body"
+  assert_grep 'PR body shows a skipped pipeline gate' "$case_dir/stderr" \
+    "unrecorded-override: refusal did not identify the bad PR body"
+  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
+    "unrecorded-override: merge was reached without a recorded override"
+  pass "fm-pr-merge still checks bad PR bodies without a recorded override"
 }
 
 test_missing_meta_refuses_before_merge() {
@@ -309,6 +371,8 @@ test_parses_pr_url_for_gh_axi() {
 }
 
 test_records_pr_and_head_before_merging
+test_recorded_override_forces_merge_recheck
+test_unrecorded_override_still_refuses_bad_body
 test_merge_failure_propagates_after_recording
 test_extra_merge_args_forwarded
 test_missing_meta_refuses_before_merge
