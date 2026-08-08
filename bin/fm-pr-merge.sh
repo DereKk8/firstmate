@@ -70,11 +70,7 @@ if [ ! -f "$META" ] || [ -L "$META" ]; then
   exit 1
 fi
 
-if grep -qxF 'pr_check_override=1' "$META"; then
-  "$SCRIPT_DIR/fm-pr-check.sh" --force-ready "$ID" "$URL"
-else
-  "$SCRIPT_DIR/fm-pr-check.sh" "$ID" "$URL"
-fi
+"$SCRIPT_DIR/fm-pr-check.sh" "$ID" "$URL"
 grep -qxF "pr=$URL" "$META" || {
   echo "error: PR metadata recording failed" >&2
   exit 1

@@ -42,12 +42,13 @@ Running `/updatefirstmate` after a `/syncfirstmate` sync propagates the merged a
 No crewmate, no writes to tracked files.
 This is also what the weekly heartbeat runs non-interactively.
 
-Run `bin/fm-upstream-check.sh` and `bin/fm-startup-memory-budget.sh report`.
+Run `bin/fm-upstream-check.sh`, `bin/fm-external-tooling-check.sh`, and `bin/fm-startup-memory-budget.sh report`.
+The external-tooling report identifies npm drift for `gh-axi`, `lavish-axi`, and `chrome-devtools-axi` as `safe-anytime`, while `no-mistakes` drift is `needs-quiet-fleet` because its update resets the shared daemon.
 The startup-memory report is read-only and its advisory review status makes the weekly check a recurring curation prompt.
 When it recommends review, recommend `/stow` before the next reset.
-Do not perform curation during check mode because `/stow` owns that write path.
+Do not perform tooling updates or memory curation during check mode because those are deliberate separate actions owned by firstmate and `/stow`, respectively.
 
-Report to the captain in plain outcomes language: what new capabilities landed upstream, how far behind this fork is, and any startup-memory curation recommendation.
+Report to the captain in plain outcomes language: what new capabilities landed upstream, how far behind this fork is, any external-tooling drift with its coordination tag, and any startup-memory curation recommendation.
 Stop here.
 The captain decides whether to proceed to full sync.
 
@@ -119,11 +120,11 @@ After the crewmate reports `done:`, follow the normal delivery-mode gate → PR 
 
 ## Weekly heartbeat
 
-Check mode runs two read-only scripts:
-`bin/fm-upstream-check.sh` (git gap) and `bin/fm-startup-memory-budget.sh report` (startup-memory curation recommendation).
-Both are designed to run non-interactively as a weekly heartbeat job.
-Neither writes to tracked files or pushes.
-Both output to stdout so the scheduler can surface them.
+Check mode runs three read-only commands:
+`bin/fm-upstream-check.sh` (git gap), `bin/fm-external-tooling-check.sh` (external-tooling drift and `safe-anytime` versus `needs-quiet-fleet` coordination), and `bin/fm-startup-memory-budget.sh report` (startup-memory curation recommendation).
+All three are designed to run non-interactively as a weekly heartbeat job.
+None writes to tracked files, updates tooling, restarts daemons, or pushes.
+All three output to stdout so the scheduler can surface them.
 The weekly schedule is wired by firstmate separately; this skill does not set it up.
 
 ## Safety
@@ -131,4 +132,4 @@ The weekly schedule is wired by firstmate separately; this skill does not set it
 - **Never merge without the captain's explicit word** (prime directive #2; `yolo` does not waive it for this skill because a real merge into `origin/main` is irreversible).
 - **Never skip the pipeline-run approval ask** - the captain owns that decision.
 - The crewmate must not force, stash, or discard any unlanded work.
-- The helper `bin/fm-upstream-check.sh` is read-only; it never writes to tracked files or pushes.
+- The helpers `bin/fm-upstream-check.sh` and `bin/fm-external-tooling-check.sh` are read-only; they never write to tracked files, update tooling, restart daemons, or push.
