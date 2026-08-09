@@ -35,6 +35,9 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 PROJECTS="${FM_PROJECTS_OVERRIDE:-$FM_HOME/projects}"
 # shellcheck source=bin/fm-lock-lib.sh
 . "$SCRIPT_DIR/fm-lock-lib.sh"
+# Inert unless FM_TIMING_LOG names a file; only the deferred network stage sets it.
+# shellcheck source=bin/fm-timing-lib.sh
+. "$SCRIPT_DIR/fm-timing-lib.sh"
 FM_LOCK_LOG_PREFIX=fleet-sync
 "$FM_ROOT/bin/fm-guard.sh" || true
 
@@ -114,10 +117,6 @@ default_branch() {
     echo "${ref#origin/}"
     return 0
   fi
-  # refs/remotes/origin/HEAD is absent or unset; this usually means it was never
-  # refreshed after the remote's default branch changed.
-  # Run 'git remote set-head origin --auto' on $PROJ to fix it permanently.
-  echo "$label: warning: refs/remotes/origin/HEAD absent or unset; falling back to main/master scan (fix: git -C $PROJ remote set-head origin --auto)" >&2
   for branch in main master; do
     if git -C "$PROJ" show-ref --verify --quiet "refs/heads/$branch"; then
       echo "$branch"
@@ -325,13 +324,6 @@ sync_project() {
     return 0
   fi
 
-  # Refresh origin/HEAD so default_branch() and treehouse both use the correct
-  # base branch.  A stale ref (e.g. the remote changed its default from main to dev
-  # but the local clone still has origin/HEAD -> main) silently produces wrong-base
-  # worktrees and fast-forwards the wrong branch.  Best-effort: ignore failure when
-  # offline or when the remote does not advertise a HEAD symref.
-  git -C "$PROJ" remote set-head origin --auto >/dev/null 2>&1 || true
-
   prune_gone_branches || true
 
   DEFAULT=$(default_branch) || {
@@ -370,13 +362,6 @@ sync_project() {
       cur=$DEFAULT
     else
       report_stuck "$(stuck_state)"
-      # When on a named non-default branch, give the one command to restore the
-      # clone to a state fleet-sync can fast-forward.  This is the expected
-      # situation after set-head --auto corrects origin/HEAD for a project whose
-      # remote changed its default branch (e.g. main -> dev).
-      if [ -n "$cur" ]; then
-        echo "$label: to fix: git -C $PROJ checkout $DEFAULT"
-      fi
       return 0
     fi
   elif [ "$dirty" = yes ]; then
@@ -444,5 +429,10 @@ fi
 for proj in "$PROJECTS"/*; do
   [ -e "$proj" ] || continue
   [ -d "$proj" ] || continue
+  # Per-clone elapsed, so a fleet refresh that runs long names WHICH clone cost
+  # the time instead of only its total. Recording is a no-op unless the deferred
+  # network stage asked for it.
+  __fm_timing_stamp=$(fm_timing_now_ms)
   sync_project "$proj"
+  fm_timing_record clone sync "$__fm_timing_stamp" "$(basename "$proj")"
 done

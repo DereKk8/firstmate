@@ -136,9 +136,8 @@ test_agent_owned_quota_array_dispatch_contract() {
     'Firstmate alone resolves a matched profile array' \
     'run `quota-axi --json` at that intake' \
     'evaluate every configured candidate against that current output' \
-    'choose the candidate with the most real headroom' \
-    'if any harness/model/provider relationship, applicable quota data, or interpretation cannot be established, stop and report that candidate' \
-    'instead of omitting it, guessing, falling back, or calling the result quota-informed' \
+    'choose with inspectable effective headroom and usable runway' \
+    'never omit a candidate, guess, fall back silently, or call the result quota-informed' \
     'Preserve malformed profile configuration as an actionable error' \
     "preserve the captain's strongest-reasoning class rather than silently downgrading it" \
     'Break genuine headroom ties without array-order or harness bias' \
@@ -159,7 +158,7 @@ test_agent_owned_quota_array_dispatch_contract() {
   done
   assert_grep 'not as a permanent namespace or provider mapping' "$HARNESS" \
     "model discovery guidance permits a fixed provider table"
-  assert_grep '`AGENTS.md` section 4 owns the dispatch and array-selection procedure.' "$CONFIG" \
+  assert_grep '`quota-array-dispatch` owns the completion-aware profile-array selection procedure' "$CONFIG" \
     "configuration docs do not point to the agent-owned array procedure"
   assert_grep 'quota-axi is required for the' "$BOOTSTRAP" \
     "bootstrap docs lost the quota-axi dependency pointer"

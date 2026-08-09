@@ -94,7 +94,7 @@ EOF
     FM_BACKEND=herdr FM_FAKE_LOG="$log" FM_FAKE_STATE="$dir/state" FM_FAKE_PANE_PATH="$wt" \
     FM_BACKEND_HERDR_SERVER_ATTEMPTS=1 FM_BACKEND_HERDR_SERVER_SLEEP=0 \
     FM_SPAWN_READY_ATTEMPTS=2 FM_SPAWN_READY_SLEEP=0 PATH="$fakebin:$PATH" \
-    "$SPAWN" "$id" "$proj" 2>&1
+    "$SPAWN" "$id" "$proj" --mode no-mistakes --yolo off 2>&1
 }
 
 test_unreachable_herdr_endpoint_never_reports_spawned() {

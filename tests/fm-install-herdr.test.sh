@@ -86,7 +86,7 @@ test_ci_wires_installers_and_required_lane() {
     "portable CI must run parallel shard 1"
   assert_grep 'lane portable-parallel-2' "$CI" \
     "portable CI must run parallel shard 2"
-  assert_grep 'lane portable-serial' "$CI" \
+  assert_grep 'FM_SERIAL_LANE: portable-serial-' "$CI" \
     "portable CI must run the serial remainder"
   assert_grep 'fm-test-run.sh --check-coverage' "$CI" \
     "CI must prove portable lanes and Herdr partition the complete inventory"
