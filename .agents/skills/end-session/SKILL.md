@@ -57,12 +57,14 @@ bin/fm-end-session.sh note
 ```
 
 Writes `data/end-session/handoff.md` - what is under way, each task's
-current state line, the queued-notification count, and a pointer to
-`data/backlog.md` / the next session-start digest for the backlog and any
-open captain decisions (never copied here, so it cannot drift out of
-sync). This does not touch the backlog, tasks-axi state, or any decision
-hold record, so every unresolved decision stays exactly as unresolved as
-it was.
+current state line, its recorded PR URL when it has one, a best-effort
+worktree clean/dirty read (visibility only, never a blocker - preserving
+the worktree itself is what actually protects uncommitted work), the
+queued-notification count, and a pointer to `data/backlog.md` / the next
+session-start digest for the backlog and any open captain decisions
+(never copied here, so it cannot drift out of sync). This does not touch
+the backlog, tasks-axi state, or any decision hold record, so every
+unresolved decision stays exactly as unresolved as it was.
 
 ### 3. Back up private fleet data (best-effort)
 
@@ -100,7 +102,10 @@ still supervising.
 
 Every `LIVE_HELPER` line must be confirmed stopped before moving on;
 running `bin/fm-end-session.sh preflight` again after step 4 completes is
-a cheap way to confirm the list is now empty.
+a cheap way to confirm the list is now empty - and `quiesce` itself
+re-checks this and refuses if anything is still alive, so a skipped or
+incomplete step 4 cannot silently fall through to monitoring being torn
+down.
 
 ### 5. Quiesce monitoring
 
@@ -108,11 +113,19 @@ a cheap way to confirm the list is now empty.
 bin/fm-end-session.sh quiesce
 ```
 
-Only once every helper is confirmed stopped. Stops this session's own
-away-mode daemon (if `state/.afk` was set) through its correct-ordered
-stop path, or the live watcher cycle if one is holding the watch lock.
-Never re-arms anything afterward. A refusal here (the watcher would not
-exit) again leaves the lock intact and the session able to keep
+Re-verifies on its own that every non-secondmate task endpoint is
+confirmed stopped (the same read step 1 used) and refuses if any is
+still alive, so this step never runs ahead of step 4 even if it were
+called out of order. Once clear, it stops this session's own away-mode
+daemon (if `state/.afk` was set) through its correct-ordered stop path,
+or the live watcher cycle if one is holding the watch lock - verifying
+the recorded pid's process identity before signaling it and confirming
+the stop by the watch lock disappearing, never by re-polling the pid,
+so a watcher that exits and has its pid recycled in the same instant is
+never mistaken for still running (or, worse, has that signal delivered
+to whatever now holds that pid). Never re-arms anything afterward. A
+refusal here (a live helper remains, or the watcher would not release
+its lock) again leaves the lock intact and the session able to keep
 supervising while the captain is told what did not stop.
 
 ### 6. Release the session lock - the final step

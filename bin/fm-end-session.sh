@@ -31,10 +31,13 @@
 #     Writes the durable handoff record to data/end-session/handoff.md
 #     (overwritten in place - the data/ repo's own history is the archive, so
 #     this never accumulates duplicate timestamped copies). Lists every
-#     state/*.meta task with its current fm-crew-state.sh line, points at
-#     data/backlog.md for the backlog and open decisions rather than copying
-#     them, and records the wake-queue depth. Prints the written path.
-#     Safe to re-run; always overwrites with a fresh read of current state.
+#     state/*.meta task with its current fm-crew-state.sh line, its recorded
+#     pr= (if any), and a best-effort worktree dirty/clean read (never a
+#     blocker - just visibility into what an eventual worktree cleanup would
+#     need to have landed first). Points at data/backlog.md for the backlog
+#     and open decisions rather than copying them, and records the wake-queue
+#     depth. Prints the written path. Safe to re-run; always overwrites with a
+#     fresh read of current state.
 #
 #   fm-end-session.sh backup
 #     Best-effort `git -C data add -A && commit && push`. Prints "BACKUP: ok",
@@ -44,14 +47,19 @@
 #     backup, not the source of truth for unlanded project work).
 #
 #   fm-end-session.sh quiesce
-#     Stops this session's OWN monitoring, in order: if state/.afk exists,
+#     First re-checks every non-secondmate task endpoint itself (the same
+#     read preflight's LIVE_HELPER list uses) and REFUSES if any is still
+#     alive - step 4 (the harness-specific graceful-stop loop) is enforced
+#     here, not just suggested, so monitoring can never be torn down while
+#     something it would have been watching is still unstopped. Once clear,
+#     stops this session's OWN monitoring, in order: if state/.afk exists,
 #     runs the correct-ordered `bin/fm-afk-launch.sh stop` (SIGTERMs the
 #     daemon, lets it flush, clears the flag last). Otherwise, if a live
-#     watcher cycle is holding state/.watch.lock, SIGTERMs exactly that
-#     recorded pid (never a broad pkill) and confirms it exits. Never re-arms
-#     anything. Call this only after every live helper is already confirmed
-#     stopped (preflight's LIVE_HELPER list is empty), so supervision stays
-#     live as a safety net for as long as anything risky is happening.
+#     watcher cycle is holding state/.watch.lock, verifies the recorded pid's
+#     process identity (fm_pid_identity, immune to PID reuse) before SIGTERM
+#     and confirms the stop by the lock directory disappearing (the
+#     watcher's own EXIT trap releases it) rather than by re-polling the pid
+#     - never a broad pkill. Never re-arms anything.
 #
 #   fm-end-session.sh finalize
 #     Releases the session lock (the final control-transfer step) - but only
@@ -79,6 +87,8 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 . "$SCRIPT_DIR/fm-session-lock-lib.sh"
 # shellcheck source=bin/fm-backend.sh
 . "$SCRIPT_DIR/fm-backend.sh"
+# shellcheck source=bin/fm-wake-lib.sh
+. "$SCRIPT_DIR/fm-wake-lib.sh"
 
 usage() {
   echo "usage: fm-end-session.sh <preflight|note|backup|quiesce|finalize|status>" >&2
@@ -87,20 +97,22 @@ usage() {
 # --- shared helpers ----------------------------------------------------------
 
 # Print each live (non-secondmate) task id with its backend/target, one per
-# line as "<id> <backend> <target>". Skips tasks with no window recorded.
+# line as "<id> <backend> <target>". Skips tasks with no resolvable endpoint.
+# Resolves the target through fm_backend_target_of_meta (not a bare window=
+# read): an Orca task records its endpoint in terminal=, not window=, and
+# gating on window= directly would silently drop every Orca-backed task from
+# this list.
 each_task_endpoint() {
-  local meta id kind window backend target
+  local meta id kind backend target
   for meta in "$STATE"/*.meta; do
     [ -f "$meta" ] || continue
     id=$(basename "$meta" .meta)
     kind=$(fm_meta_get "$meta" kind)
     [ -n "$kind" ] || kind=ship
     [ "$kind" = secondmate ] && continue
-    window=$(fm_meta_get "$meta" window)
-    [ -n "$window" ] || continue
     backend=$(fm_backend_of_meta "$meta")
     target=$(fm_backend_target_of_meta "$meta")
-    [ -n "$target" ] || target=$window
+    [ -n "$target" ] || continue
     printf '%s %s %s\n' "$id" "$backend" "$target"
   done
 }
@@ -167,14 +179,32 @@ cmd_note() {
     printf 'data/backlog.md and the next session-start digest OPEN DECISIONS\n'
     printf 'section - they are not duplicated here.\n\n'
     printf '## Work under way at shutdown (state/*.meta)\n\n'
-    local meta id line
+    local meta id line pr worktree wt_status
     local found=0
     for meta in "$STATE"/*.meta; do
       [ -f "$meta" ] || continue
       found=1
       id=$(basename "$meta" .meta)
-      line=$("$SCRIPT_DIR/fm-crew-state.sh" "$id" 2>/dev/null || echo "state: unknown · source: none · fm-crew-state.sh failed")
+      line=$("$SCRIPT_DIR/fm-crew-state.sh" "$id" 2>/dev/null || echo "[error reading state] fm-crew-state.sh failed for $id")
+      pr=$(fm_meta_get "$meta" pr)
+      worktree=$(fm_meta_get "$meta" worktree)
+      wt_status="not checked (no worktree recorded)"
+      if [ -n "$worktree" ] && [ -d "$worktree" ]; then
+        if git -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
+          if [ -z "$(git -C "$worktree" status --porcelain 2>/dev/null)" ]; then
+            wt_status="clean"
+          else
+            wt_status="has uncommitted changes"
+          fi
+        else
+          wt_status="not a git worktree"
+        fi
+      elif [ -n "$worktree" ]; then
+        wt_status="worktree path missing"
+      fi
       printf -- '- %s: %s\n' "$id" "$line"
+      printf -- '  - worktree: %s\n' "$wt_status"
+      [ -n "$pr" ] && printf -- '  - pr: %s\n' "$pr"
     done
     [ "$found" -eq 1 ] || printf '(none)\n'
     printf '\n## Queued notifications\n\n'
@@ -223,6 +253,27 @@ FM_END_SESSION_WATCHER_STOP_SLEEP=${FM_END_SESSION_WATCHER_STOP_SLEEP:-0.1}
 
 cmd_quiesce() {
   local afk_flag="$STATE/.afk" watch_lock="$STATE/.watch.lock" pid i=0
+  local recorded_identity current_identity id backend target state_out still_live=""
+
+  # Enforce that step 4 (the harness-specific graceful-stop loop) actually
+  # ran before monitoring is torn down: as long as any non-secondmate task
+  # endpoint still reports alive, supervision must stay live as the safety
+  # net watching it. Only fm_backend_agent_state's "alive" blocks - dead,
+  # missing, and any not-confidently-classified state are left to preflight,
+  # which already refuses shutdown outright on an unclassifiable endpoint.
+  while IFS=' ' read -r id backend target; do
+    [ -n "$id" ] || continue
+    state_out=$(fm_backend_agent_state "$backend" "$target" 2>/dev/null)
+    if [ "$state_out" = alive ]; then
+      still_live="${still_live}$id "
+    fi
+  done <<EOF
+$(each_task_endpoint)
+EOF
+  if [ -n "$still_live" ]; then
+    echo "REFUSED: live helper(s) still running ($still_live); run the graceful-stop loop (step 4) and confirm with 'fm-end-session.sh preflight' before quiescing monitoring." >&2
+    return 1
+  fi
 
   if [ -e "$afk_flag" ]; then
     if [ -x "$SCRIPT_DIR/fm-afk-launch.sh" ]; then
@@ -242,20 +293,31 @@ cmd_quiesce() {
         return 0
         ;;
     esac
-    if kill -0 "$pid" 2>/dev/null; then
-      kill -TERM "$pid" 2>/dev/null || true
-      while kill -0 "$pid" 2>/dev/null && [ "$i" -lt "$FM_END_SESSION_WATCHER_STOP_ATTEMPTS" ]; do
-        sleep "$FM_END_SESSION_WATCHER_STOP_SLEEP"
-        i=$((i + 1))
-      done
-      if kill -0 "$pid" 2>/dev/null; then
-        echo "REFUSED: watcher pid $pid did not exit after SIGTERM; leaving supervision and the lock intact." >&2
-        return 1
-      fi
-      echo "QUIESCE: watcher (pid $pid) stopped"
-    else
-      echo "QUIESCE: watch lock stale (pid $pid not running); leaving it for the next arm to reclaim"
+    # Identity-checked, not liveness-checked: a bare kill -0/kill -TERM pair
+    # has a PID-reuse race (the watcher could exit and the OS could recycle
+    # its pid between the two calls). fm_pid_identity binds a pid to its
+    # process start-time and cmdline, which a reused pid cannot share, and
+    # fm-watch-arm.sh already records that identity in the lock directory.
+    recorded_identity=$(cat "$watch_lock/pid-identity" 2>/dev/null || true)
+    current_identity=$(fm_pid_identity "$pid" 2>/dev/null || true)
+    if [ -z "$current_identity" ] || { [ -n "$recorded_identity" ] && [ "$current_identity" != "$recorded_identity" ]; }; then
+      echo "QUIESCE: watch lock stale (pid $pid is gone or its identity no longer matches); leaving it for the next arm to reclaim"
+      return 0
     fi
+    kill -TERM "$pid" 2>/dev/null || true
+    # Confirmation is the lock directory disappearing, not the pid dying:
+    # fm-watch.sh's own EXIT trap (watcher_cleanup) releases this lock as
+    # part of shutting down, so watching the lock is immune to the same
+    # PID-reuse race a post-signal kill -0 poll would reintroduce.
+    while [ -d "$watch_lock" ] && [ "$i" -lt "$FM_END_SESSION_WATCHER_STOP_ATTEMPTS" ]; do
+      sleep "$FM_END_SESSION_WATCHER_STOP_SLEEP"
+      i=$((i + 1))
+    done
+    if [ -d "$watch_lock" ]; then
+      echo "REFUSED: watcher pid $pid did not release its lock after SIGTERM; leaving supervision and the lock intact." >&2
+      return 1
+    fi
+    echo "QUIESCE: watcher (pid $pid) stopped"
     return 0
   fi
 

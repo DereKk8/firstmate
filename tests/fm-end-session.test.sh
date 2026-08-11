@@ -12,6 +12,7 @@ set -u
 
 END_SESSION="$ROOT/bin/fm-end-session.sh"
 TMP_ROOT=$(fm_test_tmproot fm-end-session)
+REAL_TMUX=$(command -v tmux || true)
 fm_git_identity fmtest fmtest@example.invalid
 
 # make_fake_ps_harness <fakebin>: every pid `ps` is asked about reports as a
@@ -242,9 +243,133 @@ test_secondmates_are_never_listed_as_live_helpers() {
   pass "end-session: a registered secondmate is never listed for graceful interruption"
 }
 
+# --- regression: Orca terminal= tasks are never silently skipped ---------
+
+test_orca_task_included_without_a_window_field() {
+  local home fakebin out
+  home=$(make_home orca-included)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock_as_self "$home" "$fakebin"
+
+  # Orca records its endpoint as terminal=, never window=. A gate that reads
+  # window= directly (rather than resolving through fm_backend_target_of_meta)
+  # would silently drop this task from every helper-stop and status count.
+  fm_write_meta "$home/state/orca-a.meta" \
+    "worktree=$home/worktree" "terminal=orca-term-abc123" "backend=orca" "kind=ship"
+
+  set +e
+  out=$(run_es "$home" "$fakebin" preflight 2>&1)
+  set -e
+  # orca has no live-agent classifier (fm_backend_agent_state falls through
+  # to "unverified" for it too), so preflight refuses - but critically it
+  # must NAME the orca task, proving it was actually considered rather than
+  # silently absent from both the LIVE_HELPER list and the refusal.
+  assert_contains "$out" "orca-a" \
+    "an Orca-backed task (terminal= only, no window=) was invisible to preflight"
+
+  out=$(run_es "$home" "$fakebin" status)
+  assert_contains "$out" "live_helpers:" "status did not print a live_helpers line"
+  pass "end-session: an Orca task with only terminal= (no window=) is never silently skipped"
+}
+
+# --- regression: watch-lock stop is identity-checked, not just pid-checked -
+
+test_watch_lock_identity_mismatch_treated_as_stale_never_signaled() {
+  local home fakebin out real_pid term_log
+  home=$(make_home identity-mismatch)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock_as_self "$home" "$fakebin"
+
+  # A real, live process recorded as the watcher pid, but whose recorded
+  # pid-identity does NOT match its actual current identity (as if the
+  # original watcher exited and this pid number was reused by something
+  # else entirely). The fix must treat this as stale and never signal it -
+  # confirmed by a TERM trap that would log if it ever fired.
+  term_log="$(dirname "$home")/term.log"
+  : > "$term_log"
+  bash -c "trap 'echo signaled >> '\"$term_log\"'; exit 0' TERM; exec sleep 300" &
+  real_pid=$!
+  mkdir -p "$home/state/.watch.lock"
+  printf '%s\n' "$real_pid" > "$home/state/.watch.lock/pid"
+  printf 'proc-starttime=0 cmdline-hex=deadbeef\n' > "$home/state/.watch.lock/pid-identity"
+
+  out=$(run_es "$home" "$fakebin" quiesce) || fail "quiesce refused an identity-mismatched (stale) watch lock: $out"
+  assert_contains "$out" "stale" "an identity-mismatched watch lock was not reported as stale"
+  sleep 0.2
+  [ ! -s "$term_log" ] || fail "quiesce sent SIGTERM to a pid whose identity did not match the recorded watcher - exactly the PID-reuse hazard the fix must close"
+
+  kill -KILL "$real_pid" 2>/dev/null || true
+  wait "$real_pid" 2>/dev/null || true
+  pass "end-session: a watch-lock pid whose identity no longer matches is treated as stale and never signaled"
+}
+
+# --- regression: quiesce refuses while a live helper is still up ---------
+
+test_quiesce_refuses_while_a_live_helper_remains() {
+  [ -n "$REAL_TMUX" ] || { pass "end-session: quiesce-blocks-on-live-helper (skip - tmux not installed)"; return 0; }
+  local home fakebin out socket session=es-live-helper window=es-worker claude_bin
+  home=$(make_home quiesce-blocks)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock_as_self "$home" "$fakebin"
+
+  socket="$(dirname "$home")/tmux.sock"
+  claude_bin="$(dirname "$home")/claude-bin"
+  mkdir -p "$claude_bin"
+  cp "$(command -v sleep)" "$claude_bin/claude"
+  env -u TMUX -u TMUX_PANE "$REAL_TMUX" -S "$socket" new-session -d -s "$session" -n "$window" \
+    "exec '$claude_bin/claude' 300"
+
+  cat > "$fakebin/tmux" <<SH
+#!/usr/bin/env bash
+exec '$REAL_TMUX' -S '$socket' "\$@"
+SH
+  chmod +x "$fakebin/tmux"
+
+  fm_write_meta "$home/state/live-a.meta" \
+    "worktree=$home/worktree" "window=$session:$window" "backend=tmux" "kind=ship"
+
+  set +e
+  out=$(run_es "$home" "$fakebin" quiesce 2>&1)
+  set -e
+  assert_contains "$out" "REFUSED:" "quiesce did not refuse while a live helper was still running"
+  assert_contains "$out" "live-a" "quiesce's refusal did not name the still-live task"
+  assert_present "$home/state/.lock" "quiesce's refusal must never touch the session lock"
+
+  env -u TMUX -u TMUX_PANE "$REAL_TMUX" -S "$socket" kill-server 2>/dev/null || true
+  pass "end-session: quiesce refuses to proceed while step 4's graceful-stop loop has not actually finished"
+}
+
+# --- regression: handoff note surfaces pr= and worktree dirty state ------
+
+test_note_reports_pr_and_worktree_status() {
+  local home fakebin note_path proj_dir
+  home=$(make_home note-detail)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock_as_self "$home" "$fakebin"
+
+  proj_dir="$TMP_ROOT/note-detail-project"
+  fm_git_init_commit "$proj_dir"
+  printf 'dirty\n' > "$proj_dir/scratch.txt"
+
+  fm_write_meta "$home/state/withpr.meta" \
+    "worktree=$proj_dir" "window=note-detail:none" "backend=tmux" "kind=ship" \
+    "pr=https://github.com/example/repo/pull/42"
+
+  note_path=$(run_es "$home" "$fakebin" note) || fail "note failed"
+  assert_grep "pr: https://github.com/example/repo/pull/42" "$note_path" \
+    "handoff note omitted the task's recorded pr= field"
+  assert_grep "worktree: has uncommitted changes" "$note_path" \
+    "handoff note did not surface the worktree's uncommitted changes"
+  pass "end-session: the handoff note surfaces each task's pr= and worktree dirty state"
+}
+
 test_successful_shutdown_empty_fleet
 test_refuses_on_ambiguous_endpoint
 test_decisions_and_wake_queue_untouched
 test_never_launches_a_successor
 test_partial_failure_leaves_session_still_supervising
 test_secondmates_are_never_listed_as_live_helpers
+test_orca_task_included_without_a_window_field
+test_watch_lock_identity_mismatch_treated_as_stale_never_signaled
+test_quiesce_refuses_while_a_live_helper_remains
+test_note_reports_pr_and_worktree_status
