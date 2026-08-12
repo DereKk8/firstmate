@@ -184,7 +184,7 @@ test_task_worktree_pushes_its_own_branch() {
   push_default=$(git -C "$wt" config --get push.default)
   merge=$(git -C "$wt" config --get "branch.fm/$id.merge")
   [ "$push_default" = current ] || fail "task worktree did not override inherited push.default=upstream"
-  [ "$merge" = refs/heads/dev ] || fail "fixture did not preserve the task branch's dev upstream"
+  [ "$merge" = refs/heads/dev ] || fail "spawn clobbered the task branch's dev upstream tracking"
   push_out=$(git -C "$wt" push --dry-run 2>&1)
   assert_contains "$push_out" "fm/$id -> fm/$id" \
     "plain push did not target the task branch"
