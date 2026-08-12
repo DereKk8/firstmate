@@ -535,7 +535,7 @@ test_pi_signed_threads_shared_pi_profile_and_preserves_identity() {
   gen=$(cat "$HOME_DIR/state/$id.busy-gen")
   assert_contains "$ext" 'pi.on("agent_start"' "pi extension lost the semantic agent_start busy edge"
   assert_contains "$ext" 'pi.on("agent_settled"' "pi extension lost the semantic agent_settled idle edge"
-  assert_contains "$ext" 'ctx.isIdle()' "pi extension no longer confirms idle with ctx.isIdle()"
+  assert_contains "$ext" 'pi.on("session_shutdown"' "pi extension no longer stops stale lifecycle telemetry at session shutdown"
   assert_contains "$ext" "\"--gen\", \"$gen\"" "pi extension does not carry the armed incarnation gen"
   assert_contains "$ext" '"--source", "pi-ext"' "pi extension does not attribute its semantic source"
   assert_contains "$ext" 'pi.on("turn_end"' "pi extension lost the turn-end notification touch"
