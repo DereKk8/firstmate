@@ -271,7 +271,7 @@ The follow-up was verified in the interactive TUI; `opencode run` can exit befor
 
 | Fact | Value |
 |---|---|
-| Busy state | The Firstmate-owned extension's `agent_start` (busy) and `agent_settled` confirmed by `ctx.isIdle()` (idle), which covers retries, compaction, tool loops, and queued continuations. |
+| Busy state | The Firstmate-owned extension's `agent_start` (busy) and `agent_settled` (idle) with `session_shutdown` guard. Pi guarantees `agent_settled` fires only when no automatic continuation remains; the extension never reads the event ctx. |
 | Exit command | `/quit` |
 | Interrupt | single Escape |
 
