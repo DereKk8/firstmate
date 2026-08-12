@@ -1939,6 +1939,20 @@ if [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   validate_spawn_worktree "treehouse get" "$T"
 fi
 
+# Treehouse pools can inherit an upstream push policy and branch tracking for
+# the project's base branch. Make each provisioned task worktree push its own
+# checked-out branch, regardless of those shared-pool defaults.
+if [ "$KIND" != secondmate ]; then
+  if ! git -C "$WT" config extensions.worktreeConfig true; then
+    echo "error: could not enable worktree-local git config for $WT" >&2
+    exit 1
+  fi
+  if ! git -C "$WT" config --worktree push.default current; then
+    echo "error: could not set worktree-local push.default=current for $WT" >&2
+    exit 1
+  fi
+fi
+
 # Per-task temp root: /tmp/fm-<id>/ with Go's build temp nested at gotmp/. Go won't
 # create GOTMPDIR, so mkdir before it is used; fm-teardown removes the whole root.
 # Nested (not a bare /tmp/fm-<id>/gotmp) so other per-task temp can live alongside
