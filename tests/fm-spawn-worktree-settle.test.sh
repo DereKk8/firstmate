@@ -141,7 +141,60 @@ test_already_settled_pane_costs_one_confirm_sleep() {
   pass "an already-settled pane confirms via the existing inter-poll sleep, not an extra full cycle"
 }
 
+test_task_worktree_pushes_its_own_branch() {
+  local case_dir home proj remote wt fakebin countfile id out status push_default merge before_push push_out
+  case_dir="$TMP_ROOT/push-target"
+  home="$case_dir/home"
+  proj="$case_dir/project"
+  remote="$case_dir/remote.git"
+  wt="$case_dir/task-worktree"
+  id=push-target-z3
+  countfile="$case_dir/pane-call-count"
+  fakebin=$(make_settle_fakebin "$case_dir/fake")
+
+  mkdir -p "$home/data/$id" "$home/projects" "$home/state" "$home/config" "$remote"
+  printf 'codex\n' > "$home/config/crew-harness"
+  printf 'Delivery contract: mode=no-mistakes\n' > "$home/data/$id/brief.md"
+  touch "$home/state/.last-watcher-beat"
+  fm_git_init_commit "$proj"
+  git -C "$proj" branch -M dev
+  git -C "$remote" init --bare -q
+  git -C "$proj" remote add origin "$remote"
+  git -C "$proj" push -qu origin dev
+  git -C "$proj" branch --set-upstream-to=origin/dev dev >/dev/null
+  git -C "$proj" config push.default upstream
+  git -C "$proj" worktree add --quiet -b "fm/$id" "$wt" dev
+  git -C "$wt" branch --set-upstream-to=origin/dev "fm/$id" >/dev/null
+  git -C "$wt" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit --allow-empty -qm task
+  before_push=$(git -C "$wt" push --dry-run 2>&1)
+  assert_contains "$before_push" "fm/$id -> dev" \
+    "fixture did not reproduce upstream push.default targeting the dev base branch"
+
+  out=$(FM_ROOT_OVERRIDE='' FM_HOME="$home" \
+    FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_PROJECTS_OVERRIDE="$home/projects" FM_CONFIG_OVERRIDE="$home/config" \
+    FM_SPAWN_NO_GUARD=1 TMUX="fake,1,0" \
+    FM_FAKE_PANE_PATH="$wt" FM_FAKE_PANE_STALE_READS=0 \
+    FM_FAKE_PANE_COUNTFILE="$countfile" PATH="$fakebin:$PATH" \
+    "$SPAWN" "$id" "$proj" --mode no-mistakes --yolo off 2>&1)
+  status=$?
+  expect_code 0 "$status" "spawn should configure the provisioned task worktree"
+
+  push_default=$(git -C "$wt" config --get push.default)
+  merge=$(git -C "$wt" config --get "branch.fm/$id.merge")
+  [ "$push_default" = current ] || fail "task worktree did not override inherited push.default=upstream"
+  [ "$merge" = refs/heads/dev ] || fail "spawn clobbered the task branch's dev upstream tracking"
+  push_out=$(git -C "$wt" push --dry-run 2>&1)
+  assert_contains "$push_out" "fm/$id -> fm/$id" \
+    "plain push did not target the task branch"
+  assert_not_contains "$push_out" "fm/$id -> dev" \
+    "plain push still targeted the dev base branch"
+  pass "a provisioned dev-based task worktree plain-pushes its own branch"
+}
+
 test_single_stale_first_read_is_not_accepted
 test_already_settled_pane_costs_one_confirm_sleep
+test_task_worktree_pushes_its_own_branch
 
 echo "# all fm-spawn-worktree-settle tests passed"
