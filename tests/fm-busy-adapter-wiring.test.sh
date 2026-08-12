@@ -83,18 +83,27 @@ classify() {  # <harness> <id> <state-dir>
 
 # drive_pi_ext <ext-path> <mode>: load the generated Pi extension in a plain
 # Node host and fire one lifecycle handler. Modes: agent-start, settle-idle,
-# settle-continuing, turn-end.
+# settle-stale-context, settle-after-shutdown, turn-end.
 drive_pi_ext() {
   EXT_PATH="$1" MODE="$2" node --input-type=module 2>&1 <<'EOF'
 import { pathToFileURL } from "node:url";
 const mod = await import(pathToFileURL(process.env.EXT_PATH).href);
 const handlers = {};
 mod.default({ on: (name, fn) => { handlers[name] = fn; } });
-const ctx = { isIdle: () => process.env.MODE !== "settle-continuing" };
+const ctx = {};
+const staleCtx = new Proxy({}, {
+  get() {
+    throw new Error("This extension ctx is stale after session replacement or reload");
+  },
+});
 switch (process.env.MODE) {
   case "agent-start": await handlers["agent_start"]({}, ctx); break;
   case "settle-idle": await handlers["agent_settled"]({}, ctx); break;
-  case "settle-continuing": await handlers["agent_settled"]({}, ctx); break;
+  case "settle-stale-context": await handlers["agent_settled"]({}, staleCtx); break;
+  case "settle-after-shutdown":
+    await handlers["session_shutdown"]({}, ctx);
+    await handlers["agent_settled"]({}, staleCtx);
+    break;
   case "settle-then-start":
     await handlers["agent_settled"]({}, ctx);
     await handlers["agent_start"]({}, ctx);
@@ -129,20 +138,21 @@ test_pi_extension_semantic_lifecycle() {
 
   out=$(drive_pi_ext "$ext" settle-idle) || fail "agent_settled drive failed: $out"
   out=$(classify pi "$id" "$state")
-  [ "$out" = "idle pi-ext" ] || fail "agent_settled with isIdle must classify 'idle pi-ext', got '$out'"
+  [ "$out" = "idle pi-ext" ] || fail "agent_settled must classify 'idle pi-ext', got '$out'"
 
   out=$(drive_pi_ext "$ext" agent-start) || fail "agent_start drive failed: $out"
   out=$(classify pi "$id" "$state")
   [ "$out" = "busy pi-ext" ] || fail "agent_start must classify 'busy pi-ext', got '$out'"
 
-  out=$(drive_pi_ext "$ext" settle-continuing) || fail "continuing settle drive failed: $out"
+  out=$(drive_pi_ext "$ext" settle-stale-context) || fail "stale settle context must not escape the extension: $out"
   out=$(classify pi "$id" "$state")
-  [ "$out" = "busy pi-ext" ] || fail "a settle while another run continues must stay busy, got '$out'"
+  [ "$out" = "idle pi-ext" ] || fail "a stale settle context must still leave safe idle telemetry, got '$out'"
 
-  out=$(drive_pi_ext "$ext" settle-idle) || fail "final settle drive failed: $out"
+  out=$(drive_pi_ext "$ext" agent-start) || fail "second agent_start drive failed: $out"
+  out=$(drive_pi_ext "$ext" settle-after-shutdown) || fail "post-shutdown stale settle must not escape the extension: $out"
   out=$(classify pi "$id" "$state")
-  [ "$out" = "idle pi-ext" ] || fail "the final settle must classify idle, got '$out'"
-  pass "pi extension reports agent_start busy, settles idle only via ctx.isIdle(), and keeps turn_end a notification"
+  [ "$out" = "busy pi-ext" ] || fail "a replaced session's late settle must not overwrite busy telemetry, got '$out'"
+  pass "pi extension reports agent_start busy, settles via agent_settled without reading stale ctx, and drops lifecycle work after session shutdown"
 }
 
 test_pi_extension_serializes_settle_before_next_start() {

@@ -2094,28 +2094,48 @@ EOF
 // Firstmate semantic busy-state events + turn-end notification; written by
 // fm-spawn under the contract owned by bin/fm-busy-lib.sh.
 // Semantic state: "agent_start" -> busy when a low-level agent run begins;
-// "agent_settled" -> idle only when ctx.isIdle() confirms Pi will not
-// continue automatically - auto-retries, auto-compaction retries, tool
-// loops, and queued continuations all keep the run un-settled, and a settle
-// that raced another extension's fresh run keeps state busy via isIdle().
+// "agent_settled" -> idle when Pi has no automatic continuation remaining.
+// Pi guarantees that state for this event, except that another extension can
+// start a fresh run before the event completes. Its agent_start then wins.
+// Never read the event ctx here: a skill reload can replace its session while
+// this handler is pending, making that captured ctx stale and fatal.
 // "turn_end" fires at every inner turn boundary (one LLM response plus its
 // tool calls) and stays a wake NOTIFICATION touch for the watcher, never
 // current-state truth.
 import { execFile } from "node:child_process";
+const quietly = async (work: () => Promise<void> | void) => {
+  try {
+    await work();
+  } catch {
+    // Busy-state telemetry must never fail the worker session.
+  }
+};
 const busyEvent = (state: string, event: string) =>
   new Promise<void>((resolve) => {
-    execFile("$FM_ROOT/bin/fm-busy-event.sh", [
-      "apply", "$STATE_REAL", "$ID", state,
-      "--gen", "$BUSY_GEN", "--source", "pi-ext", "--event", event,
-    ], () => resolve());
+    try {
+      execFile("$FM_ROOT/bin/fm-busy-event.sh", [
+        "apply", "$STATE_REAL", "$ID", state,
+        "--gen", "$BUSY_GEN", "--source", "pi-ext", "--event", event,
+      ], () => resolve());
+    } catch {
+      resolve();
+    }
   });
 export default function (pi: any) {
-  pi.on("agent_start", () => busyEvent("busy", "agent-start"));
-  pi.on("agent_settled", (_event: any, ctx: any) => {
-    if (ctx && typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
-    return busyEvent("idle", "agent-settled");
+  let active = true;
+  const report = (state: string, event: string) =>
+    active ? quietly(() => busyEvent(state, event)) : undefined;
+  pi.on("session_shutdown", () => {
+    active = false;
   });
-  pi.on("turn_end", () => execFile("touch", ["$TURNEND"]));
+  pi.on("agent_start", () => report("busy", "agent-start"));
+  pi.on("agent_settled", () => report("idle", "agent-settled"));
+  pi.on("turn_end", () => {
+    if (!active) return;
+    return quietly(() => {
+      execFile("touch", ["$TURNEND"], () => {});
+    });
+  });
 }
 EOF
       ;;
