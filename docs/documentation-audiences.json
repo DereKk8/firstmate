@@ -125,6 +125,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/end-session/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/refactor-review/SKILL.md",
       "audience": "agent-runtime"
     },

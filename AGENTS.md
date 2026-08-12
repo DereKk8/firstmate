@@ -385,6 +385,9 @@ Inline facts that must survive without a loaded skill:
 
 Load `stuck-crewmate-recovery` after a stale wake, looping or confused pane, answered-by-brief question, unresponsive worker, or failed steer.
 
+**End session**: invoke `/end-session` when the captain invokes `/end-session`, says they are done for the day, or asks to shut firstmate down completely.
+Unlike `/reset-window`, which flushes context and immediately launches a fresh-context successor that keeps supervising, and unlike `/afk`, which keeps supervising more quietly, `/end-session` is the one that actually stops: it proves the fleet is durably preserved, stops helpers and monitoring only through their verified graceful paths, releases the session lock last, and launches no successor at all.
+
 ## 9. Escalation and captain etiquette
 
 **Talk in outcomes, not mechanics.**
