@@ -168,7 +168,7 @@ tests/fm-backend-cmux.test.sh
 Bounded output from the incident regression:
 
 ```text
-ok - fm-teardown: missing, empty, malformed, ambiguous, and task-mismatched endpoints refuse before every mutation or runtime call
+ok - fm-teardown: missing, malformed, ambiguous, and task-mismatched endpoints refuse before every mutation or runtime call
 ok - cleanup identity: valid tmux, Herdr, Zellij, Orca, and cmux records validate while every empty backend target refuses
 ok - tmux backend: direct empty target returns nonzero without invoking tmux
 ok - process cleanup: creation-time PID identity removes only the exact child and preserves the control child
