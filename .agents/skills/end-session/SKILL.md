@@ -35,8 +35,8 @@ bin/fm-end-session.sh preflight
 ```
 
 Read-only. On success it prints one `LIVE_HELPER <id> <backend> <target>`
-line per ship/scout task whose recorded endpoint is confirmed alive (never
-for a secondmate - a secondmate is a persistent, independently-locked home
+line per ship/scout task whose recorded endpoint is confirmed alive without
+an active no-mistakes run (never for a secondmate - a secondmate is a persistent, independently-locked home
 and this shutdown does not touch it, exactly as AGENTS.md section 5 rule 5
 and section 8 already treat a secondmate's idle endpoint as healthy).
 
@@ -100,10 +100,14 @@ so it keeps watching that unresolved helper, and the session lock is
 still held, so nothing about this failure is ambiguous: the session is
 still supervising.
 
-Every `LIVE_HELPER` line must be confirmed stopped before moving on;
-running `bin/fm-end-session.sh preflight` again after step 4 completes is
-a cheap way to confirm the list is now empty - and `quiesce` itself
-re-checks this and refuses if anything is still alive, so a skipped or
+Every `LIVE_HELPER` line must be confirmed stopped before moving on.
+`VALIDATION_ACTIVE` lines from step 1 name tasks with an active no-mistakes validation run and are reported for visibility only.
+Never stop them or send them an interrupt or exit command.
+Their branch custody remains exactly as it was.
+Quiesce also skips them, so shutdown can complete while they keep running.
+Running `bin/fm-end-session.sh preflight` again after step 4 completes is
+a cheap way to confirm the live-helper list is now empty - and `quiesce` itself
+re-checks this and refuses if an ordinary helper is still alive, so a skipped or
 incomplete step 4 cannot silently fall through to monitoring being torn
 down.
 
@@ -113,9 +117,9 @@ down.
 bin/fm-end-session.sh quiesce
 ```
 
-Re-verifies on its own that every non-secondmate task endpoint is
-confirmed stopped (the same read step 1 used) and refuses if any is
-still alive, so this step never runs ahead of step 4 even if it were
+Re-verifies on its own that every non-secondmate task endpoint without an
+active validation run is confirmed stopped (the same read step 1 used) and
+refuses if any such helper is still alive, so this step never runs ahead of step 4 even if it were
 called out of order. Once clear, it stops this session's own away-mode
 daemon (if `state/.afk` was set) through its correct-ordered stop path,
 or the live watcher cycle if one is holding the watch lock - verifying
@@ -126,7 +130,7 @@ never mistaken for still running (or, worse, has that signal delivered
 to whatever now holds that pid). Never re-arms anything afterward. A
 refusal here (a live helper remains, or the watcher would not release
 its lock) again leaves the lock intact and the session able to keep
-supervising while the captain is told what did not stop.
+supervising while the captain is told what ordinary helper did not stop.
 
 ### 6. Release the session lock - the final step
 

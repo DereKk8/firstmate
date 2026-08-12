@@ -66,6 +66,43 @@ run_es() {  # <home> <fakebin> <subcommand...>
   PATH="$fakebin:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$END_SESSION" "$@"
 }
 
+make_validation_tools() {  # <fakebin>
+  local fakebin=$1
+  cat > "$fakebin/tmux" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in
+  list-windows) printf 'worker\n' ;;
+  display-message)
+    case "$*" in
+      *pane_current_command*) printf 'claude\n' ;;
+    esac
+    ;;
+esac
+SH
+  cat > "$fakebin/no-mistakes" <<'SH'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  'axi status') printf '%s\n' "${FM_END_SESSION_TEST_NM_STATUS:-}" ;;
+esac
+SH
+  chmod +x "$fakebin/tmux" "$fakebin/no-mistakes"
+}
+
+make_no_nm_toolbin() {  # <dir>
+  local dir=$1 toolbin git_bin
+  toolbin="$dir/no-nm-toolbin"
+  mkdir -p "$toolbin"
+  git_bin=$(command -v git) || fail "git is required for the no-mistakes-absent fixture"
+  ln -s "$git_bin" "$toolbin/git"
+  printf '%s\n' "$toolbin"
+}
+
+run_es_without_no_mistakes() {  # <home> <fakebin> <toolbin> <subcommand...>
+  local home=$1 fakebin=$2 toolbin=$3
+  shift 3
+  PATH="$fakebin:$toolbin:/usr/bin:/bin" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$END_SESSION" "$@"
+}
+
 # --- 1. successful isolated shutdown, empty fleet -----------------------
 
 test_successful_shutdown_empty_fleet() {
@@ -339,6 +376,66 @@ SH
   pass "end-session: quiesce refuses to proceed while step 4's graceful-stop loop has not actually finished"
 }
 
+# --- regression: active validation preserves branch custody -----------------
+
+test_active_validation_is_visible_but_exempt_from_shutdown() {
+  local home fakebin worktree branch head out toolbin
+  home=$(make_home validation-active)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock_as_self "$home" "$fakebin"
+  make_validation_tools "$fakebin"
+
+  worktree="$TMP_ROOT/validation-active-worktree"
+  branch=fm/validation-active
+  fm_git_init_commit "$worktree"
+  git -C "$worktree" checkout -qb "$branch"
+  head=$(git -C "$worktree" rev-parse HEAD)
+  fm_write_meta "$home/state/validation-a.meta" \
+    "worktree=$worktree" "window=validation:worker" "backend=tmux" "kind=ship"
+
+  FM_END_SESSION_TEST_NM_STATUS=$(cat <<EOF
+run:
+  id: "01RUN"
+  branch: $branch
+  status: running
+  head: "$head"
+  pr: ""
+  findings: none
+EOF
+)
+  export FM_END_SESSION_TEST_NM_STATUS
+
+  out=$(run_es "$home" "$fakebin" preflight) || fail "preflight refused an active validation run: $out"
+  assert_contains "$out" "VALIDATION_ACTIVE validation-a tmux validation:worker" \
+    "preflight did not report the active validation run"
+  assert_not_contains "$out" "LIVE_HELPER validation-a" \
+    "preflight classified the active validation worker as stoppable"
+  run_es "$home" "$fakebin" quiesce >/dev/null \
+    || fail "quiesce refused while the only live worker was in active validation"
+
+  FM_END_SESSION_TEST_NM_STATUS=$(cat <<EOF
+run:
+  id: "01RUN"
+  branch: $branch
+  status: completed
+  head: "$head"
+  pr: ""
+  findings: none
+EOF
+)
+  out=$(run_es "$home" "$fakebin" preflight) || fail "preflight refused a terminal validation run: $out"
+  assert_contains "$out" "LIVE_HELPER validation-a tmux validation:worker" \
+    "preflight exempted a terminal validation run"
+
+  rm "$fakebin/no-mistakes"
+  toolbin=$(make_no_nm_toolbin "$(dirname "$home")")
+  out=$(run_es_without_no_mistakes "$home" "$fakebin" "$toolbin" preflight) \
+    || fail "preflight refused when no-mistakes was unavailable: $out"
+  assert_contains "$out" "LIVE_HELPER validation-a tmux validation:worker" \
+    "preflight exempted a worker when no-mistakes was unavailable"
+  pass "end-session: active validation is visible but exempt from graceful stop and quiesce"
+}
+
 # --- regression: handoff note surfaces pr= and worktree dirty state ------
 
 test_note_reports_pr_and_worktree_status() {
@@ -372,4 +469,5 @@ test_secondmates_are_never_listed_as_live_helpers
 test_orca_task_included_without_a_window_field
 test_watch_lock_identity_mismatch_treated_as_stale_never_signaled
 test_quiesce_refuses_while_a_live_helper_remains
+test_active_validation_is_visible_but_exempt_from_shutdown
 test_note_reports_pr_and_worktree_status

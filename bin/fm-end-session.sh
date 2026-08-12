@@ -16,12 +16,10 @@
 #   fm-end-session.sh preflight
 #     Read-only. Refuses (exit 1, one or more "REFUSED:" lines on stderr) when
 #     shutdown would not be safe yet. On success (exit 0) prints one
-#     "LIVE_HELPER <id> <backend> <target>" line per ship/scout task whose
-#     recorded endpoint is confirmed alive, for the skill to drive the
-#     graceful stop loop over. Secondmates are never listed: a secondmate is a
-#     persistent, independently-locked home and this session ending does not
-#     stop it (mirrors AGENTS.md section 5 rule 5 and section 8's "a
-#     secondmate's idle endpoint is healthy").
+#     Prints "LIVE_HELPER <id> <backend> <target>" for each confirmed-alive ship/scout endpoint without an active no-mistakes run.
+#     Prints "VALIDATION_ACTIVE <id> <backend> <target>" for an attributed non-terminal no-mistakes run.
+#     VALIDATION_ACTIVE retains branch custody and is never stopped.
+#     Secondmates are never listed because they are persistent independently-locked homes.
 #     Refuses when: this process does not hold the session lock; a live
 #     ship/scout task's endpoint state cannot be confidently classified
 #     (ambiguous/unreadable/unverified) so a graceful stop could not be safely
@@ -47,11 +45,10 @@
 #     backup, not the source of truth for unlanded project work).
 #
 #   fm-end-session.sh quiesce
-#     First re-checks every non-secondmate task endpoint itself (the same
-#     read preflight's LIVE_HELPER list uses) and REFUSES if any is still
-#     alive - step 4 (the harness-specific graceful-stop loop) is enforced
-#     here, not just suggested, so monitoring can never be torn down while
-#     something it would have been watching is still unstopped. Once clear,
+#     Re-checks every non-secondmate endpoint and REFUSES if any non-validation helper remains alive.
+#     An attributed non-terminal no-mistakes run is exempt so its worker keeps branch custody while shutdown completes.
+#     This enforces step 4 before monitoring can be torn down while an ordinary helper remains unstopped.
+#     Once clear,
 #     stops this session's OWN monitoring, in order: if state/.afk exists,
 #     runs the correct-ordered `bin/fm-afk-launch.sh stop` (SIGTERMs the
 #     daemon, lets it flush, clears the flag last). Otherwise, if a live
@@ -123,10 +120,23 @@ wake_queue_depth() {
   grep -c . "$q" 2>/dev/null || printf '0'
 }
 
+# Returns success only when fm-crew-state.sh proves this task has an attributed,
+# non-terminal no-mistakes run. Lookup failure, timeout, no no-mistakes binary,
+# and terminal runs all return failure so callers retain normal LIVE_HELPER handling.
+validation_active() {  # <id>
+  local crew_state
+  crew_state=$(FM_CREW_STATE_NM_TIMEOUT=5 "$SCRIPT_DIR/fm-crew-state.sh" "$1" 2>/dev/null || true)
+  case "$crew_state" in
+    "state: done · source: run-step"*|"state: failed · source: run-step"*) return 1 ;;
+    "state: "*" · source: run-step"*) return 0 ;;
+  esac
+  return 1
+}
+
 # --- preflight ---------------------------------------------------------------
 
 cmd_preflight() {
-  local refused=0 line id backend target state_out helper_lines=""
+  local refused=0 id backend target state_out helper_lines=""
 
   if ! fm_session_lock_owned_by_self "$STATE"; then
     echo "REFUSED: this session does not hold the session lock; another session may be live. Run 'bin/fm-lock.sh status' and resolve ownership before shutdown." >&2
@@ -142,7 +152,11 @@ cmd_preflight() {
       state_out=$(fm_backend_agent_state "$backend" "$target" 2>/dev/null)
       case "$state_out" in
         alive)
-          helper_lines="${helper_lines}LIVE_HELPER $id $backend $target"$'\n'
+          if validation_active "$id"; then
+            helper_lines="${helper_lines}VALIDATION_ACTIVE $id $backend $target"$'\n'
+          else
+            helper_lines="${helper_lines}LIVE_HELPER $id $backend $target"$'\n'
+          fi
           ;;
         dead|missing)
           : # nothing to stop for this task
@@ -258,11 +272,13 @@ cmd_quiesce() {
   # Enforce that step 4 (the harness-specific graceful-stop loop) actually
   # ran before monitoring is torn down: as long as any non-secondmate task
   # endpoint still reports alive, supervision must stay live as the safety
-  # net watching it. Only fm_backend_agent_state's "alive" blocks - dead,
+  # net watching it. An active validation worker is exempt because it retains
+  # branch custody. Only fm_backend_agent_state's "alive" blocks otherwise - dead,
   # missing, and any not-confidently-classified state are left to preflight,
   # which already refuses shutdown outright on an unclassifiable endpoint.
   while IFS=' ' read -r id backend target; do
     [ -n "$id" ] || continue
+    validation_active "$id" && continue
     state_out=$(fm_backend_agent_state "$backend" "$target" 2>/dev/null)
     if [ "$state_out" = alive ]; then
       still_live="${still_live}$id "
