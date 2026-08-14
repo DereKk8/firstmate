@@ -73,8 +73,9 @@ test_fm_home_parameterization() {
   brief="$home_one/data/task-c/brief.md"
   grep -F ">> '$home_one/state/task-c.status'" "$brief" >/dev/null || fail "secondmate brief did not shell-quote FM_HOME state path"
 
-  mkdir -p "$home_one/fakebin" "$home_one/x"
+  mkdir -p "$home_one/fakebin" "$home_one/x" "$home_one/projects"
   printf '%s\n' '- x [no-mistakes] base=main - fixture project' >> "$home_one/data/projects.md"
+  ln -s ../x "$home_one/projects/x"
   printf 'project=%s\n' "$home_one/x" > "$home_one/state/task-a.meta"
   cat > "$home_one/fakebin/gh" <<'SH'
 #!/usr/bin/env bash

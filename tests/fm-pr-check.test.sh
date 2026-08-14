@@ -14,13 +14,14 @@ TMP_ROOT=$(fm_test_tmproot fm-pr-check-tests)
 make_case() {
   local name=$1 mode=${2:-no-mistakes} case_dir
   case_dir="$TMP_ROOT/$name"
-  mkdir -p "$case_dir/state" "$case_dir/fakebin" "$case_dir/project"
+  mkdir -p "$case_dir/state" "$case_dir/fakebin" "$case_dir/project" "$case_dir/data"
   fm_write_meta "$case_dir/state/task-x1.meta" \
     "window=fm-task-x1" \
     "worktree=$case_dir/wt" \
     "project=$case_dir/project" \
     "kind=ship" \
     "mode=$mode"
+  printf '%s\n' "- project [$mode] path=$case_dir/project - test project (added 2026-08-14)" > "$case_dir/data/projects.md"
   printf '%s\n' "$case_dir"
 }
 
@@ -72,6 +73,7 @@ run_check() {
   shift
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
+  FM_DATA_OVERRIDE="$case_dir/data" \
   PATH="$case_dir/fakebin:$PATH" \
     "$PR_CHECK" "$@"
 }
@@ -111,6 +113,43 @@ test_base_branch_mismatch_refused() {
   assert_contains "$out" "dev" "base-mismatch: should name the true default"
   assert_absent "$case_dir/state/task-x1.check.sh" "base-mismatch: poll must not be armed"
   pass "PR whose base differs from project's true remote default is refused"
+}
+
+test_registry_base_mismatch_refused() {
+  local case_dir rc out
+  case_dir=$(make_case registry-base-mismatch)
+  printf '%s\n' "- project [no-mistakes] base=dev path=$case_dir/project - test project (added 2026-08-14)" > "$case_dir/data/projects.md"
+  add_gh_mock "$case_dir" CLEAN main
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/106 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "registry-base-mismatch: should refuse"
+  assert_contains "$out" "WRONG BASE BRANCH" "registry-base-mismatch: should name the mismatch"
+  assert_contains "$out" "dev" "registry-base-mismatch: should name the registry base"
+  assert_absent "$case_dir/state/task-x1.check.sh" "registry-base-mismatch: poll must not be armed"
+  pass "PR targeting a branch other than the resolved registry base is refused"
+}
+
+test_unregistered_project_path_refuses() {
+  local case_dir rc out
+  case_dir=$(make_case unregistered-path)
+  printf '%s\n' '- other [no-mistakes] path=/nowhere - unrelated project (added 2026-08-14)' > "$case_dir/data/projects.md"
+  add_gh_mock "$case_dir" CLEAN main
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/107 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "unregistered-path: should refuse"
+  assert_contains "$out" "cannot be resolved" "unregistered-path: should name the unresolvable project"
+  assert_absent "$case_dir/state/task-x1.check.sh" "unregistered-path: poll must not be armed"
+  pass "an unresolvable project path refuses instead of silently falling back"
 }
 
 test_stacked_base_armed_when_declared_parent_exists() {
@@ -301,6 +340,8 @@ STUBEOF
 
 test_dirty_merge_state_refused
 test_base_branch_mismatch_refused
+test_registry_base_mismatch_refused
+test_unregistered_project_path_refuses
 test_stacked_base_armed_when_declared_parent_exists
 test_stacked_base_mismatch_refused
 test_stacked_base_missing_parent_refused

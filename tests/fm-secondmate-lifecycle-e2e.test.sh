@@ -49,8 +49,8 @@ setup_world() {
   fm_git_add_origin "$HOME_DIR/projects/beta" "$TMP_ROOT/remotes/beta.git"
   fm_git_add_origin "$HOME_DIR/projects/gamma" "$TMP_ROOT/remotes/gamma.git"
   cat > "$HOME_DIR/data/projects.md" <<EOF
-- alpha [direct-PR +yolo] - alpha project (added 2026-06-22)
-- beta [direct-PR] - beta project (added 2026-06-22)
+- alpha [direct-PR +yolo] path=$TMP_ROOT/alpha-real - alpha project (added 2026-06-22)
+- beta [direct-PR] base=main - beta project (added 2026-06-22)
 - gamma - gamma project (added 2026-06-22)
 EOF
   ALPHA_ORIGIN=$(git -C "$HOME_DIR/projects/alpha" remote get-url origin)
@@ -106,6 +106,10 @@ phase_seed() {
   [ "$(FM_HOME="$SUB" "$ROOT/bin/fm-project-mode.sh" beta)" = "direct-PR off" ] \
     || fail "beta delivery mode not preserved in the subhome"
   FM_HOME="$HOME_DIR" "$ROOT/bin/fm-home-seed.sh" validate >/dev/null || fail "registry validation failed after seed"
+
+  # Parent home-local path= is stripped during provisioning; base= is preserved.
+  assert_no_grep 'path=' "$SUB/data/projects.md" "parent home-local path= leaked into the subhome registry"
+  assert_grep 'base=main' "$SUB/data/projects.md" "parent base= was not preserved in the subhome registry"
 
   pass "seed: registry scope+projects, charter copied, clones+origins, no-mistakes init in subhome only"
 }
