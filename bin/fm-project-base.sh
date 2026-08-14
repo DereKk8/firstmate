@@ -11,6 +11,11 @@
 # base=<branch> is an optional per-project field.
 # When present it is the authoritative expected base, winning over any
 # repo-default-branch inference.
+#
+# path=<absolute-real-dir> is an optional per-project field for a clone that
+# lives outside projects/ (a real-path clone). When present it is the
+# authoritative path identity for --path lookups, so a basename collision can
+# never silently resolve the wrong project.
 # Usage: fm-project-base.sh <project-name>
 #        fm-project-base.sh --path <project-directory>
 set -eu
@@ -55,6 +60,18 @@ registry_base() {
   ' "$REG"
 }
 
+registry_path_field() {
+  awk -v n="$1" '
+    $1=="-" && $2==n {
+      for (i=3; i<=NF; i++) {
+        if ($i ~ /^path=/ && length($i) > 5) {
+          print substr($i, 6); exit
+        }
+      }
+    }
+  ' "$REG"
+}
+
 if [ "$PATH_MODE" -eq 0 ]; then
   registry_base "$NAME"
   exit 0
@@ -66,7 +83,7 @@ PROJECT_PATH_REAL=$(cd "$PROJECT_PATH" 2>/dev/null && pwd -P) || {
 }
 
 registry_path_matches() {
-  local name=$1 line=$2 candidate candidate_real suffix
+  local name=$1 candidate candidate_real registered_path registered_real
   for candidate in "$FM_HOME/projects/$name" "$FM_ROOT/projects/$name"; do
     if [ -d "$candidate" ] && candidate_real=$(cd "$candidate" 2>/dev/null && pwd -P) \
       && [ "$candidate_real" = "$PROJECT_PATH_REAL" ]; then
@@ -79,15 +96,12 @@ registry_path_matches() {
   case "$PROJECT_PATH_REAL" in
     */projects/"$name") return 0 ;;
   esac
-  [ "$(basename "$PROJECT_PATH_REAL")" = "$name" ] && return 0
-  case "$line" in
-    *"$PROJECT_PATH_REAL"*)
-      suffix=${line#*"$PROJECT_PATH_REAL"}
-      case "$suffix" in
-        ''|' '*|'('*|')'*|','*|';'*) return 0 ;;
-      esac
-      ;;
-  esac
+  registered_path=$(registry_path_field "$name")
+  if [ -n "$registered_path" ] \
+    && registered_real=$(cd "$registered_path" 2>/dev/null && pwd -P) \
+    && [ "$registered_real" = "$PROJECT_PATH_REAL" ]; then
+    return 0
+  fi
   return 1
 }
 
@@ -98,7 +112,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     '- '*)
       name=${line#- }
       name=${name%% *}
-      if registry_path_matches "$name" "$line"; then
+      if registry_path_matches "$name"; then
         matches=$((matches + 1))
         matched_base=$(registry_base "$name")
       fi

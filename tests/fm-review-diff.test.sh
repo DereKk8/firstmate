@@ -28,7 +28,7 @@ make_case() {
   local name=$1 case_dir
   case_dir="$TMP_ROOT/$name"
   mkdir -p "$case_dir/state" "$case_dir/data"
-  printf '%s\n' '- project [no-mistakes] base=main - test project (added 2026-08-14)' > "$case_dir/data/projects.md"
+  printf '%s\n' "- project [no-mistakes] base=main path=$case_dir/project - test project (added 2026-08-14)" > "$case_dir/data/projects.md"
 
   git init -q --bare "$case_dir/origin.git"
   git -C "$case_dir/origin.git" symbolic-ref HEAD refs/heads/main
@@ -69,7 +69,7 @@ make_real_path_case() {
   git clone -q "$case_dir/origin.git" "$case_dir/aide-body"
   git -C "$case_dir/aide-body" remote set-head origin main 2>/dev/null || true
   git -C "$case_dir/aide-body" worktree add -q -b fm/task-x1 "$case_dir/wt" origin/dev
-  printf '%s\n' "- aide-body [no-mistakes] base=dev - clone at $case_dir/aide-body (added 2026-08-14)" > "$case_dir/data/projects.md"
+  printf '%s\n' "- aide-body [no-mistakes] base=dev path=$case_dir/aide-body - real-path clone (added 2026-08-14)" > "$case_dir/data/projects.md"
 
   touch "$case_dir/state/.last-watcher-beat"
   printf '%s\n' "$case_dir"
@@ -178,7 +178,7 @@ test_projects_symlink_non_main_base_uses_registry() {
 test_pr_without_authoritative_or_registry_base_refuses() {
   local case_dir out err rc
   case_dir=$(make_case missing-pr-base)
-  printf '%s\n' '- project [no-mistakes] - test project without an explicit base (added 2026-08-14)' > "$case_dir/data/projects.md"
+  printf '%s\n' "- project [no-mistakes] path=$case_dir/project - test project without an explicit base (added 2026-08-14)" > "$case_dir/data/projects.md"
   write_task_meta "$case_dir" "pr=https://github.com/example/repo/pull/9"
 
   set +e
