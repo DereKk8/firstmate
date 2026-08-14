@@ -2,14 +2,17 @@
 # Review a crewmate branch against the authoritative base.
 #
 # Pooled project clones do not keep their local default branch current, so this
-# helper compares remote-backed projects against origin/<default> after fetching
-# the default branch, and local-only projects against the local default branch.
-# When state/<id>.meta records pr= (URL or number) for an open PR, the compare
-# side is ALWAYS a freshly fetched refs/pull/<n>/head by default so review stays
-# current after no-mistakes fix rounds push to the PR. A recorded pr_head= is
-# only a fallback when fetch fails (stale recorded SHAs must never win over a
-# reachable remote PR head). If neither PR head can be resolved, fall back to
-# the local branch with a warning. Without pr=, compare the local branch.
+# helper compares remote-backed projects against the registered base after
+# fetching it, and local-only projects against the registered or local base.
+# A project must resolve to exactly one data/projects.md entry before any base
+# is chosen. An explicit registry base wins unless a reachable GitHub PR reports
+# a different actual base. When state/<id>.meta records pr= (URL or number) for
+# an open PR, the compare side is ALWAYS a freshly fetched refs/pull/<n>/head by
+# default so review stays current after no-mistakes fix rounds push to the PR.
+# A recorded pr_head= is only a fallback when fetch fails (stale recorded SHAs
+# must never win over a reachable remote PR head). If neither PR head can be
+# resolved, fall back to the local branch with a warning. Without pr=, compare
+# the local branch.
 # Usage: fm-review-diff.sh <task-id> [--stat]
 #   --stat prints only the stat summary; default prints stat summary plus full diff.
 set -eu
@@ -65,7 +68,12 @@ default_branch() {
   return 1
 }
 
-DEFAULT=$(default_branch) || { echo "error: cannot determine default branch for $PROJ; expected origin/HEAD, main, or master" >&2; exit 1; }
+REGISTRY_BASE=$(
+  "$FM_ROOT/bin/fm-project-base.sh" --path "$PROJ"
+) || {
+  echo "error: cannot resolve a registered base for project '$PROJ'" >&2
+  exit 1
+}
 
 BRANCH="fm/$ID"
 if ! git -C "$WT" rev-parse --verify --quiet "refs/heads/$BRANCH" >/dev/null; then
@@ -122,27 +130,75 @@ resolve_pr_head() {
   return 1
 }
 
+resolve_pr_base() {
+  local pr_url=$1 remote base
+  case "$pr_url" in
+    https://github.com/*/pull/[0-9]*) ;;
+    *) return 1 ;;
+  esac
+  remote=$(git -C "$WT" remote get-url origin 2>/dev/null || true)
+  case "$remote" in
+    *github.com*) ;;
+    *) return 1 ;;
+  esac
+  command -v gh >/dev/null 2>&1 || return 1
+  base=$(gh pr view "$pr_url" --json baseRefName --jq .baseRefName 2>/dev/null) || return 1
+  [ -n "$base" ] || return 1
+  git -C "$WT" check-ref-format "refs/heads/$base" >/dev/null 2>&1 || return 1
+  printf '%s' "$base"
+}
+
 PR_URL=$(grep '^pr=' "$META" | tail -1 | cut -d= -f2- || true)
 PR_HEAD_RECORDED=$(grep '^pr_head=' "$META" | tail -1 | cut -d= -f2- || true)
 COMPARE_REF=$BRANCH
+BASE_BRANCH=$REGISTRY_BASE
+PR_BASE_RESOLVED=0
 if [ -n "$PR_URL" ]; then
   if PR_HEAD=$(resolve_pr_head "$PR_URL" "$PR_HEAD_RECORDED"); then
     COMPARE_REF=$PR_HEAD
   else
     echo "warning: PR head unavailable; diff may lag the open PR (using local branch $BRANCH)" >&2
   fi
+  if PR_BASE=$(resolve_pr_base "$PR_URL"); then
+    BASE_BRANCH=$PR_BASE
+    PR_BASE_RESOLVED=1
+  fi
+  if [ "$PR_BASE_RESOLVED" -eq 0 ] && [ -z "$REGISTRY_BASE" ]; then
+    echo "error: actual PR base is unavailable and project '$PROJ' has no registered base" >&2
+    exit 1
+  fi
 fi
 
-if git -C "$PROJ" remote get-url origin >/dev/null 2>&1; then
+if [ -z "$BASE_BRANCH" ]; then
+  DEFAULT=$(default_branch) || {
+    echo "error: cannot determine a base for registered project '$PROJ'; expected origin/HEAD, main, or master" >&2
+    exit 1
+  }
+  BASE_BRANCH=$DEFAULT
+fi
+
+git -C "$WT" check-ref-format "refs/heads/$BASE_BRANCH" >/dev/null 2>&1 || {
+  echo "error: invalid base branch '$BASE_BRANCH' for project '$PROJ'" >&2
+  exit 1
+}
+
+if git -C "$WT" remote get-url origin >/dev/null 2>&1; then
   # Update the remote-tracking ref itself; a bare single-branch fetch can leave
-  # origin/<default> stale on some Git versions and only refresh FETCH_HEAD.
-  git -C "$WT" fetch origin "+refs/heads/$DEFAULT:refs/remotes/origin/$DEFAULT" --quiet
-  BASE="origin/$DEFAULT"
+  # origin/<base> stale on some Git versions and only refresh FETCH_HEAD.
+  if ! git -C "$WT" fetch origin \
+    "+refs/heads/$BASE_BRANCH:refs/remotes/origin/$BASE_BRANCH" --quiet; then
+    echo "error: cannot fetch base '$BASE_BRANCH' for project '$PROJ'" >&2
+    exit 1
+  fi
+  BASE="origin/$BASE_BRANCH"
 else
-  BASE="$DEFAULT"
+  BASE="$BASE_BRANCH"
 fi
 
-git -C "$WT" rev-parse --verify --quiet "$BASE^{commit}" >/dev/null || { echo "error: base $BASE does not exist in $WT" >&2; exit 1; }
+git -C "$WT" rev-parse --verify --quiet "$BASE^{commit}" >/dev/null || {
+  echo "error: base $BASE does not exist for project '$PROJ'" >&2
+  exit 1
+}
 git -C "$WT" rev-parse --verify --quiet "$COMPARE_REF^{commit}" >/dev/null || { echo "error: compare ref $COMPARE_REF does not resolve in $WT" >&2; exit 1; }
 
 echo "diff base: $BASE"
