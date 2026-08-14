@@ -103,6 +103,34 @@ EOF
   pass "fm-project-base.sh: empty base= target prints nothing"
 }
 
+test_base_in_description_not_parsed() {
+  local home out
+  home="$TMP_ROOT/desc-base-home"
+  mkdir -p "$home/data"
+  cat > "$home/data/projects.md" <<'EOF'
+- proj [no-mistakes] - docs mention base=main but no structured base (added 2026-07-01)
+EOF
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" proj) || fail "should exit 0"
+  [ -z "$out" ] || fail "base= inside description prose must not parse, got '$out'"
+  pass "fm-project-base.sh: base= in description prose is not parsed"
+}
+
+test_path_in_description_not_parsed() {
+  local home project out rc
+  home="$TMP_ROOT/desc-path-home"
+  project="$home/real/proj"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' "- proj [no-mistakes] - clone moved to path=$home/real/proj (added 2026-07-01)" > "$home/data/projects.md"
+  set +e
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "path= inside description prose must not resolve the identity"
+  assert_contains "$out" "cannot be resolved" \
+    "path= inside description prose should refuse instead of resolving"
+  pass "fm-project-base.sh: path= in description prose is not parsed"
+}
+
 test_path_explicit_base() {
   local home project out
   home="$TMP_ROOT/path-home"
@@ -188,6 +216,8 @@ test_no_registry_prints_nothing
 test_legacy_no_brackets_prints_nothing
 test_explicit_base_after_brackets
 test_explicit_base_prints_nothing
+test_base_in_description_not_parsed
+test_path_in_description_not_parsed
 test_path_explicit_base
 test_path_unregistered_refuses
 test_path_basename_collision_refuses

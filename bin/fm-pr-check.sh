@@ -172,8 +172,12 @@ if [ "$PROVIDER" = github ]; then
     # The registry base=<branch> is the authoritative expected target for
     # projects that do not accept PRs against the repo default (e.g. aide-*
     # repos target dev, not main). When set it must match; when unset the
-    # repo's true remote default applies.
-    EXPECTED_BASE=$("$FM_ROOT/bin/fm-project-base.sh" "$(basename "$PROJ")" 2>/dev/null || true)
+    # repo's true remote default applies. The project is resolved by exact
+    # canonical path identity only, never by a loose basename, so a real-path
+    # clone whose directory name differs from its registry name still resolves
+    # its own base, and an unresolvable path refuses instead of silently
+    # falling back to the repo default.
+    EXPECTED_BASE=$("$FM_ROOT/bin/fm-project-base.sh" --path "$PROJ")
     if [ -n "$EXPECTED_BASE" ] && [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$EXPECTED_BASE" ]; then
       REFUSE=1
       REASONS="${REASONS}${REASONS:+$'\n'}  - WRONG BASE BRANCH: PR targets '${PR_BASE}' but project registry expects '${EXPECTED_BASE}' (this project does NOT accept PRs against '${PR_BASE}'; re-open the PR targeting '${EXPECTED_BASE}')"

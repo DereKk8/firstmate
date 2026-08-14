@@ -52,6 +52,7 @@ registry_base() {
   awk -v n="$1" '
     $1=="-" && $2==n {
       for (i=3; i<=NF; i++) {
+        if ($i == "-") break
         if ($i ~ /^base=/ && length($i) > 5) {
           print substr($i, 6); exit
         }
@@ -64,6 +65,7 @@ registry_path_field() {
   awk -v n="$1" '
     $1=="-" && $2==n {
       for (i=3; i<=NF; i++) {
+        if ($i == "-") break
         if ($i ~ /^path=/ && length($i) > 5) {
           print substr($i, 6); exit
         }

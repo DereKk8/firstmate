@@ -60,6 +60,19 @@ A `no-mistakes` or `no-mistakes-prod-only` project must have an `origin` remote 
 A `direct-PR` project needs an `origin` remote but skips no-mistakes initialization.
 A `local-only` project may have no remote and skips no-mistakes initialization.
 
+### External clone path identity
+
+When the captain approves a clone that lives outside `projects/` (a real-path clone), record its identity in the registry so base resolution can never match it by a loose directory basename.
+Write a `path=<absolute-real-dir>` field between the mode bracket and the ` - ` description separator, using the physically resolved absolute path (e.g. `path=/home/captain/work/aide-brain`), never a symlinked or relative spelling:
+
+```
+- <name> [<mode>] path=<absolute-real-dir> - <desc> (added <date>)
+```
+
+Derive that path from the clone's real location (`pwd -P`), so it exactly equals the canonical path `fm-project-base.sh --path` compares against.
+Keep the project's ordinary `projects/<name>` clone absent or distinct, and never add a `path=` for a clone that lives under this home's `projects/`, where the managed location is already the authoritative identity.
+Preserve every existing registry entry's meaning: adding a `path=` field to a new entry, or leaving a legacy entry untouched, never reinterprets or migrates an existing line.
+
 ## Create a project
 
 Creating a GitHub repository is outward-facing.
