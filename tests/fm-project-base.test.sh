@@ -146,6 +146,40 @@ test_path_basename_collision_refuses() {
   pass "fm-project-base.sh: basename collision refuses instead of matching the wrong project"
 }
 
+test_path_foreign_projects_subdir_refuses() {
+  local home project out rc
+  home="$TMP_ROOT/path-foreign-home"
+  project="$home/elsewhere/projects/aide-body"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' '- aide-body [no-mistakes] base=dev - the canonical clone (added 2026-07-01)' > "$home/data/projects.md"
+  set +e
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "a foreign projects/<name> subdir must refuse, not resolve the wrong base"
+  assert_contains "$out" "project '$project' cannot be resolved" \
+    "foreign-projects refusal should name the queried path"
+  pass "fm-project-base.sh: a foreign projects/ subdirectory refuses instead of resolving"
+}
+
+test_path_stale_path_field_refuses_with_remedy() {
+  local home project out rc
+  home="$TMP_ROOT/path-stale-home"
+  project="$home/real/aide-body"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' "- aide-body [no-mistakes] base=dev path=$home/old/aide-body - moved real-path clone (added 2026-07-01)" > "$home/data/projects.md"
+  set +e
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "a stale path= field must refuse, not silently fall back"
+  assert_contains "$out" "registry entry 'aide-body' has path=$home/old/aide-body" \
+    "stale-path refusal should name the stale path= field"
+  assert_contains "$out" "update $home/data/projects.md" \
+    "stale-path refusal should point at the registry to update"
+  pass "fm-project-base.sh: a stale path= field refuses with a precise remedy"
+}
+
 test_explicit_base_extracted
 test_yolo_entry_extracts_base
 test_unset_base_prints_nothing
@@ -157,3 +191,5 @@ test_explicit_base_prints_nothing
 test_path_explicit_base
 test_path_unregistered_refuses
 test_path_basename_collision_refuses
+test_path_foreign_projects_subdir_refuses
+test_path_stale_path_field_refuses_with_remedy
