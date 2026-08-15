@@ -161,6 +161,7 @@ test_task_worktree_pushes_its_own_branch() {
   git -C "$remote" init --bare -q
   git -C "$proj" remote add origin "$remote"
   git -C "$proj" push -qu origin dev
+  git -C "$remote" symbolic-ref HEAD refs/heads/dev
   git -C "$proj" branch --set-upstream-to=origin/dev dev >/dev/null
   git -C "$proj" config push.default upstream
   git -C "$proj" worktree add --quiet -b "fm/$id" "$wt" dev

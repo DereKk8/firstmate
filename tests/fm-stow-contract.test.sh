@@ -21,12 +21,14 @@ test_recurring_startup_memory_curation_contract() {
   local reset="$ROOT/.agents/skills/reset-window/SKILL.md"
   local sync="$ROOT/.agents/skills/syncfirstmate/SKILL.md"
 
-  assert_grep 'archive each editable existing memory file verbatim' "$stow" \
-    "stow no longer archives memory before curation"
-  assert_grep 'Audit the archived content section by section' "$stow" \
-    "stow no longer requires a section-by-section retention audit"
-  assert_grep 'advisory review trigger, not a deletion target' "$stow" \
-    "stow treats the memory threshold as a hard deletion budget"
+  assert_grep 'Read every current memory file completely' "$stow" \
+    "stow no longer reads all memory before curation"
+  assert_grep 'Build one whole-file retention plan before editing' "$stow" \
+    "stow no longer plans retention before editing"
+  assert_grep 'Stale never means deleted' "$stow" \
+    "stow no longer preserves stale knowledge in the cold archive"
+  assert_grep 'Finish at or below the effective budget, or open a concrete captain decision before ending the pass' "$stow" \
+    "stow no longer resolves an over-budget memory pass safely"
   # shellcheck disable=SC2016 # The literal backticks are part of the skill contract.
   assert_grep 'Invoke `/stow` before writing the continuation note' "$reset" \
     "reset no longer requires startup-memory curation"
@@ -37,7 +39,7 @@ test_recurring_startup_memory_curation_contract() {
   # shellcheck disable=SC2016 # The literal backticks are part of the skill contract.
   assert_grep 'recommend `/stow` before the next reset' "$sync" \
     "weekly sync no longer recommends the curation owner"
-  pass "startup-memory curation is archived, audited, and wired to reset and weekly review"
+  pass "startup-memory curation plans, archives, and resolves budget state before reset and weekly review"
 }
 
 test_agents_backlog_task_note_contract() {
