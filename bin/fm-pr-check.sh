@@ -19,6 +19,8 @@ STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
 
 # shellcheck source=bin/fm-pr-lib.sh
 . "$SCRIPT_DIR/fm-pr-lib.sh"
+# shellcheck source=bin/fm-wake-lib.sh
+. "$SCRIPT_DIR/fm-wake-lib.sh"
 
 if [ "$#" -ne 2 ]; then
   echo "error: invalid PR check request" >&2
@@ -39,6 +41,20 @@ NUMBER=$FM_PR_NUMBER
 pr_check_refuse() {  # <message>
   echo "pr-check: REFUSED: $1" >&2
   exit 1
+}
+
+# Detect the no-mistakes pipeline's canonical "## What Changed" bulleted
+# section. Real merged no-mistakes PRs freely carry other sections around it
+# (Intent, Risk Assessment, Testing, per-stage Pipeline detail), so this only
+# requires the heading to exist and be followed by a markdown bullet list.
+pr_check_what_changed_bulleted() {  # <body>
+  printf '%s\n' "$1" | awk '
+    /^## What Changed[ \t]*$/ { heading = 1; next }
+    heading && /^[ \t]*$/ { next }
+    heading && /^-[ \t]/ { bulleted = 1; heading = 0; next }
+    { heading = 0 }
+    END { exit(bulleted ? 0 : 1) }
+  '
 }
 
 # Task-derived paths are constructed only after the canonical ID validation.
@@ -92,13 +108,30 @@ fi
 if [ "$PROVIDER" = github ]; then
   PR_MERGE_STATE=""
   PR_BASE=""
+  PR_BODY=""
   PR_MERGE_STATE=$(gh pr view "$URL" --json mergeStateStatus -q .mergeStateStatus 2>/dev/null) \
     || pr_check_refuse "failed to fetch merge state for $URL from GitHub"
   PR_BASE=$(gh pr view "$URL" --json baseRefName -q .baseRefName 2>/dev/null) \
     || pr_check_refuse "failed to fetch base branch for $URL from GitHub"
+  PR_BODY=$(gh pr view "$URL" --json body -q .body 2>/dev/null) \
+    || pr_check_refuse "failed to fetch PR body for $URL from GitHub"
 
   REFUSE=0
   REASONS=""
+
+  MODE=""
+  if [ -f "$META" ]; then
+    MODE=$(grep '^mode=' "$META" | tail -1 | cut -d= -f2- || true)
+  fi
+  if [ "$MODE" = "no-mistakes" ]; then
+    if [ -z "$PR_BODY" ]; then
+      REFUSE=1
+      REASONS="${REASONS}${REASONS:+$'\n'}  - PR body is empty, but task mode=no-mistakes always generates one"
+    elif ! pr_check_what_changed_bulleted "$PR_BODY"; then
+      REFUSE=1
+      REASONS="${REASONS}${REASONS:+$'\n'}  - PR body has no '## What Changed' bulleted section"
+    fi
+  fi
 
   # Merge state: DIRTY means the PR cannot cleanly merge.
   if [ "$PR_MERGE_STATE" = "DIRTY" ]; then
@@ -177,15 +210,26 @@ fi
 # HOW to arm it safely: atomic meta rewrite plus a byte-static watcher check
 # script, so no per-task data is ever interpolated into shell source.
 META_TMP=
+META_LOCK=
+META_LOCK_HELD=0
 pr_check_cleanup() {
   fm_pr_poll_cleanup
   [ -z "$META_TMP" ] || rm -f -- "$META_TMP"
+  if [ "$META_LOCK_HELD" = 1 ]; then
+    fm_lock_release "$META_LOCK" || true
+    META_LOCK_HELD=0
+  fi
 }
 trap pr_check_cleanup EXIT
 trap 'exit 1' HUP INT TERM
 fm_pr_poll_prepare "$STATE" "$ID" "$PROVIDER" "$URL" "$HOST" "$PROJECT_PATH" "$NUMBER" "$SCRIPT_DIR/fm-pr-poll.sh" \
   || { echo "error: could not prepare PR poll" >&2; exit 1; }
 
+META_LOCK=$(fm_meta_lock_path "$META") || exit 1
+fm_lock_acquire_wait "$META_LOCK"
+META_LOCK_HELD=1
+[ -f "$META" ] && [ ! -L "$META" ] && [ "$(fm_pr_file_link_count "$META")" = 1 ] \
+  || { echo "error: task metadata is unavailable" >&2; exit 1; }
 META_DEVICE=$(fm_pr_file_device "$META") || exit 1
 STATE_DEVICE=$(fm_pr_file_device "$STATE") || exit 1
 [ "$META_DEVICE" = "$STATE_DEVICE" ] || { echo "error: task metadata is unavailable" >&2; exit 1; }
@@ -212,6 +256,8 @@ fm_pr_metadata_identity_parse "$META" || exit 1
 [ "$FM_PR_META_PROVIDER" = "$PROVIDER" ] && [ "$FM_PR_META_URL" = "$URL" ] \
   && [ "$FM_PR_META_HOST" = "$HOST" ] && [ "$FM_PR_META_PATH" = "$PROJECT_PATH" ] \
   && [ "$FM_PR_META_NUMBER" = "$NUMBER" ] || exit 1
+fm_lock_release "$META_LOCK"
+META_LOCK_HELD=0
 
 fm_pr_poll_publish_prepared || {
   echo "error: could not publish PR poll" >&2
