@@ -53,8 +53,8 @@ test_key_positions_and_malformed_input() {
 
   grep -F 'task-keys [key=before] needs-decision: canonical position' "$out" >/dev/null \
     || fail "a pre-colon key did not remain open under its intended key"
-  grep -F 'task-keys [key=after] needs-decision: [key=after] historical position' "$out" >/dev/null \
-    || fail "a post-colon key did not remain open under its intended key"
+  grep -F 'task-keys [key=after] needs-decision: historical position' "$out" >/dev/null \
+    || fail "a post-colon key did not remain open with its consumed key token stripped"
   grep -F 'task-keys needs-decision: no key defaults' "$out" >/dev/null \
     || fail "an unkeyed decision did not use the default key"
   if grep -F 'malformed input' "$out" >/dev/null; then

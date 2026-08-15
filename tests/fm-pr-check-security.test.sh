@@ -2260,7 +2260,9 @@ test_direct_registration_refreshes_v1_x_shim() {
     dir=$(make_case "direct-registration-x-transition-$marker_kind")
     state="$dir/home/state"
     shim="$state/x-watch.check.sh"
-    fm_write_meta "$state/task-a.meta" 'window=fm-task-a'
+    fm_write_meta "$state/task-a.meta" \
+      'window=fm-task-a' \
+      "project=$dir/project"
     write_v1_x_shim "$shim" "$dir/home" "$dir/root"
     chmod 0755 "$shim"
     case "$marker_kind" in
@@ -2299,7 +2301,9 @@ test_direct_registration_refreshes_v1_x_shim() {
   dir=$(make_case direct-registration-x-lookalike)
   state="$dir/home/state"
   shim="$state/x-watch.check.sh"
-  fm_write_meta "$state/task-a.meta" 'window=fm-task-a'
+  fm_write_meta "$state/task-a.meta" \
+    'window=fm-task-a' \
+    "project=$dir/project"
   write_v1_x_shim "$shim" "$dir/home" "$dir/root"
   printf '# unrecognized version\n' >> "$shim"
   chmod 0755 "$shim"
