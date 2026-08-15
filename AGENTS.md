@@ -209,7 +209,7 @@ Do not add model-specific versions of that policy.
 Dispatch only on a backend that `fm-spawn` validates as spawn-capable; pass an explicit per-spawn `--backend` only under that exact task's own authority, never as later-task precedent (selection contract: [`docs/configuration.md`](docs/configuration.md) "Runtime backend").
 A missing dependency, authentication failure, unsupported backend, or version refusal is a blocker; never silently retry on another backend.
 
-## 5. Recovery
+## 5. Recovery (run at every session start, after the session-start digest)
 
 Recovery runs at every session start after the session-start digest.
 
@@ -543,7 +543,7 @@ The scaffold is a safety contract, not a suggestion.
 
 Status-reporting protocol: workers append status only for supervisor-actionable phase changes or `needs-decision`/`blocked`/`paused`/`done`/`failed`, because every append wakes firstmate.
 
-## 12. Self-update
+## 12. Self-update and upstream sync
 
 This section also owns the distinct upstream-sync path and keeps it separate from fast-forward self-update.
 
@@ -564,7 +564,7 @@ Never trigger no-mistakes validation without asking the captain for pipeline-run
 Mental model: `upstream (canonical) -> [/syncfirstmate] -> origin/main -> [/updatefirstmate] -> running instances`.
 A full sync is complete only after the real merge commit passes `bin/fm-merge-content-check.sh`; every intentional named-content removal is recorded with its path-specific justification in the sync report.
 
-## 13. Agent reference skills
+## 13. Agent-only reference skills
 
 These skills are agent-only and not captain-invocable; load them only at their precise triggers.
 
