@@ -53,6 +53,18 @@ test_fm_home_parameterization() {
   home_two="$TMP_ROOT/home-two"
   mkdir -p "$home_one/data" "$home_one/state" "$home_two/data" "$home_two/state"
   printf '%s\n' '- app [local-only +yolo] - test app (added 2026-06-22)' > "$home_one/data/projects.md"
+  printf '%s\n' '- project [no-mistakes] base=main - fixture (added 2026-06-22)' >> "$home_one/data/projects.md"
+  mkdir -p "$home_one/project" "$home_one/bin"
+  cat > "$home_one/bin/gh" <<'SH'
+#!/usr/bin/env bash
+case " $* " in
+  *" headRefOid "*) printf '0123456789abcdef0123456789abcdef01234567\n' ;;
+  *" mergeStateStatus "*) printf 'CLEAN\n' ;;
+  *" baseRefName "*) printf 'main\n' ;;
+  *" body "*) printf '## What Changed\n- fixture change\n' ;;
+esac
+SH
+  chmod +x "$home_one/bin/gh"
 
   out=$(FM_HOME="$home_one" "$ROOT/bin/fm-project-mode.sh" app)
   [ "$out" = "local-only on" ] || fail "fm-project-mode did not read projects.md from FM_HOME"
@@ -73,8 +85,9 @@ test_fm_home_parameterization() {
   brief="$home_one/data/task-c/brief.md"
   grep -F ">> '$home_one/state/task-c.status'" "$brief" >/dev/null || fail "secondmate brief did not shell-quote FM_HOME state path"
 
-  printf 'project=x\n' > "$home_one/state/task-a.meta"
-  FM_HOME="$home_one" FM_GUARD_GRACE=999999 "$ROOT/bin/fm-pr-check.sh" task-a https://github.com/example/repo/pull/1 >/dev/null 2>/dev/null \
+  printf 'project=%s\n' "$home_one/project" > "$home_one/state/task-a.meta"
+  FM_HOME="$home_one" PATH="$home_one/bin:$PATH" FM_GUARD_GRACE=999999 \
+    "$ROOT/bin/fm-pr-check.sh" task-a https://github.com/example/repo/pull/1 >/dev/null 2>/dev/null \
     || fail "fm-pr-check failed under FM_HOME"
   [ -f "$home_one/state/task-a.check.sh" ] || fail "pr check was not written under FM_HOME/state"
   [ ! -e "$home_two/state/task-a.check.sh" ] || fail "pr check leaked into another home"
