@@ -67,12 +67,18 @@ make_case() {
   dir="$TMP_ROOT/$name"
   fakebin="$dir/fakebin"
   fake_root="$dir/root"
-  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/wt" "$fakebin" "$fake_root/bin"
+  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/project" "$dir/wt" "$fakebin" "$fake_root/bin"
+  printf '%s\n' '- project [no-mistakes] base=main - fixture (added 2026-07-11)' > "$dir/home/data/projects.md"
   cat > "$fake_root/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"
 SH
   chmod +x "$fake_root/bin/fm-guard.sh"
+  cat > "$fake_root/bin/fm-project-base.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'main\n'
+SH
+  chmod +x "$fake_root/bin/fm-project-base.sh"
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
@@ -83,6 +89,8 @@ case " $* " in
     [ "${FM_TEST_GH_SLEEP:-0}" = 0 ] || sleep "$FM_TEST_GH_SLEEP"
     printf '%s\n' "${FM_TEST_GH_STATE:-OPEN}"
     ;;
+  *" baseRefName "*) printf 'main\n' ;;
+  *" body "*) printf '## What Changed\n- fixture change\n' ;;
 esac
 SH
   cat > "$fakebin/gh-axi" <<'SH'
@@ -119,9 +127,11 @@ write_task_meta() {
 }
 
 write_poll_meta() {
-  local state=$1 id=$2 url=$3
+  local state=$1 id=$2 url=$3 project
+  project="${state%/home/state}/project"
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" \
+    "project=$project" \
     "pr=$url"
 }
 
@@ -129,6 +139,7 @@ write_ambiguous_poll() {
   local dir=$1 id=${2:-task-a}
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=fm-$id" \
+    "project=$dir/project" \
     'pr=https://github.com/o/r/pull/10' \
     'window=unexpected-after-pr'
   printf 'legacy ambiguous bytes\n' > "$dir/home/state/$id.check.sh"

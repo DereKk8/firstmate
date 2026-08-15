@@ -187,9 +187,19 @@ bool_json() {
 # the fleet grows past a few dozen records; argv is fine for small, bounded
 # values but never for anything sized off backlog or task count.
 jq_argjson_tempfile() {  # <json>
-  local f
-  f=$(mktemp "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") || return 1
-  printf '%s' "$1" > "$f"
+  local f tmpdir=${TMPDIR:-/tmp}
+  if f=$(mktemp "$tmpdir/fm-fleet-snapshot.XXXXXX" 2>/dev/null); then
+    :
+  elif command -v perl >/dev/null 2>&1; then
+    f=$(TMPDIR="$tmpdir" perl -MFile::Temp=tempfile -e '
+      my ($fh, $path) = tempfile("fm-fleet-snapshot.XXXXXX", DIR => $ENV{TMPDIR}, UNLINK => 0);
+      close $fh or exit 1;
+      print $path;
+    ' 2>/dev/null) || return 1
+  else
+    return 1
+  fi
+  printf '%s' "$1" > "$f" || { rm -f "$f"; return 1; }
   printf '%s\n' "$f"
 }
 
