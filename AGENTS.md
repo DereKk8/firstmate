@@ -555,13 +555,16 @@ Two distinct update layers exist; keep them separate.
 When the captain invokes `/updatefirstmate` or asks to update firstmate, load the `/updatefirstmate` skill.
 It performs guarded fast-forward updates of firstmate and registered secondmate homes, refreshes instructions, and never touches anything under `projects/`.
 
-**`/syncfirstmate`** - pulls new features from the canonical upstream (`kunchenguid/firstmate`) into this fork via a real merge, reconciles custom features on the merits, gates through no-mistakes, and lands via PR plus captain merge.
-When the captain invokes `/syncfirstmate` or asks to sync from upstream, load the `/syncfirstmate` skill.
-Check mode only fetches and reports the gap; full sync dispatches a worker.
+**`/refit`** - runs the four-legged periodic maintenance pass: upstream currency, ecosystem fit, startup-memory curation through `/stow`, and integrity checks.
+Upstream sync is one leg of `/refit`, not its whole purpose.
+When the captain invokes `/refit`, or uses the legacy `/syncfirstmate` alias, load the `/refit` skill.
+The default pass reports all four legs; full-sync mode retains the captain-approved real upstream merge, reconciliation, no-mistakes gate, and PR flow.
+The pass is read-only by default except for the MEMORY leg's delegation to `/stow`.
 Never merge the resulting PR without the captain's explicit word.
 Never trigger no-mistakes validation without asking the captain for pipeline-run approval and model choice first.
 
-Mental model: `upstream (canonical) -> [/syncfirstmate] -> origin/main -> [/updatefirstmate] -> running instances`.
+Mental model: `upstream (canonical) -> [/refit: currency and, when explicitly approved, full sync] -> origin/main -> [/updatefirstmate] -> running instances`.
+`/updatefirstmate` remains the separate faster operation that propagates this fork's main branch into running instances and is never absorbed by `/refit`.
 A full sync is complete only after the real merge commit passes `bin/fm-merge-content-check.sh`; every intentional named-content removal is recorded with its path-specific justification in the sync report.
 
 ## 13. Agent-only reference skills

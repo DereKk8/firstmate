@@ -1,33 +1,84 @@
 ---
-name: syncfirstmate
+name: refit
 description: >-
-  Pull canonical upstream firstmate advances into this fork, reconcile custom features on the merits, and land via PR + captain merge.
-  Use when the captain invokes /syncfirstmate (e.g. "/syncfirstmate", "sync firstmate from upstream", "pull upstream firstmate changes").
-  Default (check mode): fetches upstream and reports the gap with notable new features - no writes, no crewmate.
-  Full sync: dispatches a crewmate to merge, reconcile, and gate through no-mistakes, then waits for captain merge.
+  Run firstmate's four-legged periodic self-maintenance pass covering upstream currency, ecosystem fit, startup-memory curation, and integrity rot.
+  Use when the captain invokes /refit (e.g. "/refit", "run the refit", "weekly firstmate maintenance") or the legacy /syncfirstmate alias.
+  The default pass reports all four legs; full-sync mode adds the captain-approved upstream integration without absorbing /updatefirstmate.
 user-invocable: true
 metadata:
   internal: true
 ---
 
-# syncfirstmate
+# refit
 
-Pull new features from the canonical firstmate repo into this fork.
-This is a real merge with conflict resolution and custom-feature reconciliation, not a fast-forward.
+Run firstmate's four-legged periodic self-maintenance pass.
+Upstream sync is now ONE LEG of this maintenance pass rather than the whole thing.
+Every pass runs and reports all four legs.
+Detection is read-only by default, except that the MEMORY leg delegates its owned mutation to `/stow`.
+The pass never updates tooling, pushes, restarts daemons, or merges on its own.
 
-## Two-layer mental model
+## The four legs
 
-```
-upstream (canonical) → [/syncfirstmate: merge into fork, PR, captain merge]
-                     → origin/main
-                     → [/updatefirstmate: fast-forward running instances]
-```
+### 1. CURRENCY
 
-Keep these layers separate:
-- `/syncfirstmate` (this skill) - pulls the canonical upstream INTO this fork; real merge work; lands on `origin/main` via PR + captain merge.
-- `/updatefirstmate` (separate skill) - fast-forwards this fork's `main` into the running firstmate and secondmate homes; never touches canonical upstream.
+Run `bin/fm-upstream-check.sh` for the upstream gap.
+Run `bin/fm-external-tooling-check.sh` for version drift and its `safe-anytime` versus `needs-quiet-fleet` coordination.
+Preserve those helpers' existing behavior exactly.
+Report what new capabilities landed upstream, how far behind this fork is, and any external-tooling drift with its coordination tag.
 
-Running `/updatefirstmate` after a `/syncfirstmate` sync propagates the merged advances to live instances.
+### 2. FIT
+
+Judge capabilities newly available in the firstmate ecosystem against how this fleet actually works.
+Consider the existing flow, safety boundaries, supported tools, coordination constraints, and captain preferences before considering novelty.
+Record every material capability considered, the fleet need it would address, the evidence used, and a verdict of adopt, keep the current approach, monitor, or reject.
+"None of these are better than what we run" is a complete and valuable verdict when the comparison supports it.
+Do not recommend adoption merely because a capability is newer, more fashionable, or available upstream.
+This leg is read-only and must leave an explicit recorded verdict even when no change is recommended.
+
+### 3. MEMORY
+
+Invoke `/stow` and report stow's completion receipt as this leg's result.
+`/stow` is the sole owner of startup-memory measurement, tiered pruning, knowledge routing, archival, budget decisions, and its receipt.
+Do not restate, summarize, inline, or fork stow's protocol here.
+Do not run the startup-memory helper separately as a substitute for invoking `/stow`.
+
+### 4. INTEGRITY
+
+Detect rot that version checks cannot see and report each finding with its source and consequence.
+
+Check memory-index completeness in both directions against the startup-memory index actually consumed by `bin/fm-session-start.sh`.
+Enumerate the loader-owned startup-memory namespace from the current home before comparing it with the loader's explicit index.
+Verify that every indexed startup-memory entry resolves to an ordinary file and that every file in the startup-memory set is indexed.
+Do not count task reports, archives, or other `data/` material that the startup-memory loader does not own as startup-memory entries.
+Report missing indexed files and unindexed files separately.
+
+Check for dangling `data/` pointers by resolving path references in maintained instructions and startup-memory files against the relevant repository or home root.
+Report every missing target with the referring file and line, while distinguishing an intentionally historical archive reference from an actionable dangling pointer.
+
+Review loaded skill instructions and startup-memory entries for obvious semantic corruption, including stray-keystroke prose such as `lqun a /grilling session` and captain/product identity conflation such as `Address the captain as Oulow`.
+Report the exact source line and consequence without repairing it.
+
+Check the agent-skills repository for uncommitted or corrupted material.
+Inspect `git status --short -- .agents/skills`, `git diff --check -- .agents/skills`, every tracked skill directory, and every skill's frontmatter and path/name pairing.
+Report uncommitted files, unreadable files, malformed frontmatter, duplicate skill names, and path/name mismatches.
+This leg detects and reports by default; it never repairs the finding.
+
+## Two modes
+
+### 1. Check mode (default)
+
+Run all four legs and report all four results to the captain.
+This is the weekly heartbeat pass.
+The pass is read-only except for the `/stow` invocation owned by the MEMORY leg.
+
+In CURRENCY, run `bin/fm-upstream-check.sh` and `bin/fm-external-tooling-check.sh`.
+In FIT, compare newly available capabilities with the existing fleet flow and record the verdict even when it is to keep the current approach.
+In MEMORY, invoke `/stow` and relay its completion receipt.
+In INTEGRITY, perform both-direction memory-index checks, dangling-`data/`-pointer checks, and agent-skills repository checks.
+
+Report the upstream gap, notable upstream capabilities, external-tooling drift and coordination tags, the fit verdict, stow's receipt, and every integrity finding in plain outcomes language.
+Stop after the report.
+The captain decides whether to proceed to full-sync mode.
 
 ## Remotes
 
@@ -35,28 +86,14 @@ Running `/updatefirstmate` after a `/syncfirstmate` sync propagates the merged a
 - `upstream` - canonical (`kunchenguid/firstmate`); the source of new features.
 - `no-mistakes` - local gate remote; not used in this workflow.
 
-## Two modes
-
-### 1. Check mode (default)
-
-No crewmate, no writes to tracked files.
-This is also what the weekly heartbeat runs non-interactively.
-
-Run `bin/fm-upstream-check.sh`, `bin/fm-external-tooling-check.sh`, and `bin/fm-startup-memory-budget.sh report`.
-The external-tooling report identifies npm drift for `gh-axi`, `lavish-axi`, and `chrome-devtools-axi` as `safe-anytime`, while `no-mistakes` drift is `needs-quiet-fleet` because its update resets the shared daemon.
-The startup-memory report is read-only and its advisory review status makes the weekly check a recurring curation prompt.
-When it recommends review, recommend `/stow` before the next reset.
-Do not perform tooling updates or memory curation during check mode because those are deliberate separate actions owned by firstmate and `/stow`, respectively.
-
-Report to the captain in plain outcomes language: what new capabilities landed upstream, how far behind this fork is, any external-tooling drift with its coordination tag, and any startup-memory curation recommendation.
-Stop here.
-The captain decides whether to proceed to full sync.
-
 ### 2. Full-sync mode (captain-initiated)
 
 **Never enter full-sync mode without the captain's explicit go-ahead.**
 **Before triggering any validation, ask the captain for approval AND which model to use.**
 These are prime directive #2 and the captain's standing rule; they are not waivable.
+
+Full-sync mode adds the existing upstream integration after the four-leg pass.
+It does not absorb `/updatefirstmate`, which remains the separate faster operation that propagates this fork's main branch into running instances.
 
 #### Dispatch a crewmate
 
@@ -97,11 +134,11 @@ You are integrating new upstream advances from `upstream/main` into this fork.
 
 #### Validate the seam, not the history
 
-Every commit that reaches `main` on either side — this fork and canonical upstream — already passed the no-mistakes gate at its origin.
-A sync is therefore mostly a fast-forward of pre-validated history; re-running a full pipeline over that history re-validates already-validated commits — overkill.
+Every commit that reaches `main` on either side - this fork and canonical upstream - already passed the no-mistakes gate at its origin.
+A sync is therefore mostly a fast-forward of pre-validated history; re-running a full pipeline over that history re-validates already-validated commits - overkill.
 
 The genuinely new, never-gated surface of a sync is exactly two things:
-1. **The merge seam** — the conflict resolutions and adaptation edits where custom features absorbed incoming upstream changes.
+1. **The merge seam** - the conflict resolutions and adaptation edits where custom features absorbed incoming upstream changes.
 2. **Net-new code** written on the integration branch (new skills, helpers, AGENTS.md hooks).
 
 Validation must target that surface, not the fast-forwarded history.
@@ -112,20 +149,13 @@ Every flagged path must instead be individually justified with `--allow <path>`.
 Each justification must be one line in the worker's report or PR description and cover a deliberate, already-approved removal - never something the worker cannot explain.
 The mechanical check is in addition to the seam code review, not a replacement for it, because the human/LLM review still covers judgment calls the script cannot catch.
 
-**Optional judgment:** run the test suite over the integrated whole to catch cross-feature interaction bugs between independently validated features. Treat pre-existing, environment-caused failures that reproduce on the untouched upstream tree (e.g. a CI runner auto-installing a missing dev package and polluting a test's expected output) as noise — record them in the report; they do not block the merge.
+**Optional judgment:** run the test suite over the integrated whole to catch cross-feature interaction bugs between independently validated features.
+Treat pre-existing, environment-caused failures that reproduce on the untouched upstream tree as noise and record them in the report.
 
-Ask the captain for validation approval + model before running anything. Never merge without the captain's explicit word.
+Ask the captain for validation approval + model before running anything.
+Never merge without the captain's explicit word.
 
-After the crewmate reports `done:`, follow the normal delivery-mode gate → PR → captain-merge flow.
-
-## Weekly heartbeat
-
-Check mode runs three read-only commands:
-`bin/fm-upstream-check.sh` (git gap), `bin/fm-external-tooling-check.sh` (external-tooling drift and `safe-anytime` versus `needs-quiet-fleet` coordination), and `bin/fm-startup-memory-budget.sh report` (startup-memory curation recommendation).
-All three are designed to run non-interactively as a weekly heartbeat job.
-None writes to tracked files, updates tooling, restarts daemons, or pushes.
-All three output to stdout so the scheduler can surface them.
-The weekly schedule is wired by firstmate separately; this skill does not set it up.
+After the crewmate reports `done:`, follow the normal delivery-mode gate -> PR -> captain-merge flow.
 
 ## Safety
 

@@ -6,7 +6,7 @@
 #   - a grouped summary of notable new upstream commits since the merge-base
 #
 # READ-ONLY: never writes to tracked files, never pushes.
-# Used by /syncfirstmate check mode and the weekly heartbeat job.
+# Used by /refit check mode and the weekly heartbeat job.
 #
 # Upstream remote expected: kunchenguid/firstmate at remote name "upstream".
 # If the remote is absent or unreachable, exits non-zero with a clear message.
