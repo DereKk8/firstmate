@@ -383,9 +383,9 @@ fm_backend_endpoint_atom_valid() {  # <value>
   esac
 }
 
-# fm_backend_validate_task_cleanup_metadata: validate the cleanup-critical
-# metadata that remains meaningful after an endpoint has already disappeared.
-# On success, sets FM_BACKEND_VALIDATED_BACKEND and leaves its target empty.
+# Validate cleanup-critical metadata that remains meaningful after an endpoint
+# has already disappeared. On success, sets FM_BACKEND_VALIDATED_BACKEND and
+# leaves FM_BACKEND_VALIDATED_TARGET empty.
 fm_backend_validate_task_cleanup_metadata() {  # <meta-file> <task-id>
   local meta=$1 id=$2 backend_count backend worktree project
   FM_BACKEND_VALIDATED_BACKEND=
@@ -423,9 +423,8 @@ fm_backend_validate_task_cleanup_metadata() {  # <meta-file> <task-id>
   FM_BACKEND_VALIDATED_BACKEND=$backend
 }
 
-# fm_backend_task_endpoint_is_absent: true only for an unambiguous empty
-# window= record, which means there is no target to close. Missing, duplicate,
-# and malformed endpoint records remain invalid cleanup identities.
+# True only for one unambiguous empty window= record. Missing, duplicate, and
+# malformed endpoint records remain invalid cleanup identities.
 fm_backend_task_endpoint_is_absent() {  # <meta-file>
   local meta=$1 count
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 1
@@ -434,18 +433,44 @@ fm_backend_task_endpoint_is_absent() {  # <meta-file>
 }
 
 fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
-  local meta=$1 id=$2 window binding_count binding
-  local session pane recorded_session workspace tab terminal worktree_id surface backend
-  fm_backend_validate_task_cleanup_metadata "$meta" "$id" || return 1
-  backend=$FM_BACKEND_VALIDATED_BACKEND
+  local meta=$1 id=$2 backend_count backend window worktree project binding_count binding
+  local session pane recorded_session workspace tab terminal worktree_id surface
+  FM_BACKEND_VALIDATED_BACKEND=
+  FM_BACKEND_VALIDATED_TARGET=
+  [ -f "$meta" ] && [ ! -L "$meta" ] || {
+    echo "REFUSED: task $id has no regular endpoint metadata at $meta; preserving task state." >&2
+    return 1
+  }
+  case "$id" in ''|*[!A-Za-z0-9._-]*)
+    echo "REFUSED: task endpoint identity has an invalid task id; preserving task state." >&2
+    return 1
+  esac
   window=$(fm_backend_meta_exact_value "$meta" window) || {
     echo "REFUSED: task $id has a missing, empty, or ambiguous window endpoint; preserving task state." >&2
     return 1
   }
-  case "$window" in *$'\n'*|*$'\r'*|*$'\t'*)
+  worktree=$(fm_backend_meta_exact_value "$meta" worktree) || {
+    echo "REFUSED: task $id has a missing, empty, or ambiguous worktree identity; preserving task state." >&2
+    return 1
+  }
+  project=$(fm_backend_meta_exact_value "$meta" project) || {
+    echo "REFUSED: task $id has a missing, empty, or ambiguous project identity; preserving task state." >&2
+    return 1
+  }
+  case "$worktree$project$window" in *$'\n'*|*$'\r'*|*$'\t'*)
     echo "REFUSED: task $id has malformed endpoint metadata; preserving task state." >&2
     return 1
   esac
+  backend_count=$(grep -c '^backend=' "$meta" 2>/dev/null || true)
+  case "$backend_count" in
+    0) backend=tmux ;;
+    1) backend=$(fm_backend_meta_exact_value "$meta" backend) || backend= ;;
+    *) backend= ;;
+  esac
+  if [ -z "$backend" ] || ! fm_backend_is_known "$backend"; then
+    echo "REFUSED: task $id has a missing, ambiguous, or unknown backend identity; preserving task state." >&2
+    return 1
+  fi
   binding_count=$(grep -c '^endpoint_task_id=' "$meta" 2>/dev/null || true)
   case "$binding_count" in
     0) binding= ;;
@@ -817,19 +842,19 @@ fm_backend_busy_state() {  # <backend> <target>
   esac
 }
 
-# fm_backend_composer_state: classify the composer/input row of <target> as
+# fm_backend_composer_state: classify the composer/input area of <target> as
 # empty|pending|pending-unproven|unknown for callers that need a pre-submit
-# input guard or an adapter's conservative submit fallback. It is exposed so a
-# caller other than the send path (the away-mode daemon's supervisor-pane
-# pending-input guard, bin/fm-supervise-daemon.sh) can ask the same question
-# without duplicating per-backend composer-reading logic. tmux and herdr both
-# expose a named classifier already (fm_tmux_composer_state,
-# fm_backend_herdr_composer_state), as do orca and cmux
-# (fm_backend_orca_composer_state, fm_backend_cmux_composer_state); zellij's
-# submit path uses an internal content-diff approach with no separately named
-# classifier, so it reports unknown here - callers fall back to their own
-# policy, exactly as an unknown fm_backend_busy_state already does.
-fm_backend_composer_state() {  # <backend> <target> -> empty|pending|pending-unproven|unknown
+# input guard, a submit acknowledgement, or a launch-readiness check. It is
+# exposed so a caller other than the send path (the away-mode daemon's
+# supervisor-pane pending-input guard in bin/fm-supervise-daemon.sh, and
+# fm-spawn.sh's kimi readiness/delivery checks) can ask the same question
+# without duplicating per-backend composer reading. Every adapter's named
+# classifier is a THIN wrapper - capture plus a capability descriptor fed to
+# the one shared shape owner (bin/fm-composer-lib.sh,
+# fm_composer_classify_screen) - so no backend can hold a private shape
+# assumption; zellij's classifier reads `dump-screen --ansi`, which replaced
+# its old no-classifier content-diff reporting.
+fm_backend_composer_state() {  # <backend> <target> [expected-label] -> empty|pending|pending-unproven|unknown
   local backend=$1
   shift
   fm_backend_source "$backend" || { printf 'unknown'; return 0; }
@@ -838,6 +863,7 @@ fm_backend_composer_state() {  # <backend> <target> -> empty|pending|pending-unp
     herdr) fm_backend_herdr_composer_state "$@" ;;
     orca) fm_backend_orca_composer_state "$@" ;;
     cmux) fm_backend_cmux_composer_state "$@" ;;
+    zellij) fm_backend_zellij_composer_state "$@" ;;
     *) printf 'unknown' ;;
   esac
 }

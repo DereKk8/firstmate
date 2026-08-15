@@ -27,7 +27,7 @@ SH
   cat > "$fakebin/quota-axi" <<'SH'
 #!/usr/bin/env bash
 if [ "${1:-}" = --version ]; then
-  printf '%s\n' 'quota-axi 0.1.17 (fake)'
+  printf '%s\n' 'quota-axi 0.1.25 (fake)'
 fi
 exit 0
 SH
@@ -62,7 +62,7 @@ case "$*" in
   *display-message*'#{pane_current_command}'*) printf '%s\n' codex ;;
   *display-message*'#{pane_id}'*) printf '%s\n' '%1' ;;
   *display-message*'#{cursor_y}'*) printf '%s\n' 0 ;;
-  *capture-pane*) printf '\n' ;;
+  *capture-pane*) printf '❯\n' ;;
 esac
 exit 0
 SH
@@ -184,14 +184,10 @@ test_budget_accounting_reports_all_three_files_and_safe_failure() {
     "report did not account for absent learnings"
   assert_contains "$out" 'total_estimated_tokens=5' "report total was not the sum of all three files"
   assert_contains "$out" 'budget_status=within-budget' "report did not classify the initial total"
-  assert_contains "$out" 'curation_review=not-recommended' \
-    "report did not mark an in-threshold total as not needing curation"
 
   printf 'abcdefabcdefabcdefabcdef\n' > "$home/data/learnings.md"
   out=$(FM_HOME="$home" "$BUDGET" report)
   assert_contains "$out" 'budget_status=over-budget' "report did not surface an over-budget total"
-  assert_contains "$out" 'curation_review=recommended' \
-    "report did not make an over-threshold total an advisory curation recommendation"
 
   outside="$TMP_ROOT/accounting-outside"
   printf 'outside\n' > "$outside"

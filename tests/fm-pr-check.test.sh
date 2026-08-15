@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Behavior tests for bin/fm-pr-check.sh.
 #
-# These tests cover structured forge checks and PR poll bookkeeping. PR body
-# prose is intentionally outside this entrypoint's contract.
+# These tests cover structured forge checks, PR body conformance, and PR poll bookkeeping.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -26,6 +25,7 @@ make_case() {
 
 add_gh_mock() {
   local case_dir=$1 merge_state=$2 base_ref=$3 head_sha=${4:-aaaa1111}
+  local body=${5-$'## What Changed\n- Existing test body.'}
   cat > "$case_dir/fakebin/gh" <<STUBEOF
 #!/usr/bin/env bash
 case " \$* " in
@@ -37,6 +37,9 @@ case " \$* " in
     ;;
   *"--json headRefOid "*"-q .headRefOid"*)
     printf '%s\n' "$head_sha"
+    ;;
+  *"--json body "*"-q .body"*)
+    printf '%s\n' "$body"
     ;;
   *)
     exit 0
@@ -246,6 +249,57 @@ test_project_dir_not_found_refused() {
   pass "non-existent project directory is refused"
 }
 
+test_structure_missing_what_changed_refused() {
+  local case_dir rc out
+  case_dir=$(make_case structure-missing)
+  add_gh_mock "$case_dir" CLEAN main aaaa1111 $'## Intent\n\nFix the thing.\n\n## Summary\n- Fixed the login bug.\n\n## Testing\n- Ran the test.'
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/15 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "structure-missing: should refuse"
+  assert_contains "$out" "What Changed" "structure-missing: should name the missing section"
+  assert_absent "$case_dir/state/task-x1.check.sh" "structure-missing: poll must not be armed"
+  pass "mode=no-mistakes body without '## What Changed' is refused"
+}
+
+test_structure_direct_pr_unaffected() {
+  local case_dir rc out
+  case_dir=$(make_case structure-direct direct-PR)
+  add_gh_mock "$case_dir" CLEAN main aaaa1111 $'## Intent\n\nHand-written direct PR.'
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/16 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "structure-direct: should arm"
+  assert_present "$case_dir/state/task-x1.check.sh" "structure-direct: poll must be armed"
+  assert_not_contains "$out" "What Changed" "structure-direct: must not apply no-mistakes body gate"
+  pass "direct-PR body shape is outside the no-mistakes structure gate"
+}
+
+test_structure_empty_no_mistakes_refused() {
+  local case_dir rc out
+  case_dir=$(make_case structure-empty)
+  add_gh_mock "$case_dir" CLEAN main aaaa1111 ""
+  add_git_mock "$case_dir" main
+
+  set +e
+  out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/17 2>&1)
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "structure-empty: should refuse"
+  assert_contains "$out" "PR body is empty" "structure-empty: should name the empty body"
+  assert_absent "$case_dir/state/task-x1.check.sh" "structure-empty: poll must not be armed"
+  pass "empty no-mistakes PR body is refused"
+}
+
 add_git_fail_lsremote_mock() {
   local case_dir=$1
   cat > "$case_dir/fakebin/git" <<STUBEOF
@@ -309,4 +363,7 @@ test_bookkeeping_still_works
 test_project_missing_from_meta_refused
 test_project_dir_not_found_refused
 test_ls_remote_fails_refused
+test_structure_missing_what_changed_refused
+test_structure_direct_pr_unaffected
+test_structure_empty_no_mistakes_refused
 test_ls_remote_no_symref_refused

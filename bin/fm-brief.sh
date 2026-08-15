@@ -265,7 +265,36 @@ exit 0
 fi
 
 REPO=${POS[1]}
+BASE=$("$FM_ROOT/bin/fm-project-base.sh" "$REPO" 2>/dev/null || true)
 
+# A firstmate repository carries supervisor instructions that can confuse a
+# worker. Detect it by physical path, even when this home has no projects entry.
+IS_FIRSTMATE=0
+ROOT_REAL=$(cd "$FM_ROOT" 2>/dev/null && pwd -P) || true
+if [ -n "$ROOT_REAL" ]; then
+  FIRSTMATE_PROJ_PATH="$FM_HOME/projects/$REPO"
+  if [ -e "$FIRSTMATE_PROJ_PATH" ] && [ "$(cd "$FIRSTMATE_PROJ_PATH" 2>/dev/null && pwd -P)" = "$ROOT_REAL" ]; then
+    IS_FIRSTMATE=1
+  elif [ -e "$REPO" ] && [ "$(cd "$REPO" 2>/dev/null && pwd -P)" = "$ROOT_REAL" ]; then
+    IS_FIRSTMATE=1
+  elif [ -e "$(dirname "$ROOT_REAL")/$REPO" ] \
+    && [ "$(cd "$(dirname "$ROOT_REAL")/$REPO" 2>/dev/null && pwd -P)" = "$ROOT_REAL" ]; then
+    IS_FIRSTMATE=1
+  fi
+fi
+FIRSTMATE_DISCLAIMER=""
+if [ "$IS_FIRSTMATE" -eq 1 ]; then
+  IFS= read -r -d '' FIRSTMATE_DISCLAIMER <<'EOF' || true
+
+# Working on the firstmate repository - read this first
+
+**AGENTS.md and CLAUDE.md document the SUPERVISOR role. That role is not yours.** You are a worker.
+Never run `bin/fm-session-start.sh` or any `bin/fm-*.sh` fleet command, never acquire the fleet lock, never operate "read-only because another session holds the lock".
+A treehouse pool path, Orca-managed worktree, or any other path under a pool or scratch directory IS your isolated worktree and is NOT the primary checkout.
+Read `AGENTS.md` and `CLAUDE.md` only as documentation of the code you are changing.
+EOF
+  FIRSTMATE_DISCLAIMER=${FIRSTMATE_DISCLAIMER%$'\n'}
+fi
 
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
@@ -302,6 +331,8 @@ fi
 if [ "$KIND" = scout ]; then
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+$FIRSTMATE_DISCLAIMER
+
 # Task
 {TASK}
 
@@ -409,8 +440,24 @@ esac
 # briefs stay byte-identical to the historical Bash 5 output.
 DOD=${DOD%$'\n'}
 
+if [ -n "$BASE" ]; then
+  STEP1="1. First action: create your branch from origin/$BASE: \`git checkout -b fm/$ID origin/$BASE\`"
+  if [ "$MODE" != local-only ]; then
+    BASE_NOTE="
+
+Important: the expected PR base for this project is \`$BASE\`. Use \`--base $BASE\` when opening a PR."
+  else
+    BASE_NOTE=""
+  fi
+else
+  STEP1="1. First action: create your branch: \`git checkout -b fm/$ID\`"
+  BASE_NOTE=""
+fi
+
 cat > "$BRIEF" <<EOF
 You are a crewmate: an autonomous worker agent managed by firstmate. Work on your own; do not wait for a human.
+$FIRSTMATE_DISCLAIMER
+
 # Task
 {TASK}
 
@@ -423,7 +470,7 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
-1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
+$STEP1$SETUP2$BASE_NOTE
 
 # Rules
 $RULE1

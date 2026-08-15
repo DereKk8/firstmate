@@ -76,7 +76,7 @@ make_case() {
   local name=$1 case_dir fakebin
   case_dir="$TMP_ROOT/$name"
   fakebin="$case_dir/fakebin"
-  mkdir -p "$case_dir/state" "$case_dir/config" "$fakebin"
+  mkdir -p "$case_dir/state" "$case_dir/config" "$case_dir/data" "$fakebin"
 
   # Mocks for the post-check teardown steps. Refuse logic exits before these
   # run; the ALLOW cases need them so the script can complete cleanly.
@@ -273,10 +273,11 @@ SH
 case "\${1:-} \${2:-}" in
   "pr view")
     case " \$* " in
-      *"mergeStateStatus"*) printf '%s\n' 'CLEAN' ; exit 0 ;;
-      *"baseRefName"*) printf '%s\n' 'main' ; exit 0 ;;
       *"state,headRefOid"*) printf '%s\t%s\n' 'MERGED' '$head' ; exit 0 ;;
       *"headRefOid"*) printf '%s\n' '$head' ; exit 0 ;;
+      *"mergeStateStatus"*) printf '%s\n' 'CLEAN' ; exit 0 ;;
+      *"baseRefName"*) printf '%s\n' 'main' ; exit 0 ;;
+      *"body"*) printf '%s\n' '## What Changed' '- Test fixture change' ; exit 0 ;;
     esac
     ;;
 esac
@@ -546,6 +547,7 @@ run_teardown() {
   local case_dir=$1; shift
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
+  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_CONFIG_OVERRIDE="$case_dir/config" \
   PATH="$case_dir/fakebin:${FM_TEARDOWN_TEST_PATH:-$PATH}" \
     "$TEARDOWN" task-x1 "$@"
@@ -676,40 +678,6 @@ test_no_mistakes_origin_remote_allows() {
   pass "no-mistakes worktree with HEAD on origin is torn down (no regression)"
 }
 
-test_landed_work_with_absent_endpoint_cleans_state() {
-  local case_dir rc gen artifact
-  case_dir=$(make_case landed-no-endpoint)
-  write_meta "$case_dir" no-mistakes ship
-  wt_commit "$case_dir" "landed work"
-  git -C "$case_dir/wt" push -q origin fm/task-x1
-  git -C "$case_dir/project" fetch -q origin
-  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
-  rm -f "$case_dir/state/task-x1.meta.bak"
-  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$case_dir/state" task-x1)
-  printf 'busy_gen=%s\n' "$gen" >> "$case_dir/state/task-x1.meta"
-  for artifact in status pi-ext.ts turn-ended; do
-    : > "$case_dir/state/task-x1.$artifact"
-  done
-  : > "$case_dir/state/.hb-surfaced-task-x1"
-  : > "$case_dir/state/.seen-task-x1"
-
-  set +e
-  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-
-  expect_code 0 "$rc" "landed-no-endpoint: teardown should succeed"
-  for artifact in meta status busy-gen busy-state pi-ext.ts turn-ended; do
-    assert_absent "$case_dir/state/task-x1.$artifact" \
-      "landed-no-endpoint: teardown left $artifact behind"
-  done
-  assert_present "$case_dir/state/.hb-surfaced-task-x1" \
-    "landed-no-endpoint: teardown removed heartbeat history"
-  assert_present "$case_dir/state/.seen-task-x1" \
-    "landed-no-endpoint: teardown removed seen history"
-  pass "landed work with an absent endpoint clears task state and preserves watcher history"
-}
-
 test_no_mistakes_truly_unpushed_refuses() {
   local case_dir rc
   case_dir=$(make_case nm-unpushed)
@@ -726,27 +694,6 @@ test_no_mistakes_truly_unpushed_refuses() {
   expect_code 1 "$rc" "nm-unpushed: teardown should refuse"
   grep -q REFUSED "$case_dir/stderr" || fail "nm-unpushed: no REFUSED line in stderr"
   pass "no-mistakes worktree with genuinely unlanded work is refused (safety preserved)"
-}
-
-test_unlanded_work_with_absent_endpoint_refuses() {
-  local case_dir rc
-  case_dir=$(make_case unlanded-no-endpoint)
-  write_meta "$case_dir" no-mistakes ship
-  wt_commit_file "$case_dir" feature.txt hello "unpushed work"
-  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
-  rm -f "$case_dir/state/task-x1.meta.bak"
-
-  set +e
-  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-
-  expect_code 1 "$rc" "unlanded-no-endpoint: teardown should refuse"
-  assert_present "$case_dir/state/task-x1.meta" \
-    "unlanded-no-endpoint: teardown erased metadata"
-  grep -q 'not landed' "$case_dir/stderr" \
-    || fail "unlanded-no-endpoint: landed-work refusal was not preserved"
-  pass "unlanded work with an absent endpoint still refuses"
 }
 
 test_squash_merged_branch_deleted_allows() {
@@ -1724,6 +1671,99 @@ SH
   pass "forced secondmate teardown preflights every Herdr child before cleanup mutation"
 }
 
+configure_secondmate_with_tmux_children() {  # <case-dir>
+  local case_dir=$1 home="$1/secondmate-home" child child_wt
+  mkdir -p "$home/state" "$home/data" "$home/config" "$home/projects"
+  printf '%s\n' task-x1 > "$home/.fm-secondmate-home"
+  printf '%s\n' "home=$home" >> "$case_dir/state/task-x1.meta"
+  for child in child-a child-b; do
+    child_wt="$case_dir/$child-wt"
+    git -C "$case_dir/project" worktree add -q -b "fm/$child" "$child_wt" main
+    fm_write_meta "$home/state/$child.meta" \
+      "window=firstmate:fm-$child" \
+      "endpoint_task_id=$child" \
+      "worktree=$child_wt" \
+      "project=$case_dir/project" \
+      "kind=ship" \
+      "mode=local-only"
+    : > "$home/state/$child.status"
+  done
+}
+
+test_forced_secondmate_teardown_holds_descendant_lifecycle_locks() {
+  local case_dir home lock ready release holder_pid rc waited=0 child
+  case_dir=$(make_case descendant-locks)
+  write_meta "$case_dir" local-only secondmate
+  configure_secondmate_with_tmux_children "$case_dir"
+  home="$case_dir/secondmate-home"
+  : > "$case_dir/kill.log"
+  : > "$case_dir/treehouse.log"
+  cat > "$case_dir/fakebin/tmux" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$case_dir/kill.log"
+exit 0
+SH
+  cat > "$case_dir/fakebin/treehouse" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$case_dir/treehouse.log"
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/tmux" "$case_dir/fakebin/treehouse"
+
+  lock="$home/state/.control-child-b.lock"
+  ready="$case_dir/lock-ready"
+  release="$case_dir/lock-release"
+  ROOT="$ROOT" LOCK="$lock" READY="$ready" RELEASE="$release" \
+    HOME_STATE="$home/state" OWNER_PID="$$" bash -c '
+    export FM_STATE_OVERRIDE="$HOME_STATE"
+    . "$ROOT/bin/fm-wake-lib.sh"
+    fm_lock_try_acquire "$LOCK" || exit 1
+    : > "$READY"
+    while [ ! -e "$RELEASE" ] && kill -0 "$OWNER_PID" 2>/dev/null; do sleep 0.1; done
+    fm_lock_release "$LOCK"
+  ' &
+  holder_pid=$!
+  while [ ! -e "$ready" ] && [ "$waited" -lt 50 ]; do
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+  [ -e "$ready" ] || fail "descendant-locks: the contending lifecycle action never acquired its lock"
+
+  rc=0
+  run_teardown "$case_dir" --force > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+  if [ "$rc" -eq 0 ]; then
+    : > "$release"
+    wait "$holder_pid" 2>/dev/null || true
+    fail "descendant-locks: forced teardown ignored a descendant lifecycle lock"
+  fi
+  assert_grep "descendant task child-b has a lifecycle action in flight" "$case_dir/stderr" \
+    "descendant-locks: refusal did not name the contended descendant"
+  [ ! -e "$home/state/.control-child-a.lock" ] \
+    && [ ! -e "$home/state/.meta-child-a.lock" ] \
+    || { : > "$release"; wait "$holder_pid" 2>/dev/null || true; fail "descendant-locks: refusal leaked earlier descendant locks"; }
+  [ ! -s "$case_dir/kill.log" ] \
+    || { : > "$release"; wait "$holder_pid" 2>/dev/null || true; fail "descendant-locks: refusal killed an endpoint"; }
+  [ ! -s "$case_dir/treehouse.log" ] \
+    || { : > "$release"; wait "$holder_pid" 2>/dev/null || true; fail "descendant-locks: refusal returned a worktree"; }
+  [ -e "$case_dir/state/task-x1.meta" ] && [ -d "$home" ] \
+    || { : > "$release"; wait "$holder_pid" 2>/dev/null || true; fail "descendant-locks: refusal removed parent state"; }
+  for child in child-a child-b; do
+    [ -e "$home/state/$child.meta" ] && [ -d "$case_dir/$child-wt" ] \
+      || { : > "$release"; wait "$holder_pid" 2>/dev/null || true; fail "descendant-locks: refusal removed $child state or worktree"; }
+  done
+
+  : > "$release"
+  wait "$holder_pid" 2>/dev/null || true
+  rc=0
+  run_teardown "$case_dir" --force > "$case_dir/retry.stdout" 2> "$case_dir/retry.stderr" || rc=$?
+  expect_code 0 "$rc" "descendant-locks: uncontended retry should complete"
+  [ ! -e "$case_dir/state/task-x1.meta" ] && [ ! -d "$home" ] \
+    || fail "descendant-locks: uncontended retry retained retired task state"
+  [ -s "$case_dir/kill.log" ] && [ -s "$case_dir/treehouse.log" ] \
+    || fail "descendant-locks: uncontended retry did not perform endpoint and worktree cleanup"
+  pass "forced secondmate teardown holds every descendant lifecycle and metadata lock"
+}
+
 test_forced_secondmate_herdr_child_retains_records_when_close_unconfirmed() {
   local case_dir home log closed rc
   case_dir=$(make_case herdr-child-unconfirmed-close)
@@ -2010,6 +2050,44 @@ land_shippable_commit() {
   wt_commit "$case_dir" "shippable work"
   git -C "$case_dir/wt" push -q origin fm/task-x1
   git -C "$case_dir/project" fetch -q origin
+}
+
+test_landed_work_with_absent_endpoint_cleans_state() {
+  local case_dir rc
+  case_dir=$(make_case landed-no-endpoint)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
+  rm -f "$case_dir/state/task-x1.meta.bak"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "landed-no-endpoint: teardown should succeed"
+  assert_absent "$case_dir/state/task-x1.meta" "landed-no-endpoint: metadata was not removed"
+  assert_contains "$(cat "$case_dir/stdout")" "no endpoint" "landed-no-endpoint: output should identify the absent endpoint"
+  pass "landed work with an absent endpoint clears task state without touching a runtime target"
+}
+
+test_unlanded_work_with_absent_endpoint_refuses() {
+  local case_dir rc
+  case_dir=$(make_case unlanded-no-endpoint)
+  write_meta "$case_dir" no-mistakes ship
+  wt_commit_file "$case_dir" feature.txt hello "unpushed work"
+  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
+  rm -f "$case_dir/state/task-x1.meta.bak"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "unlanded-no-endpoint: teardown should refuse"
+  assert_present "$case_dir/state/task-x1.meta" "unlanded-no-endpoint: metadata was removed"
+  assert_contains "$(cat "$case_dir/stderr")" "not landed" "unlanded-no-endpoint: refusal should preserve landed-work safety"
+  pass "unlanded work with an absent endpoint still refuses cleanup"
 }
 
 test_parked_own_run_is_aborted_before_teardown() {
@@ -2561,9 +2639,7 @@ test_teardown_manual_backend_prompts_hand_edit_even_when_tasks_axi_present
 test_local_only_truly_unpushed_refuses
 test_local_only_merged_to_local_main_allows
 test_no_mistakes_origin_remote_allows
-test_landed_work_with_absent_endpoint_cleans_state
 test_no_mistakes_truly_unpushed_refuses
-test_unlanded_work_with_absent_endpoint_refuses
 test_local_only_force_overrides_unpushed
 test_teardown_missing_busy_sidecar_completes
 test_herdr_teardown_clears_escalation_marker
@@ -2571,6 +2647,7 @@ test_herdr_flat_teardown_refuses_orphaning_records_then_retry_completes
 test_herdr_flat_teardown_refuses_records_on_unparseable_presence
 test_herdr_flat_teardown_preflight_refuses_before_changes
 test_forced_secondmate_herdr_child_preflight_refuses_before_changes
+test_forced_secondmate_teardown_holds_descendant_lifecycle_locks
 test_forced_secondmate_herdr_child_retains_records_when_close_unconfirmed
 test_forced_teardown_retains_nested_secondmate_home_when_grandchild_close_unconfirmed
 test_herdr_projection_teardown_retires_journal_only_after_confirmed_close
@@ -2597,6 +2674,8 @@ test_transient_index_lock_clears_after_first_attempt_and_retry_succeeds
 test_persistent_index_lock_exhausts_retries_and_refuses_loudly
 test_empty_retry_wait_uses_default_without_aborting
 test_fractional_legacy_retry_wait_refuses_without_arithmetic_error
+test_landed_work_with_absent_endpoint_cleans_state
+test_unlanded_work_with_absent_endpoint_refuses
 test_parked_own_run_is_aborted_before_teardown
 test_parked_own_run_refuses_when_abort_is_unconfirmed
 test_mismatched_run_after_abort_refuses_unconfirmed
