@@ -455,6 +455,7 @@ export default function (pi: ExtensionAPI) {
       settled = true;
       settleReadiness(false);
       releaseChild();
+      // Retirement is confirmed on process exit, so a retired arm's delayed close must not retry again.
       if (armRetiring.has(armChild) || !generationIsLive(owner)) return;
       const classification = classifyClose(stdout, stderr, code, signal);
       const predecessor = String(armChild.pid ?? "");

@@ -360,6 +360,7 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
     if (settled) return;
     settled = true;
     releaseChild();
+    // Retirement is confirmed on process exit, so a retired arm's delayed close must not retry again.
     if (armRetiring.has(armChild)) return;
     const classification = classifyArmClose(stdout, stderr, code, signal);
     settleReadiness(classification.kind === "actionable" ? "wake" : "failed");
