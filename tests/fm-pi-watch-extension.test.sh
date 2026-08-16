@@ -410,17 +410,19 @@ EOF
 }
 
 test_pi_hung_successor_falls_back_to_typed_wake() {
-  local repo home plugin log release out status
+  local repo home plugin log release events out status
   repo="$TMP_ROOT/pi-hung-successor-root"
   home="$TMP_ROOT/pi-hung-successor-home"
   log="$TMP_ROOT/pi-hung-successor.log"
   release="$TMP_ROOT/pi-hung-successor.release"
+  events="$TMP_ROOT/pi-hung-successor.events"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
   install_pi_watch_extension_fixture "$repo"
   plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
   cat > "$repo/bin/fm-watch-arm.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'arm=%s\n' "$$" >> "${FM_ARM_LOG:?}"
+printf 'shell-start pid=%s\n' "$$" >> "${FM_WATCH_EVENT_FILE:?}"
 count=$(wc -l < "$FM_ARM_LOG" | tr -d '[:space:]')
 if [ "$count" -eq 1 ]; then
   printf 'watcher: started pid=%s (beacon fresh)\n' "$$"
@@ -428,12 +430,12 @@ if [ "$count" -eq 1 ]; then
   exit 0
 fi
 if [ "$count" -gt 1 ]; then
-  (while [ ! -e "$FM_WATCH_HOLDER_RELEASE_FILE" ]; do sleep 0.02; done) &
-  exec node -e 'process.on("SIGTERM", () => process.exit(0)); setInterval(() => {}, 20);'
+  (printf 'holder-start pid=%s\n' "$$" >> "$FM_WATCH_EVENT_FILE"; while [ ! -e "$FM_WATCH_HOLDER_RELEASE_FILE" ]; do sleep 0.02; done; printf 'holder-release pid=%s\n' "$$" >> "$FM_WATCH_EVENT_FILE") &
+  exec node -e 'const fs = require("node:fs"); const event = (line) => fs.appendFileSync(process.env.FM_WATCH_EVENT_FILE, `${line} pid=${process.pid}\n`); event("node-start"); process.on("SIGTERM", () => { event("sigterm"); process.exit(0); }); process.on("exit", () => event("node-exit")); setInterval(() => {}, 20);'
 fi
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_WATCH_HOLDER_RELEASE_FILE="$release" FM_PI_ARM_READY_TIMEOUT_MS=250 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_WATCH_HOLDER_RELEASE_FILE="$release" FM_WATCH_EVENT_FILE="$events" FM_PI_ARM_READY_TIMEOUT_MS=250 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
@@ -481,6 +483,7 @@ EOF
   status=$?
   if [ "$status" -ne 0 ]; then
     printf 'Pi hung-successor child output:\n%s\n' "$out" >&2
+    printf 'Pi hung-successor events:\n%s\n' "$(cat "$events" 2>/dev/null || true)" >&2
   fi
   expect_code 0 "$status" "Pi must deliver the actionable wake after bounded hung-successor recovery"
   [ -z "$out" ] || fail "Pi hung-successor test printed output: $out"
