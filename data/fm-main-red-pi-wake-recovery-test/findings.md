@@ -41,3 +41,11 @@
 ## Current diagnosis
 
 The evidence does not support calling the test stale: the test's intended behavior remains correct, and the CI failure is a real supervision-continuity defect at the process-lifecycle boundary. The sync exposed a pre-existing weakness by changing serial placement and adding more recovery-sensitive activity; it did not make the new recovery-confirmation branch execute on this hung-successor path. The fix should retire an arm on process exit, not wait for pipe closure, while preserving the existing bounded timeout and retry assertions.
+
+## Fix and validation so far
+
+- Pi and OpenCode now track the arm process `exit` event for retirement, release the owned-child slot at process exit, and suppress a later delayed `close` callback for an arm that was retired successfully.
+- A retirement that exceeds its existing timeout clears the intentional-retirement mark, preserving the existing late-unretired-successor behavior and allowing its later actionable close to be handled.
+- The Pi hung-successor regression fixture now includes a descendant that inherits the arm's output pipe and is released only after the wake is observed. This fails on the old close-based implementation with two rows and passes on the exit-based implementation with all four rows and the typed wake.
+- `tests/fm-pi-watch-extension.test.sh` passes 20/20 under Node 24.18.1 and system Bash 5.2 after the fix.
+- The full `watcher-wake-lock` family passes: 15 scripts, 0 failures, including `fm-pi-watch-extension.test.sh`, under Node 24.18.1 and system Bash 5.2.
