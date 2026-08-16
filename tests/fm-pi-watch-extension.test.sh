@@ -480,6 +480,9 @@ if (stableRows.length !== 4) throw new Error(`single-flight recovery launched ${
 EOF
 )
   status=$?
+  if [ "$status" -ne 0 ]; then
+    printf 'Pi hung-successor child output:\n%s\n' "$out" >&2
+  fi
   expect_code 0 "$status" "Pi must deliver the actionable wake after bounded hung-successor recovery"
   [ -z "$out" ] || fail "Pi hung-successor test printed output: $out"
   pass "Pi hung successor falls back to one typed actionable wake"
