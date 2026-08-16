@@ -158,6 +158,26 @@ test_unreachable_origin_refuses_stale_pool_base() {
   pass "an unreachable origin refuses a potentially stale pooled worktree"
 }
 
+test_no_origin_launches_from_local_head() {
+  local rec id out status head
+  id='pool-no-origin-r6'
+  rec=$(make_case no-origin "$id")
+  read_case_record "$rec"
+  git -C "$POOL_DIR" remote remove origin
+  head=$(git -C "$POOL_DIR" rev-parse HEAD)
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should launch from a pooled worktree with no origin"
+  assert_contains "$out" "has no origin remote" \
+    "spawn did not explain that freshness checking was skipped"
+  assert_contains "$out" "no upstream comparison was performed" \
+    "spawn did not say that no upstream comparison was performed"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$head" ] \
+    || fail "spawn moved a remoteless pooled worktree away from its local HEAD"
+  pass "a pooled worktree with no origin launches from its local HEAD with a skip notice"
+}
+
 test_direct_pr_and_scout_refresh_before_launch() {
   local rec id out status contract current
   for contract in direct-pr scout; do
@@ -233,5 +253,6 @@ test_direct_pr_and_scout_refresh_before_launch
 test_dirty_pool_refuses_without_discarding_work
 test_unresolved_remote_default_refuses_pool
 test_unreachable_origin_refuses_stale_pool_base
+test_no_origin_launches_from_local_head
 
 echo "# all fm-spawn-pool-base-freshen tests passed"

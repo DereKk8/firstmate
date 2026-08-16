@@ -136,6 +136,8 @@
 #   git worktree root distinct from the primary project checkout.
 #   Before a fresh ship or scout worker starts, its clean task worktree fetches
 #   origin, resolves the current remote default branch, and resets to its tip.
+#   A repository with no origin launches from its local HEAD without an upstream
+#   comparison.
 #   An unreachable origin, unresolved default branch, or non-clean worktree
 #   refuses the spawn rather than risking a PR based on stale history.
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
@@ -1744,7 +1746,18 @@ validate_spawn_worktree() {  # <source> <inspect-target>
 }
 
 freshen_spawn_worktree_base() {  # <worktree>
-  local worktree=$1 default target expected actual status
+  local worktree=$1 default target expected actual status remotes
+  if ! remotes=$(git -C "$worktree" remote); then
+    echo "error: could not inspect remotes for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
+    return 1
+  fi
+  case $'\n'"$remotes"$'\n' in
+    *$'\norigin\n'*) ;;
+    *)
+      echo "notice: repository for pooled worktree '$worktree' has no origin remote; no upstream comparison was performed; launching from local HEAD" >&2
+      return 0
+      ;;
+  esac
   if ! git -C "$worktree" fetch --quiet origin; then
     echo "error: could not fetch origin for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
     return 1
