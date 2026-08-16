@@ -429,9 +429,8 @@ if [ "$count" -eq 1 ]; then
 fi
 if [ "$count" -gt 1 ]; then
   (while [ ! -e "$FM_WATCH_HOLDER_RELEASE_FILE" ]; do sleep 0.02; done) &
+  exec node -e 'process.on("SIGTERM", () => process.exit(0)); setInterval(() => {}, 20);'
 fi
-trap 'exit 0' TERM INT
-while :; do sleep 0.02; done
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
   out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_WATCH_HOLDER_RELEASE_FILE="$release" FM_PI_ARM_READY_TIMEOUT_MS=250 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
