@@ -649,6 +649,9 @@ await new Promise((resolve) => setTimeout(resolve, 80));
 EOF
 )
     status=$?
+    if [ "$status" -ne 0 ]; then
+      printf 'Pi late %s child output:\n%s\n' "$kind" "$out" >&2
+    fi
     expect_code 0 "$status" "Pi late $kind close must remain supervised after fallback"
     [ -z "$out" ] || fail "Pi late-$kind test printed output: $out"
   done
