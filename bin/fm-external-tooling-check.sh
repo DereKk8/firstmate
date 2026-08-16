@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check versions of the external tools that /syncfirstmate owns reporting.
+# Check versions of the external tools that /refit owns reporting.
 #
 # READ-ONLY: never installs packages, updates tools, restarts daemons, writes
 # tracked files, or changes any fleet state.

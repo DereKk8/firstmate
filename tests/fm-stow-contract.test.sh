@@ -19,7 +19,7 @@ test_stow_skill_task_note_contract() {
 test_recurring_startup_memory_curation_contract() {
   local stow="$ROOT/.agents/skills/stow/SKILL.md"
   local reset="$ROOT/.agents/skills/reset-window/SKILL.md"
-  local sync="$ROOT/.agents/skills/syncfirstmate/SKILL.md"
+  local refit="$ROOT/.agents/skills/refit/SKILL.md"
 
   assert_grep 'Read every current memory file completely' "$stow" \
     "stow no longer reads all memory before curation"
@@ -34,11 +34,11 @@ test_recurring_startup_memory_curation_contract() {
     "reset no longer requires startup-memory curation"
   assert_grep 'Do not perform its routing steps separately here' "$reset" \
     "reset can route durable findings twice"
-  assert_grep 'bin/fm-startup-memory-budget.sh report' "$sync" \
-    "weekly sync no longer checks whether startup-memory curation is due"
   # shellcheck disable=SC2016 # The literal backticks are part of the skill contract.
-  assert_grep 'recommend `/stow` before the next reset' "$sync" \
-    "weekly sync no longer recommends the curation owner"
+  assert_grep 'Invoke `/stow`' "$refit" \
+    "refit no longer delegates startup-memory curation to stow"
+  assert_no_grep 'bin/fm-startup-memory-budget.sh report' "$refit" \
+    "refit duplicates stow's startup-memory measurement protocol"
   pass "startup-memory curation plans, archives, and resolves budget state before reset and weekly review"
 }
 
