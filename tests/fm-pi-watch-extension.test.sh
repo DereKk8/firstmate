@@ -410,10 +410,11 @@ EOF
 }
 
 test_pi_hung_successor_falls_back_to_typed_wake() {
-  local repo home plugin log out status
+  local repo home plugin log release out status
   repo="$TMP_ROOT/pi-hung-successor-root"
   home="$TMP_ROOT/pi-hung-successor-home"
   log="$TMP_ROOT/pi-hung-successor.log"
+  release="$TMP_ROOT/pi-hung-successor.release"
   mkdir -p "$repo/bin" "$home/state" "$home/config"
   install_pi_watch_extension_fixture "$repo"
   plugin="$repo/.pi/extensions/fm-primary-pi-watch.ts"
@@ -426,17 +427,25 @@ if [ "$count" -eq 1 ]; then
   printf 'signal: synthetic wake\n'
   exit 0
 fi
+if [ "$count" -gt 1 ]; then
+  (while [ ! -e "$FM_WATCH_HOLDER_RELEASE_FILE" ]; do sleep 0.02; done) &
+fi
 trap 'exit 0' TERM INT
 while :; do sleep 0.02; done
 SH
   chmod +x "$repo/bin/fm-watch-arm.sh"
-  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_PI_ARM_READY_TIMEOUT_MS=250 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
+  out=$(PLUGIN="$plugin" FM_HOME="$home" FM_ROOT_OVERRIDE="$repo" FM_ARM_LOG="$log" FM_WATCH_HOLDER_RELEASE_FILE="$release" FM_PI_ARM_READY_TIMEOUT_MS=250 FM_WATCH_REARM_RETRY_BASE_MS=5 FM_WATCH_REARM_RETRY_MAX_MS=10 FM_WATCH_REARM_RETRY_LIMIT=2 node --input-type=module 2>&1 <<'EOF'
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 let tool = null;
 let prompt = "";
 let rowsAtPrompt = 0;
+process.on("exit", () => {
+  try {
+    writeFileSync(process.env.FM_WATCH_HOLDER_RELEASE_FILE, "release\n");
+  } catch {}
+});
 const pi = {
   on() {},
   registerCommand() {},
@@ -464,6 +473,7 @@ if (rows.length !== 4) throw new Error(`expected one successor plus two retries,
 if (rowsAtPrompt !== 4) throw new Error(`wake arrived before restoration exhausted (${rowsAtPrompt} arm rows)`);
 if (!prompt.includes("signal: synthetic wake")) throw new Error(`original wake was lost: ${prompt}`);
 if (!prompt.includes("could not restore watcher continuity after 2 retries")) throw new Error(`missing typed restoration failure: ${prompt}`);
+writeFileSync(process.env.FM_WATCH_HOLDER_RELEASE_FILE, "release\n");
 await new Promise((resolve) => setTimeout(resolve, 100));
 const stableRows = readFileSync(process.env.FM_ARM_LOG, "utf8").trim().split("\n");
 if (stableRows.length !== 4) throw new Error(`single-flight recovery launched ${stableRows.length} arms`);
