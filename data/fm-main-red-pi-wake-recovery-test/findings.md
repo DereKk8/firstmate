@@ -19,6 +19,7 @@
 - The focused Pi suite passed 5/5 on Node 26 and 20/20 on Node 24.
 - A 30-run Node 26 stress loop passed 30/30, including eight background CPU burners.
 - The Pi-only hung-successor function passed 100/100 on Node 24.
+- Re-running the complete Pi/OpenCode suite under Node 24.18.1 with system Bash 5.2 produced five failures in 100 runs, all in the later OpenCode external-healthy test; the Pi hung-successor test passed in every run.
 - A 20-run Node 24 full Pi/OpenCode suite had two failures, both in the later OpenCode external-healthy test, not the Pi hung-successor test. A subsequent 30-run loop likewise found only that OpenCode failure.
 - Therefore the reported Pi failure is currently intermittent or environment-specific, not deterministic in the available local environment.
 
