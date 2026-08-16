@@ -20,7 +20,8 @@ let retryTimer = null;
 let retryFailures = 0;
 let launchInFlight = null;
 let restorationInFlight = null;
-let armClose = new WeakMap();
+let armExit = new WeakMap();
+let armRetiring = new WeakSet();
 let armReadiness = new WeakMap();
 let armRecovery = new WeakMap();
 
@@ -227,13 +228,20 @@ function waitForRetry(attempt) {
 
 async function retireArm(armChild) {
   if (!armChild) return true;
+  armRetiring.add(armChild);
   armChild.kill("SIGTERM");
-  const closed = armClose.get(armChild);
-  if (!closed) return false;
+  const exited = armExit.get(armChild);
+  if (!exited) {
+    armRetiring.delete(armChild);
+    return false;
+  }
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(false), ARM_RETIRE_TIMEOUT_MS);
+    const timer = setTimeout(() => {
+      armRetiring.delete(armChild);
+      resolve(false);
+    }, ARM_RETIRE_TIMEOUT_MS);
     timer.unref();
-    void closed.then(() => {
+    void exited.then(() => {
       clearTimeout(timer);
       resolve(true);
     });
@@ -311,7 +319,7 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
   let stdout = "";
   let stderr = "";
   let settled = false;
-  let resolveClosed = null;
+  let resolveExited = null;
   let readinessSettled = false;
   let resolveReadiness = null;
   const readiness = new Promise((resolve) => {
@@ -323,10 +331,10 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
     readinessSettled = true;
     resolveReadiness(status);
   };
-  const closed = new Promise((resolveClosedChild) => {
-    resolveClosed = resolveClosedChild;
+  const exited = new Promise((resolveExitedChild) => {
+    resolveExited = resolveExitedChild;
   });
-  armClose.set(armChild, closed);
+  armExit.set(armChild, exited);
   const releaseChild = () => {
     if (child === armChild) child = null;
   };
@@ -344,11 +352,16 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
     observeRecovery();
     observeArmOutput(stdout, stderr, settleReadiness);
   });
+  armChild.on("exit", () => {
+    resolveExited();
+    releaseChild();
+  });
   armChild.on("close", (code, signal) => {
     if (settled) return;
     settled = true;
-    resolveClosed();
     releaseChild();
+    // Retirement is confirmed on process exit, so a retired arm's delayed close must not retry again.
+    if (armRetiring.has(armChild)) return;
     const classification = classifyArmClose(stdout, stderr, code, signal);
     settleReadiness(classification.kind === "actionable" ? "wake" : "failed");
     const predecessor = String(armChild.pid ?? "");
@@ -377,8 +390,9 @@ function spawnArm(paths, sessionID, client, predecessorArmPid = "") {
   armChild.on("error", (error) => {
     if (settled) return;
     settled = true;
-    resolveClosed();
+    resolveExited();
     releaseChild();
+    if (armRetiring.has(armChild)) return;
     settleReadiness("failed");
     if (restorationInFlight) {
       setArmStatus("failed");

@@ -102,7 +102,8 @@ const shuttingDownMessage = "watcher: not armed - Pi session is shutting down";
 let nextGenerationId = 0;
 let activeGeneration: SessionGeneration | null = null;
 const armReadiness = new WeakMap<ChildProcess, Promise<boolean>>();
-const armClose = new WeakMap<ChildProcess, Promise<void>>();
+const armExit = new WeakMap<ChildProcess, Promise<void>>();
+const armRetiring = new WeakSet<ChildProcess>();
 const armRecovery = new WeakMap<ChildProcess, { generation: string; watcherPid: string }>();
 
 function positiveInteger(name: string, fallback: number): number {
@@ -294,13 +295,20 @@ export default function (pi: ExtensionAPI) {
 
   async function retireArm(armChild: ChildProcess | null): Promise<boolean> {
     if (!armChild) return true;
+    armRetiring.add(armChild);
     armChild.kill("SIGTERM");
-    const closed = armClose.get(armChild);
-    if (!closed) return false;
+    const exited = armExit.get(armChild);
+    if (!exited) {
+      armRetiring.delete(armChild);
+      return false;
+    }
     return new Promise((resolveRetired) => {
-      const timer = setTimeout(() => resolveRetired(false), armRetireTimeoutMs);
+      const timer = setTimeout(() => {
+        armRetiring.delete(armChild);
+        resolveRetired(false);
+      }, armRetireTimeoutMs);
       timer.unref();
-      void closed.then(() => {
+      void exited.then(() => {
         clearTimeout(timer);
         resolveRetired(true);
       });
@@ -405,15 +413,15 @@ export default function (pi: ExtensionAPI) {
     let settled = false;
     let readinessSettled = false;
     let resolveReadiness: (ready: boolean) => void = () => {};
-    let resolveClosed: () => void = () => {};
+    let resolveExited: () => void = () => {};
     const readiness = new Promise<boolean>((resolveReady) => {
       resolveReadiness = resolveReady;
     });
     armReadiness.set(armChild, readiness);
-    const closed = new Promise<void>((resolveClosedChild) => {
-      resolveClosed = resolveClosedChild;
+    const exited = new Promise<void>((resolveExitedChild) => {
+      resolveExited = resolveExitedChild;
     });
-    armClose.set(armChild, closed);
+    armExit.set(armChild, exited);
     const settleReadiness = (ready: boolean): void => {
       if (readinessSettled) return;
       readinessSettled = true;
@@ -438,13 +446,17 @@ export default function (pi: ExtensionAPI) {
       stderr += chunk.toString();
       observeEstablishedArm();
     });
+    armChild.on("exit", () => {
+      resolveExited();
+      releaseChild();
+    });
     armChild.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
       if (settled) return;
       settled = true;
-      resolveClosed();
       settleReadiness(false);
       releaseChild();
-      if (!generationIsLive(owner)) return;
+      // Retirement is confirmed on process exit, so a retired arm's delayed close must not retry again.
+      if (armRetiring.has(armChild) || !generationIsLive(owner)) return;
       const classification = classifyClose(stdout, stderr, code, signal);
       const predecessor = String(armChild.pid ?? "");
       if (classification.kind === "actionable") {
@@ -466,10 +478,10 @@ export default function (pi: ExtensionAPI) {
     armChild.on("error", (error: Error) => {
       if (settled) return;
       settled = true;
-      resolveClosed();
+      resolveExited();
       settleReadiness(false);
       releaseChild();
-      if (!generationIsLive(owner)) return;
+      if (armRetiring.has(armChild) || !generationIsLive(owner)) return;
       if (owner.restoring) return;
       scheduleRetry(owner, `watcher: FAILED - Pi extension arm child ${id} failed: ${error.message}`, String(armChild.pid ?? ""));
     });
