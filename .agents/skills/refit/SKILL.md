@@ -24,7 +24,9 @@ The pass never updates tooling, pushes, restarts daemons, or merges on its own.
 Run `bin/fm-upstream-check.sh` for the upstream gap.
 Run `bin/fm-external-tooling-check.sh` for version drift and its `safe-anytime` versus `needs-quiet-fleet` coordination.
 Preserve those helpers' existing behavior exactly.
-Report what new capabilities landed upstream, how far behind this fork is, and any external-tooling drift with its coordination tag.
+Also report currency for the globally installed agent skills under `~/.agents/skills/`, which every harness and every worker discovers and which no other leg covers.
+Read their installed state only; `skills update -g` is the update action and stays subject to this pass's never-update rule, so name it as a recommendation and run it only on the captain's word.
+Report what new capabilities landed upstream, how far behind this fork is, and any external-tooling or installed-skill drift with its coordination tag.
 
 ### 2. FIT
 
@@ -71,12 +73,12 @@ Run all four legs and report all four results to the captain.
 This is the weekly heartbeat pass.
 The pass is read-only except for the `/stow` invocation owned by the MEMORY leg.
 
-In CURRENCY, run `bin/fm-upstream-check.sh` and `bin/fm-external-tooling-check.sh`.
+In CURRENCY, run `bin/fm-upstream-check.sh` and `bin/fm-external-tooling-check.sh`, and report installed global agent-skill currency alongside them.
 In FIT, compare newly available capabilities with the existing fleet flow and record the verdict even when it is to keep the current approach.
 In MEMORY, invoke `/stow` and relay its completion receipt.
 In INTEGRITY, perform both-direction memory-index checks, dangling-`data/`-pointer checks, and agent-skills repository checks.
 
-Report the upstream gap, notable upstream capabilities, external-tooling drift and coordination tags, the fit verdict, stow's receipt, and every integrity finding in plain outcomes language.
+Report the upstream gap, notable upstream capabilities, external-tooling and installed-skill drift with coordination tags, the fit verdict, stow's receipt, and every integrity finding in plain outcomes language.
 Stop after the report.
 The captain decides whether to proceed to full-sync mode.
 
