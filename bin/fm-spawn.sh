@@ -2352,6 +2352,10 @@ if [ "$KIND" != secondmate ]; then
     echo "error: could not set worktree-local push.default=current for $WT" >&2
     exit 1
   fi
+  if ! git -C "$WT" config --worktree fm.firstmate-task "$ID"; then
+    echo "error: could not record task ownership for $WT" >&2
+    exit 1
+  fi
 fi
 
 # Per-task temp root: /tmp/fm-<id>/ with Go's build temp nested at gotmp/. Go won't
