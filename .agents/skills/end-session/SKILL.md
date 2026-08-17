@@ -28,90 +28,79 @@ wording).
 
 ## Procedure
 
-### 1. Preflight - prove preservation, mutate nothing
+### 1. Reconcile task identities before targeting any endpoint
+
+```sh
+bin/fm-end-session.sh reconcile-identities
+```
+
+This scans every task record before preflight can target a pane or worktree.
+It neutralizes a recorded worktree or endpoint only after its ownership is disproved, and records the reason beside the task.
+A genuinely ambiguous live collision returns a refusal and leaves supervision and the session lock in place.
+Never hand-edit a pointer, retry with `--force`, or proceed past that refusal.
+
+### 2. Preflight - prove preservation, mutate nothing
 
 ```sh
 bin/fm-end-session.sh preflight
 ```
 
-Read-only. On success it prints one `LIVE_HELPER <id> <backend> <target>`
-line per ship/scout task whose recorded endpoint is confirmed alive without
-an active no-mistakes run (never for a secondmate - a secondmate is a persistent, independently-locked home
-and this shutdown does not touch it, exactly as AGENTS.md section 5 rule 5
-and section 8 already treat a secondmate's idle endpoint as healthy).
+Read-only after identity reconciliation.
+On success it prints one `LIVE_HELPER <id> <backend> <target>` line per ship/scout task whose recorded endpoint is confirmed alive without an active no-mistakes run.
+A secondmate is a persistent, independently-locked home and this shutdown does not touch it.
 
 On refusal (non-zero exit, one or more `REFUSED:` lines) **stop here**.
-Nothing has been mutated. Do not retry with `--force`, do not hand-edit
-task state to make the check pass, and do not discard, stash, or
-force-reset anything to clear a refusal - the fix is whatever the refusal
-names: reclaim the session lock, or inspect the named task with
-`bin/fm-crew-state.sh <id>` and resolve why its endpoint state is not
-confidently alive/dead. Report the refusal to the captain in plain outcome
-terms (what is unresolved, not the internal check name) and leave
-supervision and the session lock exactly as they were.
+Nothing else is mutated.
+Do not retry with `--force`, hand-edit task state, or discard, stash, or force-reset anything to clear a refusal.
+Report the refusal to the captain in plain outcome terms and leave supervision and the session lock exactly as they were.
 
-### 2. Write the handoff record
+### 3. Write the handoff record
 
 ```sh
 bin/fm-end-session.sh note
 ```
 
-Writes `data/end-session/handoff.md` - what is under way, each task's
-current state line, its recorded PR URL when it has one, a best-effort
-worktree clean/dirty read (visibility only, never a blocker - preserving
-the worktree itself is what actually protects uncommitted work), the
-queued-notification count, and a pointer to `data/backlog.md` / the next
-session-start digest for the backlog and any open captain decisions
-(never copied here, so it cannot drift out of sync). This does not touch
-the backlog, tasks-axi state, or any decision hold record, so every
-unresolved decision stays exactly as unresolved as it was.
+Writes `data/end-session/handoff.md` - what is under way, each task's current state line, its recorded PR URL when it has one, a best-effort worktree clean/dirty read, the queued-notification count, and a pointer to `data/backlog.md` / the next session-start digest for the backlog and any open captain decisions.
+This does not touch the backlog, tasks-axi state, or any decision hold record.
 
-### 3. Back up private fleet data (best-effort)
+### 4. Back up private fleet data (best-effort)
 
 ```sh
 bin/fm-end-session.sh backup
 ```
 
 Reports `BACKUP: ok`, `BACKUP: clean`, or `BACKUP: FAILED - <reason>`.
-A failure is a courtesy report to the captain, never a shutdown blocker
-and never silently swallowed - do not claim the backup succeeded when it
-did not.
+A failure is a courtesy report to the captain, never a shutdown blocker and never silently swallowed.
 
-### 4. Stop every live helper gracefully
+### 5. Stop every live helper gracefully
 
-For each `LIVE_HELPER <id> <backend> <target>` line from step 1, resolve
-that task's harness from `state/<id>.meta`'s `harness=` field and load
-`harness-adapters` for its exact Interrupt and Exit sequence (this is the
-one step that genuinely needs harness judgment, which is why it is not
-baked into the script). Use `bin/fm-send.sh` to send the interrupt key
-first if the pane looks busy, then the harness's own exit command - never
-a raw process kill, and never the daemon-restart or broad-pkill paths
-AGENTS.md section 8 already forbids. After sending it, re-check that
-task's endpoint with `bin/fm-crew-state.sh <id>` (or `fm-backend.sh`'s
-`fm_backend_agent_state`) until it reads dead or missing, within a
-reasonable bound.
+For each `LIVE_HELPER <id> <backend> <target>` line from step 2, resolve that task's harness from `state/<id>.meta`'s `harness=` field and load `harness-adapters` for its exact Interrupt and Exit sequence.
+Use `bin/fm-send.sh` to send the interrupt key first if the pane looks busy, then the harness's own exit command.
+Never use a raw process kill, daemon restart, or broad-pkill path.
+After sending it, re-check that task's endpoint with `bin/fm-crew-state.sh <id>` or `fm_backend_agent_state` until it reads dead or missing within a reasonable bound.
 
-If any helper will not confirm stopped within that bound, **stop here**
-and refuse the rest of shutdown: report which task, with the concrete
-recovery step (steer it again, or ask the captain whether to intervene
-directly in that pane). Do not proceed to step 5 while a helper's stop is
-unconfirmed - supervision is still fully live at this point specifically
-so it keeps watching that unresolved helper, and the session lock is
-still held, so nothing about this failure is ambiguous: the session is
-still supervising.
+If any helper will not confirm stopped within that bound, **stop here** and refuse the rest of shutdown.
+Report which task and the concrete recovery step, and leave supervision and the session lock in place.
 
 Every `LIVE_HELPER` line must be confirmed stopped before moving on.
-`VALIDATION_ACTIVE` lines from step 1 name tasks with an active no-mistakes validation run and are reported for visibility only.
+`VALIDATION_ACTIVE` lines from step 2 name tasks with an active no-mistakes validation run and are reported for visibility only.
 Never stop them or send them an interrupt or exit command.
 Their branch custody remains exactly as it was.
-Quiesce also skips them, so shutdown can complete while they keep running.
-Running `bin/fm-end-session.sh preflight` again after step 4 completes is
-a cheap way to confirm the live-helper list is now empty - and `quiesce` itself
-re-checks this and refuses if an ordinary helper is still alive, so a skipped or
-incomplete step 4 cannot silently fall through to monitoring being torn
-down.
 
-### 5. Quiesce monitoring
+### 6. Reconcile every task record
+
+```sh
+bin/fm-end-session.sh reconcile
+```
+
+This snapshots every remaining task record and calls the existing guarded `bin/fm-teardown.sh` for finished work.
+It never passes `--force`.
+A teardown refusal preserves the task and appears as one explicit `CLOSING` line with its reason.
+A recycled identity appears as one explicit `CLOSING` line and is never sent to teardown.
+The complete closing list is also written to `data/end-session/reconciliation.md`.
+If this command returns non-zero, stop with supervision and the session lock intact.
+
+### 7. Quiesce monitoring
 
 ```sh
 bin/fm-end-session.sh quiesce
@@ -132,25 +121,22 @@ refusal here (a live helper remains, or the watcher would not release
 its lock) again leaves the lock intact and the session able to keep
 supervising while the captain is told what ordinary helper did not stop.
 
-### 6. Release the session lock - the final step
+### 8. Release the session lock - the final step
 
 ```sh
 bin/fm-end-session.sh finalize
 ```
 
-Only after steps 1-5 all succeeded. This is the literal control-transfer
+Only after steps 1-7 all succeeded. This is the literal control-transfer
 moment: once it prints `LOCK: released`, this session no longer owns
 anything, and only a later manual firstmate launch can act on this home
 again.
 
-### 7. Report to the captain and stop
+### 9. Report to the captain and stop
 
-Tell the captain, in plain outcomes: the fleet is preserved (point at the
-handoff record's existence, not its internal path mechanics unless the
-captain needs it to act), what is still under way for the next session to
-pick up, the backup result if it failed, and that **no successor was
-launched** - this session is fully done, unlike `/reset-window`. Then
-send nothing further and take no further action in this session.
+Tell the captain, in plain outcomes: the fleet is preserved, point at the handoff and reconciliation reports, list any work preserved with its reason, state the backup result if it failed, and say that **no successor was launched**.
+This session is fully done, unlike `/reset-window`.
+Then send nothing further and take no further action in this session.
 
 ## Non-negotiables
 

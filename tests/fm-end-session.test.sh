@@ -103,6 +103,39 @@ run_es_without_no_mistakes() {  # <home> <fakebin> <toolbin> <subcommand...>
   PATH="$fakebin:$toolbin:/usr/bin:/bin" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$END_SESSION" "$@"
 }
 
+make_reconcile_tools() {  # <fakebin> <log>
+  local fakebin=$1 log=$2
+  cat > "$fakebin/no-mistakes" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  cat > "$fakebin/treehouse" <<SH
+#!/usr/bin/env bash
+if [ "\${1:-}" = return ]; then
+  target="\${@: -1}"
+  printf 'return %s\n' "\$target" >> "$log"
+  rm -rf -- "\$target"
+fi
+exit 0
+SH
+  chmod +x "$fakebin/no-mistakes" "$fakebin/treehouse"
+}
+
+make_reconcile_task() {  # <home> <id> <worktree> <push:yes|no>
+  local home=$1 id=$2 worktree=$3 push=$4 project
+  project="$home/$id-project"
+  fm_git_worktree "$project" "$worktree" "fm/$id"
+  git -C "$worktree" config extensions.worktreeConfig true
+  git -C "$worktree" config --worktree fm.firstmate-task "$id"
+  if [ "$push" = yes ]; then
+    git -C "$worktree" push -q origin "fm/$id"
+  else
+    git -C "$worktree" -c user.name=fmtest -c user.email=fmtest@example.invalid commit -q --allow-empty -m unlanded
+  fi
+  fm_write_meta "$home/state/$id.meta" \
+    "window=" "worktree=$worktree" "project=$project" "kind=ship" "mode=local-only"
+}
+
 # --- 1. successful isolated shutdown, empty fleet -----------------------
 
 test_successful_shutdown_empty_fleet() {
@@ -460,6 +493,84 @@ test_note_reports_pr_and_worktree_status() {
   pass "end-session: the handoff note surfaces each task's pr= and worktree dirty state"
 }
 
+# --- reconciliation: landed work is cleaned through guarded teardown --------
+
+test_reconcile_tears_down_finished_task() {
+  local home fakebin log out
+  home=$(make_home reconcile-finished)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock_as_self "$home" "$fakebin"
+  log="$(dirname "$home")/treehouse.log"
+  : > "$log"
+  make_reconcile_tools "$fakebin" "$log"
+  make_reconcile_task "$home" finished-task "$home/finished-wt" yes
+
+  out=$(run_es "$home" "$fakebin" reconcile) || fail "reconcile refused a landed task: $out"
+  assert_contains "$out" "CLOSING: finished-task - torn down" \
+    "reconcile did not report the finished task as torn down"
+  assert_absent "$home/state/finished-task.meta" \
+    "guarded teardown did not retire the finished task record"
+  assert_absent "$home/finished-wt" \
+    "guarded teardown did not return the finished worktree"
+  assert_grep "return $home/finished-wt" "$log" \
+    "reconcile did not use the existing treehouse teardown path"
+  pass "end-session: landed task is torn down through guarded teardown"
+}
+
+# --- reconciliation: legitimate refusal is preserved and explicit ----------
+
+test_reconcile_preserves_and_reports_unlanded_task() {
+  local home fakebin log out
+  home=$(make_home reconcile-unlanded)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock_as_self "$home" "$fakebin"
+  log="$(dirname "$home")/treehouse.log"
+  : > "$log"
+  make_reconcile_tools "$fakebin" "$log"
+  make_reconcile_task "$home" unlanded-task "$home/unlanded-wt" no
+
+  out=$(run_es "$home" "$fakebin" reconcile) || fail "reconcile treated a refusal as shutdown failure: $out"
+  assert_contains "$out" "CLOSING: unlanded-task - preserved:" \
+    "reconcile did not report the guarded teardown refusal"
+  assert_present "$home/state/unlanded-task.meta" \
+    "a refused unlanded task record was removed"
+  assert_present "$home/unlanded-wt" \
+    "a refused unlanded worktree was removed"
+  [ ! -s "$log" ] || fail "reconcile invoked treehouse return after an unlanded refusal"
+  assert_grep "unlanded-task: preserved:" "$home/data/end-session/reconciliation.md" \
+    "reconciliation report omitted the preserved task"
+  pass "end-session: unlanded task remains intact and is reported with its refusal"
+}
+
+# --- reconciliation: recycled worktree identity is neutralised -------------
+
+test_reconcile_never_acts_on_recycled_worktree() {
+  local home fakebin log out project worktree
+  home=$(make_home reconcile-recycled)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock_as_self "$home" "$fakebin"
+  log="$(dirname "$home")/treehouse.log"
+  : > "$log"
+  make_reconcile_tools "$fakebin" "$log"
+  project="$home/recycled-project"
+  worktree="$home/recycled-wt"
+  fm_git_worktree "$project" "$worktree" fm/current-task
+  git -C "$worktree" config extensions.worktreeConfig true
+  git -C "$worktree" config --worktree fm.firstmate-task current-task
+  fm_write_meta "$home/state/recycled-task.meta" \
+    "window=" "worktree=$worktree" "project=$project" "kind=ship" "mode=local-only"
+
+  out=$(run_es "$home" "$fakebin" reconcile) || fail "reconcile refused a safely neutralised recycled record: $out"
+  assert_contains "$out" "CLOSING: recycled-task - recycled identity:" \
+    "reconcile did not flag the recycled worktree identity"
+  assert_grep "stale_worktree_cleared=" "$home/state/recycled-task.meta" \
+    "recycled record was not marked with a durable clearing reason"
+  grep -qx 'worktree=' "$home/state/recycled-task.meta" \
+    || fail "recycled worktree pointer was not neutralised"
+  [ ! -s "$log" ] || fail "reconcile acted on a worktree owned by another task"
+  pass "end-session: recycled worktree identity is marked and never acted on"
+}
+
 test_successful_shutdown_empty_fleet
 test_refuses_on_ambiguous_endpoint
 test_decisions_and_wake_queue_untouched
@@ -471,3 +582,6 @@ test_watch_lock_identity_mismatch_treated_as_stale_never_signaled
 test_quiesce_refuses_while_a_live_helper_remains
 test_active_validation_is_visible_but_exempt_from_shutdown
 test_note_reports_pr_and_worktree_status
+test_reconcile_tears_down_finished_task
+test_reconcile_preserves_and_reports_unlanded_task
+test_reconcile_never_acts_on_recycled_worktree
