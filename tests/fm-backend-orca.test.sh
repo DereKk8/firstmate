@@ -7,6 +7,7 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-backend-orca-tests)
+mkdir -p "$TMP_ROOT/archives"
 
 make_orca_fakebin() {  # <dir> -> echoes fakebin dir
   local fb="$1/fakebin"
@@ -999,6 +1000,10 @@ test_ship_teardown_removes_orca_worktree_when_id_path_matches() {
   state="$TMP_ROOT/ship-match-state"
   config="$TMP_ROOT/ship-match-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
+  # Normal ship teardown archives the named task artifacts before cleanup, so
+  # the fixture starts with the required directory.
+  mkdir -p "$wt/.agent/tasks/$id"
+  printf '%s\n' fixture > "$wt/.agent/tasks/$id/plan.md"
   mkdir -p "$data/$id" "$state" "$config"
   touch "$state/.last-watcher-beat"
   fm_write_meta "$state/$id.meta" \
@@ -1011,6 +1016,7 @@ test_ship_teardown_removes_orca_worktree_when_id_path_matches() {
   set +e
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$neutral" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
+    FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives" \
     "$ROOT/bin/fm-teardown.sh" "$id" 2>&1 )
   rc=$?
   set -e

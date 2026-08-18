@@ -12,6 +12,7 @@ set -u
 
 END_SESSION="$ROOT/bin/fm-end-session.sh"
 TMP_ROOT=$(fm_test_tmproot fm-end-session)
+mkdir -p "$TMP_ROOT/archives"
 REAL_TMUX=$(command -v tmux || true)
 fm_git_identity fmtest fmtest@example.invalid
 
@@ -63,7 +64,8 @@ acquire_lock_as_self() {  # <home> <fakebin>
 run_es() {  # <home> <fakebin> <subcommand...>
   local home=$1 fakebin=$2
   shift 2
-  PATH="$fakebin:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$END_SESSION" "$@"
+  PATH="$fakebin:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives" "$END_SESSION" "$@"
 }
 
 make_validation_tools() {  # <fakebin>
@@ -132,6 +134,10 @@ make_reconcile_task() {  # <home> <id> <worktree> <push:yes|no>
   else
     git -C "$worktree" -c user.name=fmtest -c user.email=fmtest@example.invalid commit -q --allow-empty -m unlanded
   fi
+  # Normal ship teardown now archives the named task artifacts before returning
+  # this worktree, so every ordinary fixture starts with the required directory.
+  mkdir -p "$worktree/.agent/tasks/$id"
+  printf '%s\n' fixture > "$worktree/.agent/tasks/$id/plan.md"
   fm_write_meta "$home/state/$id.meta" \
     "window=" "worktree=$worktree" "project=$project" "kind=ship" "mode=local-only"
 }
