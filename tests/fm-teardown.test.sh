@@ -631,6 +631,45 @@ test_teardown_blocks_when_archive_fails() {
   pass "teardown blocks and preserves the task when local archiving fails"
 }
 
+test_teardown_retry_after_return_failure_rearchives_idempotently() {
+  local case_dir rc
+  case_dir=$(make_case archive-retry-after-return-failure)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  cat > "$case_dir/fakebin/treehouse" <<'SH'
+#!/usr/bin/env bash
+count=0
+[ ! -f "${TREEHOUSE_COUNT_FILE:-}" ] || count=$(cat "${TREEHOUSE_COUNT_FILE:-}")
+count=$((count + 1))
+printf '%s\n' "$count" > "${TREEHOUSE_COUNT_FILE:?}"
+[ "$count" -ge 2 ] || exit 1
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/treehouse"
+
+  set +e
+  TREEHOUSE_COUNT_FILE="$case_dir/treehouse-count" \
+    run_teardown "$case_dir" > "$case_dir/first.stdout" 2> "$case_dir/first.stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "archive-retry: a failed worktree return should refuse teardown"
+  assert_present "$case_dir/project/.agent/archive/task-x1/workflow.md" \
+    "archive-retry: the first attempt did not archive before the return failure"
+  assert_present "$case_dir/wt" "archive-retry: the failed return removed the worktree"
+  assert_present "$case_dir/state/task-x1.meta" "archive-retry: the failed return removed task metadata"
+
+  set +e
+  TREEHOUSE_COUNT_FILE="$case_dir/treehouse-count" \
+    run_teardown "$case_dir" > "$case_dir/second.stdout" 2> "$case_dir/second.stderr"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "archive-retry: retry teardown must complete despite the existing archive"
+  assert_present "$case_dir/project/.agent/archive/task-x1/workflow.md" \
+    "archive-retry: the retry lost the archived artifacts"
+  assert_absent "$case_dir/state/task-x1.meta" "archive-retry: the retry left task metadata behind"
+  pass "a teardown retry after a destructive-step failure re-archives idempotently instead of wedging"
+}
+
 test_teardown_prompts_tasks_axi_done_when_compatible() {
   local case_dir out
   case_dir=$(make_case tasks-axi-reminder)
@@ -2687,6 +2726,7 @@ EOF
 test_local_only_fork_remote_allows
 test_teardown_archives_before_return
 test_teardown_blocks_when_archive_fails
+test_teardown_retry_after_return_failure_rearchives_idempotently
 test_teardown_prompts_tasks_axi_done_when_compatible
 test_teardown_manual_backend_prompts_hand_edit_even_when_tasks_axi_present
 test_local_only_truly_unpushed_refuses

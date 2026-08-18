@@ -93,10 +93,6 @@ replace_archive_entry() {
       refuse "could not stage the existing archive entry before overwrite"
       return 1
     }
-    rmdir -- "$ARCHIVE_OLD_DIR" || {
-      refuse "could not prepare the existing archive entry for overwrite"
-      return 1
-    }
     old_entry="$ARCHIVE_OLD_DIR/$ID"
     if ! mv -- "$destination" "$old_entry"; then
       refuse "could not stage the existing archive entry for overwrite: $destination"

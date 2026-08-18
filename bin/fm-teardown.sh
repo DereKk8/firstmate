@@ -2401,14 +2401,6 @@ if [ -d "$WT" ] && [ "$FORCE" != "--force" ]; then
   fi
 fi
 
-if [ "$KIND" = ship ] && [ "$FORCE" != "--force" ]; then
-  if ! FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-      "$SCRIPT_DIR/fm-archive-task.sh" "$ID"; then
-    echo "REFUSED: task $ID artifacts were not archived; preserving the worktree and task state, so teardown is blocked." >&2
-    exit 1
-  fi
-fi
-
 # Every landed/discard-work refusal above has now passed (or --force skipped
 # them). Fix 1 and Fix 2 (see script header) run here, unconditionally on
 # --force, and before ANY destructive step below - a still-parked run or a
@@ -2439,6 +2431,14 @@ if [ "$BACKEND" = herdr ] && [ "$ENDPOINT_PRESENT" = 1 ]; then
   fm_backend_herdr_parse_target "$T" || exit 1
   TEARDOWN_HERDR_SESSION=$FM_BACKEND_HERDR_SESSION
   TEARDOWN_HERDR_PANE=$FM_BACKEND_HERDR_PANE
+fi
+
+if [ "$KIND" = ship ] && [ "$FORCE" != "--force" ]; then
+  if ! FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-archive-task.sh" "$ID" --force; then
+    echo "REFUSED: task $ID artifacts were not archived; preserving the worktree and task state, so teardown is blocked." >&2
+    exit 1
+  fi
 fi
 
 # Best-effort: drop the local task branch so the shared repo does not accumulate refs.

@@ -138,6 +138,25 @@ test_existing_destination_refuses_without_force() {
   pass "existing local archive refuses without explicit overwrite"
 }
 
+test_force_overwrites_existing_destination() {
+  local case_dir leftovers
+  case_dir=$(make_case force-overwrite)
+  write_task_artifact "$case_dir" fresh
+  mkdir -p "$case_dir/project/.agent/archive/task-x1"
+  printf '%s\n' stale > "$case_dir/project/.agent/archive/task-x1/plan.md"
+
+  run_archive "$case_dir" --force >"$case_dir/out" 2>"$case_dir/err" \
+    || fail "force overwrite archive failed: $(cat "$case_dir/err")"
+  grep -qx fresh "$case_dir/project/.agent/archive/task-x1/plan.md" \
+    || fail "--force did not replace the existing same-task archive entry"
+  grep -qx fresh "$case_dir/backup/project/task-x1/plan.md" \
+    || fail "--force did not replace the backup mirror entry"
+  leftovers=$(ls -d "$case_dir/project/.agent/archive/".task-x1.previous.* 2>/dev/null) \
+    || true
+  [ -z "$leftovers" ] || fail "--force left a staging directory behind: $leftovers"
+  pass "--force replaces an existing same-task archive entry and its mirror"
+}
+
 test_multiple_task_directories_report_and_select_named_one() {
   local case_dir
   case_dir=$(make_case multiple-tasks)
@@ -163,4 +182,5 @@ test_push_failure_is_nonfatal_and_reported
 test_missing_worktree_refuses
 test_missing_task_directory_refuses
 test_existing_destination_refuses_without_force
+test_force_overwrites_existing_destination
 test_multiple_task_directories_report_and_select_named_one
