@@ -91,12 +91,21 @@ PROJECT_BASENAME=$(basename "$PROJECT_PATH_REAL")
 # symlinked) or the entry's explicit path= field.
 registry_path_matches() {
   local name=$1 candidate candidate_real registered_path registered_real
+  registered_path=$(registry_path_field "$name")
+  if [ -n "$registered_path" ]; then
+    case "$registered_path" in
+      /*) ;;
+      *)
+        echo "error: registry entry '$name' has invalid path=$registered_path; path= must be absolute in $REG" >&2
+        exit 1
+        ;;
+    esac
+  fi
   candidate="$FM_HOME/projects/$name"
   if [ -d "$candidate" ] && candidate_real=$(cd "$candidate" 2>/dev/null && pwd -P) \
     && [ "$candidate_real" = "$PROJECT_PATH_REAL" ]; then
     return 0
   fi
-  registered_path=$(registry_path_field "$name")
   if [ -n "$registered_path" ] \
     && registered_real=$(cd "$registered_path" 2>/dev/null && pwd -P) \
     && [ "$registered_real" = "$PROJECT_PATH_REAL" ]; then

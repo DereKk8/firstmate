@@ -142,6 +142,24 @@ test_path_explicit_base() {
   pass "fm-project-base.sh: real project path resolves its registry base"
 }
 
+test_relative_path_field_refuses() {
+  local home project out rc
+  home="$TMP_ROOT/relative-path-home"
+  project="$home/real/aide-body"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' '- aide-body [no-mistakes] base=dev path=real/aide-body - malformed relative path (added 2026-07-01)' > "$home/data/projects.md"
+  set +e
+  out=$(cd "$home" && FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "relative path= fields must refuse"
+  assert_contains "$out" "path=real/aide-body" \
+    "relative path= refusal should name the invalid field"
+  assert_contains "$out" "must be absolute" \
+    "relative path= refusal should require an absolute path"
+  pass "fm-project-base.sh: relative path= fields refuse instead of resolving from cwd"
+}
+
 test_path_unregistered_refuses() {
   local home project out rc
   home="$TMP_ROOT/path-missing-home"
@@ -219,6 +237,7 @@ test_explicit_base_prints_nothing
 test_base_in_description_not_parsed
 test_path_in_description_not_parsed
 test_path_explicit_base
+test_relative_path_field_refuses
 test_path_unregistered_refuses
 test_path_basename_collision_refuses
 test_path_foreign_projects_subdir_refuses
