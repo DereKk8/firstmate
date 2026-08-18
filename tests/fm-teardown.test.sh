@@ -178,7 +178,6 @@ SH
   # this worktree, so every ordinary fixture starts with the required directory.
   mkdir -p "$case_dir/wt/.agent/tasks/task-x1"
   printf '%s\n' fixture > "$case_dir/wt/.agent/tasks/task-x1/workflow.md"
-  printf '%s\n' '.agent/' >> "$case_dir/project/.git/info/exclude"
 
   # Fresh watcher beacon so fm-guard stays quiet.
   touch "$case_dir/state/.last-watcher-beat"
@@ -1217,7 +1216,6 @@ test_non_linked_index_lock_path_is_checked_from_worktree() {
   git -C "$case_dir/wt" checkout -q -b fm/task-x1
   mkdir -p "$case_dir/wt/.agent/tasks/task-x1"
   printf '%s\n' fixture > "$case_dir/wt/.agent/tasks/task-x1/workflow.md"
-  printf '%s\n' '.agent/' >> "$case_dir/wt/.git/info/exclude"
   write_meta "$case_dir" no-mistakes ship
   wt_commit "$case_dir" "shippable normal clone work"
   git -C "$case_dir/wt" push -q origin fm/task-x1
