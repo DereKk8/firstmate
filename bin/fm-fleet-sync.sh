@@ -11,6 +11,9 @@
 # is left untouched and reported as a quantified, loud "STUCK: ... N commits behind
 # ... - needs attention" warning rather than a quiet drift. Nothing is ever forced,
 # stashed, or discarded.
+# The dirty check excludes local agent scratch under .agent/ (directory match, not
+# substring): entries whose path is under .agent/ are ignored so that agent archive
+# artifacts do not pin a clone as permanently dirty and block refresh forever.
 # Still skips (benignly) local-only/no-origin projects, missing remotes/branches,
 # and fetch failures.
 # Pruning never deletes the checked-out branch or a branch that still has a
@@ -338,7 +341,15 @@ sync_project() {
 
   cur=$(git -C "$PROJ" symbolic-ref --short HEAD 2>/dev/null || echo "")
   dirty=no
-  [ -z "$(git -C "$PROJ" status --porcelain 2>/dev/null | head -1)" ] || dirty=yes
+  dirty_entry=$(git -C "$PROJ" status --porcelain=v1 2>/dev/null | awk '
+    {
+      path = substr($0, 4)
+      arrow = index(path, " -> ")
+      if (substr($0, 1, 1) == "R" && arrow) path = substr(path, arrow + 4)
+      if (path !~ /^\.agent(\/|$)/) { print; exit }
+    }
+  ')
+  [ -z "$dirty_entry" ] || dirty=yes
   recovered=no
 
   if [ "$cur" != "$DEFAULT" ]; then
@@ -347,9 +358,9 @@ sync_project() {
     # origin/<default>) and whose <default> branch is free to check out here.
     # Re-attaching to an already-published commit strands nothing, and the
     # fast-forward path below then catches the clone up. Anything else - a
-    # non-default named branch, a detached HEAD with unique commits, a dirty tree,
-    # or <default> already checked out elsewhere - may hold real work, so it is
-    # reported loudly and left untouched.
+    # non-default named branch, a detached HEAD with unique commits, a dirty tree
+    # (excluding .agent/ agent scratch), or <default> already checked out elsewhere
+    # - may hold real work, so it is reported loudly and left untouched.
     if [ -z "$cur" ] && [ "$dirty" = no ] \
         && git -C "$PROJ" merge-base --is-ancestor HEAD "$BASE" 2>/dev/null \
         && ! default_checked_out_elsewhere \
