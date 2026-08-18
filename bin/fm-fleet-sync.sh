@@ -338,7 +338,15 @@ sync_project() {
 
   cur=$(git -C "$PROJ" symbolic-ref --short HEAD 2>/dev/null || echo "")
   dirty=no
-  [ -z "$(git -C "$PROJ" status --porcelain 2>/dev/null | head -1)" ] || dirty=yes
+  dirty_entry=$(git -C "$PROJ" status --porcelain=v1 2>/dev/null | awk '
+    {
+      path = substr($0, 4)
+      arrow = index(path, " -> ")
+      if (substr($0, 1, 1) == "R" && arrow) path = substr(path, arrow + 4)
+      if (path !~ /^\.agent(\/|$)/) { print; exit }
+    }
+  ')
+  [ -z "$dirty_entry" ] || dirty=yes
   recovered=no
 
   if [ "$cur" != "$DEFAULT" ]; then
