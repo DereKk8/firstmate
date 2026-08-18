@@ -11,6 +11,11 @@ set -u
 
 ARCHIVE="$ROOT/bin/fm-archive-task.sh"
 TMP_ROOT=$(fm_test_tmproot fm-archive-task)
+# fm-archive-task.sh's backup mirror commits through git commit-tree, which
+# uses the ambient author identity. Export a fixed one so the mirror push
+# assertions never depend on the host git config (fixture commits below use
+# inline identities and cannot cover the mirror's commit-tree call).
+fm_git_identity fmtest fmtest@example.invalid
 
 make_case() {
   local name=$1 case_dir seed backup_origin backup
