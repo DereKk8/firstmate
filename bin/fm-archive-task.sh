@@ -104,7 +104,7 @@ replace_archive_entry() {
 
   if mv -- "$ARCHIVE_STAGE/$ID" "$destination"; then
     rm -rf -- "$ARCHIVE_OLD_DIR"
-    ARCHIVE_STAGE=
+    rmdir -- "$ARCHIVE_STAGE" 2>/dev/null && ARCHIVE_STAGE=
     ARCHIVE_OLD_DIR=
     return 0
   fi
@@ -223,7 +223,7 @@ mirror_local_archive() {
     warn_mirror "could not publish the backup archive entry"
     return 0
   fi
-  MIRROR_STAGE=
+  rmdir -- "$MIRROR_STAGE" 2>/dev/null && MIRROR_STAGE=
   relative="$PRODUCT_NAME/$ID"
   backup_git_commit_and_push "$BACKUP_ROOT" "$relative"
   return 0

@@ -64,6 +64,9 @@ test_happy_path_archives_and_mirrors() {
     "happy path local archive has the wrong content"
   git --git-dir="$case_dir/backup-origin.git" show main:project/task-x1/plan.md \
     | grep -qx happy || fail "happy path did not push the backup mirror"
+  leftovers=$(find "$case_dir" \( -name '.task-x1.archive.*' -o -name '.task-x1.mirror.*' \)) \
+    || true
+  [ -z "$leftovers" ] || fail "happy path left a staging directory behind: $leftovers"
   pass "archive happy path copies locally, mirrors, commits, and pushes"
 }
 
@@ -154,6 +157,9 @@ test_force_overwrites_existing_destination() {
   leftovers=$(ls -d "$case_dir/project/.agent/archive/".task-x1.previous.* 2>/dev/null) \
     || true
   [ -z "$leftovers" ] || fail "--force left a staging directory behind: $leftovers"
+  staging=$(find "$case_dir" \( -name '.task-x1.archive.*' -o -name '.task-x1.mirror.*' \)) \
+    || true
+  [ -z "$staging" ] || fail "--force left a staging directory behind: $staging"
   pass "--force replaces an existing same-task archive entry and its mirror"
 }
 
