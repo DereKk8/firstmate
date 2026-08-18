@@ -15,6 +15,8 @@
 #
 # Usage: fm-archive-task.sh <task-id> [--force]
 #   --force replaces an existing local archive entry and its mirror entry.
+#   An existing archive entry is authoritative: when the recorded worktree is
+#   already gone, the entry is treated as complete and the command succeeds.
 #
 # A task directory is selected by its explicit task id even when the worktree
 # contains other task directories. Those other directories are reported and
@@ -271,20 +273,27 @@ WT=$(meta_value "$META" worktree)
 PROJ=$(meta_value "$META" project)
 case "$WT" in /*) ;; *) refuse "recorded worktree path is not absolute: ${WT:-<empty>}"; exit 1 ;; esac
 case "$PROJ" in /*) ;; *) refuse "recorded project path is not absolute: ${PROJ:-<empty>}"; exit 1 ;; esac
-[ -d "$WT" ] && [ ! -L "$WT" ] || {
-  refuse "recorded worktree is gone or unsafe: $WT"
-  exit 1
-}
 [ -d "$PROJ" ] && [ ! -L "$PROJ" ] || {
   refuse "recorded product repository is gone or unsafe: $PROJ"
   exit 1
 }
-WT=$(cd -- "$WT" && pwd -P) || { refuse "could not resolve recorded worktree: $WT"; exit 1; }
 PROJ=$(cd -- "$PROJ" && pwd -P) || { refuse "could not resolve recorded product repository: $PROJ"; exit 1; }
-[ "$WT" != "$PROJ" ] || {
-  refuse "recorded worktree and product repository are the same path: $WT"
+LOCAL_ARCHIVE="$PROJ/.agent/archive/$ID"
+
+if [ -d "$WT" ] && [ ! -L "$WT" ]; then
+  WT=$(cd -- "$WT" && pwd -P) || { refuse "could not resolve recorded worktree: $WT"; exit 1; }
+  [ "$WT" != "$PROJ" ] || {
+    refuse "recorded worktree and product repository are the same path: $WT"
+    exit 1
+  }
+elif path_present "$LOCAL_ARCHIVE"; then
+  printf 'archived task %s already present at %s; recorded worktree %s is gone - nothing further to archive\n' \
+    "$ID" "$LOCAL_ARCHIVE" "$WT"
+  exit 0
+else
+  refuse "recorded worktree is gone or unsafe: $WT"
   exit 1
-}
+fi
 
 TASKS_DIR="$WT/.agent/tasks"
 SOURCE="$TASKS_DIR/$ID"
@@ -326,7 +335,6 @@ else
   mkdir -- "$ARCHIVE_ROOT" || { refuse "could not create product archive directory: $ARCHIVE_ROOT"; exit 1; }
 fi
 
-LOCAL_ARCHIVE="$ARCHIVE_ROOT/$ID"
 replace_archive_entry "$ARCHIVE_ROOT" "$SOURCE" "$LOCAL_ARCHIVE" "$FORCE" || exit 1
 PRODUCT_NAME=$(basename "$PROJ")
 printf 'archived task %s from %s into %s\n' "$ID" "$SOURCE" "$LOCAL_ARCHIVE"

@@ -157,6 +157,30 @@ test_force_overwrites_existing_destination() {
   pass "--force replaces an existing same-task archive entry and its mirror"
 }
 
+test_retry_with_gone_worktree_and_existing_archive_is_idempotent() {
+  local case_dir rc
+  case_dir=$(make_case retry-after-return)
+  write_task_artifact "$case_dir" first
+  run_archive "$case_dir" >"$case_dir/out1" 2>"$case_dir/err1" \
+    || fail "first archive failed: $(cat "$case_dir/err1")"
+  assert_present "$case_dir/project/.agent/archive/task-x1/plan.md" \
+    "first archive did not create the product-local archive"
+  rm -rf "$case_dir/wt"
+
+  set +e
+  run_archive "$case_dir" >"$case_dir/out2" 2>"$case_dir/err2"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "retry with a gone worktree and existing archive should succeed"
+  grep -qx first "$case_dir/project/.agent/archive/task-x1/plan.md" \
+    || fail "idempotent retry lost the archived artifacts"
+  assert_grep "already present" "$case_dir/out2" \
+    "idempotent retry did not report the existing archive"
+  assert_no_grep "REFUSED" "$case_dir/err2" \
+    "idempotent retry refused despite the completed archive"
+  pass "a retry after the worktree is gone succeeds idempotently when the archive exists"
+}
+
 test_multiple_task_directories_report_and_select_named_one() {
   local case_dir
   case_dir=$(make_case multiple-tasks)
@@ -183,4 +207,5 @@ test_missing_worktree_refuses
 test_missing_task_directory_refuses
 test_existing_destination_refuses_without_force
 test_force_overwrites_existing_destination
+test_retry_with_gone_worktree_and_existing_archive_is_idempotent
 test_multiple_task_directories_report_and_select_named_one

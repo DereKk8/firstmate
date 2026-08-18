@@ -670,6 +670,47 @@ SH
   pass "a teardown retry after a destructive-step failure re-archives idempotently instead of wedging"
 }
 
+test_teardown_retry_after_post_return_refusal_completes() {
+  local case_dir rc
+  case_dir=$(make_case archive-retry-after-post-return-refusal)
+  write_meta "$case_dir" no-mistakes ship
+  printf '%s\n' 'busy_gen=BBB' >> "$case_dir/state/task-x1.meta"
+  printf '%s\n' 'AAA' > "$case_dir/state/task-x1.busy-gen"
+  land_shippable_commit "$case_dir"
+  cat > "$case_dir/fakebin/treehouse" <<'SH'
+#!/usr/bin/env bash
+# The real treehouse return removes the worktree; the fake mirrors that so a
+# post-return refusal is reached with the worktree already gone.
+rm -rf -- "$3"
+exit 0
+SH
+  chmod +x "$case_dir/fakebin/treehouse"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/first.stdout" 2> "$case_dir/first.stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "post-return-refusal: the stale busy gen should refuse the first teardown"
+  assert_present "$case_dir/project/.agent/archive/task-x1/workflow.md" \
+    "post-return-refusal: the first attempt did not archive before the return"
+  assert_absent "$case_dir/wt" "post-return-refusal: the first attempt did not return the worktree"
+  assert_grep "stale busy-state gen" "$case_dir/first.stderr" \
+    "post-return-refusal: the refusal after the return was not the stale busy gen"
+  assert_present "$case_dir/state/task-x1.meta" "post-return-refusal: the refused attempt removed task metadata"
+
+  rm -f "$case_dir/state/task-x1.busy-gen"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/second.stdout" 2> "$case_dir/second.stderr"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "post-return-refusal: the retry must complete despite the gone worktree and existing archive"
+  assert_absent "$case_dir/state/task-x1.meta" "post-return-refusal: the retry left task metadata behind"
+  assert_no_grep "artifacts were not archived" "$case_dir/second.stderr" \
+    "post-return-refusal: the retry was blocked at the archive step"
+  pass "a teardown retry after a post-return refusal completes once the transient condition clears"
+}
+
 test_teardown_prompts_tasks_axi_done_when_compatible() {
   local case_dir out
   case_dir=$(make_case tasks-axi-reminder)
@@ -2727,6 +2768,7 @@ test_local_only_fork_remote_allows
 test_teardown_archives_before_return
 test_teardown_blocks_when_archive_fails
 test_teardown_retry_after_return_failure_rearchives_idempotently
+test_teardown_retry_after_post_return_refusal_completes
 test_teardown_prompts_tasks_axi_done_when_compatible
 test_teardown_manual_backend_prompts_hand_edit_even_when_tasks_axi_present
 test_local_only_truly_unpushed_refuses
