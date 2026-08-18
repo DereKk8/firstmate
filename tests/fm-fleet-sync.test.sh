@@ -306,6 +306,26 @@ test_agent_scratch_is_clean_and_fast_forwards() {
   pass "untracked, modified, staged, and renamed .agent paths are ignored"
 }
 
+test_mixed_agent_scratch_and_real_change_is_dirty() {
+  local home clone out before
+  home=$(new_home)
+  clone=$(build_pair "$home" mixed-dirty)
+  mkdir -p "$clone/.agent/archive"
+  printf 'scratch\n' > "$clone/.agent/archive/task"
+  printf 'real edit\n' >> "$clone/file.txt"
+  advance_origin "$home" mixed-dirty C1
+  before=$(head_sha "$clone")
+
+  out=$(run_sync "$home" "$clone")
+
+  assert_contains "$out" "mixed-dirty: STUCK:" "mixed dirty clone reports STUCK"
+  assert_contains "$out" "uncommitted changes" "mixed dirty clone names the dirty state"
+  [ "$(head_sha "$clone")" = "$before" ] || fail "mixed dirty clone was moved"
+  grep -q 'real edit' "$clone/file.txt" || fail "real uncommitted change was discarded"
+  [ -f "$clone/.agent/archive/task" ] || fail "agent scratch was removed"
+  pass "agent scratch plus a real change stays dirty and untouched"
+}
+
 test_agent_substring_path_is_dirty() {
   local home clone out before
   home=$(new_home)
@@ -655,6 +675,7 @@ test_detached_unique_commit_is_stuck_untouched
 test_detached_clean_ancestor_with_diverged_local_default_is_stuck_untouched
 test_dirty_is_stuck_untouched
 test_agent_scratch_is_clean_and_fast_forwards
+test_mixed_agent_scratch_and_real_change_is_dirty
 test_agent_substring_path_is_dirty
 test_non_default_branch_is_stuck_untouched
 test_diverged_is_stuck_untouched
