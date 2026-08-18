@@ -77,6 +77,12 @@ make_case() {
   case_dir="$TMP_ROOT/$name"
   fakebin="$case_dir/fakebin"
   mkdir -p "$case_dir/state" "$case_dir/config" "$case_dir/data" "$fakebin"
+  fm_git_init_commit "$case_dir/archives"
+  git init -q --bare "$case_dir/archives-origin.git"
+  git -C "$case_dir/archives-origin.git" symbolic-ref HEAD refs/heads/main
+  git -C "$case_dir/archives" branch -M main
+  git -C "$case_dir/archives" remote add origin "file://$case_dir/archives-origin.git"
+  git -C "$case_dir/archives" push -q -u origin main
 
   # Mocks for the post-check teardown steps. Refuse logic exits before these
   # run; the ALLOW cases need them so the script can complete cleanly.
@@ -168,6 +174,11 @@ SH
   git -C "$case_dir/project" remote set-head origin main 2>/dev/null || true
   # Add a worktree on a fresh task branch; that branch is where the crewmate commits.
   git -C "$case_dir/project" worktree add -q -b fm/task-x1 "$case_dir/wt" main
+  # Normal ship teardown now archives the named task artifacts before returning
+  # this worktree, so every ordinary fixture starts with the required directory.
+  mkdir -p "$case_dir/wt/.agent/tasks/task-x1"
+  printf '%s\n' fixture > "$case_dir/wt/.agent/tasks/task-x1/workflow.md"
+  printf '%s\n' '.agent/' >> "$case_dir/project/.git/info/exclude"
 
   # Fresh watcher beacon so fm-guard stays quiet.
   touch "$case_dir/state/.last-watcher-beat"
@@ -549,6 +560,7 @@ run_teardown() {
   FM_STATE_OVERRIDE="$case_dir/state" \
   FM_DATA_OVERRIDE="$case_dir/data" \
   FM_CONFIG_OVERRIDE="$case_dir/config" \
+  FM_AGENT_ARCHIVES_ROOT="$case_dir/archives" \
   PATH="$case_dir/fakebin:${FM_TEARDOWN_TEST_PATH:-$PATH}" \
     "$TEARDOWN" task-x1 "$@"
 }
@@ -581,6 +593,42 @@ test_local_only_fork_remote_allows() {
   expect_code 0 "$rc" "fork-allow: teardown should succeed when HEAD is on a fork remote"
   ! grep -q REFUSED "$case_dir/stderr" || fail "fork-allow: teardown printed a REFUSED line"
   pass "local-only worktree with HEAD on a fork remote is torn down (fix holds)"
+}
+
+test_teardown_archives_before_return() {
+  local case_dir out
+  case_dir=$(make_case archive-lifecycle)
+  write_meta "$case_dir" no-mistakes ship
+  wt_commit "$case_dir" "landed archive lifecycle work"
+  git -C "$case_dir/wt" push -q origin fm/task-x1
+  git -C "$case_dir/project" fetch -q origin
+
+  out=$(run_teardown "$case_dir") || fail "archive lifecycle teardown failed: $out"
+  assert_present "$case_dir/project/.agent/archive/task-x1/workflow.md" \
+    "teardown did not archive artifacts before returning the worktree"
+  git --git-dir="$case_dir/archives-origin.git" show main:project/task-x1/workflow.md \
+    | grep -qx fixture || fail "teardown did not push the archive mirror"
+  assert_absent "$case_dir/state/task-x1.meta" \
+    "successful archive lifecycle teardown left task metadata behind"
+  pass "teardown archives landed task artifacts before destructive cleanup"
+}
+
+test_teardown_blocks_when_archive_fails() {
+  local case_dir rc
+  case_dir=$(make_case archive-refusal)
+  write_meta "$case_dir" no-mistakes ship
+  rm -rf "$case_dir/wt/.agent/tasks/task-x1"
+
+  set +e
+  run_teardown "$case_dir" >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "teardown should block when task artifacts cannot be archived"
+  assert_grep "artifacts were not archived" "$case_dir/stderr" \
+    "archive failure did not block teardown clearly"
+  assert_present "$case_dir/wt" "archive failure removed the worktree"
+  assert_present "$case_dir/state/task-x1.meta" "archive failure removed task metadata"
+  pass "teardown blocks and preserves the task when local archiving fails"
 }
 
 test_teardown_prompts_tasks_axi_done_when_compatible() {
@@ -1087,6 +1135,9 @@ test_non_linked_index_lock_path_is_checked_from_worktree() {
   git -C "$case_dir/project" worktree remove --force "$case_dir/wt"
   git clone -q "$case_dir/origin.git" "$case_dir/wt"
   git -C "$case_dir/wt" checkout -q -b fm/task-x1
+  mkdir -p "$case_dir/wt/.agent/tasks/task-x1"
+  printf '%s\n' fixture > "$case_dir/wt/.agent/tasks/task-x1/workflow.md"
+  printf '%s\n' '.agent/' >> "$case_dir/wt/.git/info/exclude"
   write_meta "$case_dir" no-mistakes ship
   wt_commit "$case_dir" "shippable normal clone work"
   git -C "$case_dir/wt" push -q origin fm/task-x1
@@ -2634,6 +2685,8 @@ EOF
 }
 
 test_local_only_fork_remote_allows
+test_teardown_archives_before_return
+test_teardown_blocks_when_archive_fails
 test_teardown_prompts_tasks_axi_done_when_compatible
 test_teardown_manual_backend_prompts_hand_edit_even_when_tasks_axi_present
 test_local_only_truly_unpushed_refuses

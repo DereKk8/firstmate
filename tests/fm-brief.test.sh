@@ -210,6 +210,10 @@ test_ship_modes_generate_clean_briefs() {
     grep -qx "Delivery contract: mode=$mode" "$brief" \
       || fail "$id: brief did not record its machine-readable delivery contract line"
     assert_grep "{TASK}" "$brief" "$id: brief missing the {TASK} placeholder"
+    assert_grep "# Task artifact contract" "$brief" "$id: brief missing the task artifact contract"
+    assert_grep ".agent/tasks/$id/" "$brief" "$id: brief missing its task-scoped artifact directory"
+    assert_grep "do not carry over or create directories for any other task" "$brief" \
+      "$id: brief missing the no-carried-over-artifacts rule"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
     assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
@@ -716,6 +720,8 @@ test_scout_and_secondmate_scaffold() {
   brief="$BRIEF_HOME/data/brief-scout-q6/brief.md"
   assert_present "$brief" "scout brief was not scaffolded"
   assert_grep "SCOUT task" "$brief" "scout brief must declare itself a scout task"
+  assert_grep "# Task artifact contract" "$brief" "scout brief missing the task artifact contract"
+  assert_grep ".agent/tasks/brief-scout-q6/" "$brief" "scout brief missing its task-scoped artifact directory"
   assert_grep "report.md" "$brief" "scout brief must point at the report deliverable"
 
   FM_SECONDMATE_CHARTER='Supervise the alpha domain.' \
