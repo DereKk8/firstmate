@@ -89,6 +89,11 @@
 # checks before any destructive return. Teardown output notes every wait, retry, and
 # removal so the operator can see what happened.
 #
+# After a normal ship task passes the landed-work and dirty-worktree checks,
+# fm-archive-task.sh copies its task-scoped artifacts while the worktree still
+# exists. A local archive failure refuses teardown and preserves the worktree;
+# the backup mirror is best effort and reports its own failures without blocking.
+#
 # Pre-teardown cleanup sequence (runs once every landed/discard-work safety
 # refusal above has already passed, and BEFORE any worktree return, branch
 # delete, or backend kill below - a still-active run or a leaked process may
@@ -1159,7 +1164,7 @@ validate_worktree_teardown_safety() {
     echo "Restore the git index state, or get the captain's explicit OK to discard, then --force." >&2
     return 1
   fi
-  dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.fm-(grok|kimi)-turnend$)' | head -1 || true)
+  dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.agent/|\.fm-(grok|kimi)-turnend$)' | head -1 || true)
 
   if ! unpushed_raw=$(git -C "$WT" log --oneline HEAD --not --remotes -- 2>/dev/null); then
     if worktree_safety_blocked_by_lock "commits not on a remote"; then
@@ -2426,6 +2431,14 @@ if [ "$BACKEND" = herdr ] && [ "$ENDPOINT_PRESENT" = 1 ]; then
   fm_backend_herdr_parse_target "$T" || exit 1
   TEARDOWN_HERDR_SESSION=$FM_BACKEND_HERDR_SESSION
   TEARDOWN_HERDR_PANE=$FM_BACKEND_HERDR_PANE
+fi
+
+if [ "$KIND" = ship ] && [ "$FORCE" != "--force" ]; then
+  if ! FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-archive-task.sh" "$ID" --force; then
+    echo "REFUSED: task $ID artifacts were not archived; preserving the worktree and task state, so teardown is blocked." >&2
+    exit 1
+  fi
 fi
 
 # Best-effort: drop the local task branch so the shared repo does not accumulate refs.

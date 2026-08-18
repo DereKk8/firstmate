@@ -59,6 +59,9 @@ herdr_forget_inherited_pane
 # The dedicated regression is
 # tests/fm-backend.test.sh:test_spawn_symlinked_project_prefix_avoids_false_refusal.
 TMP_ROOT=$(mktemp -d "$(cd "${TMPDIR:-/tmp}" && pwd -P)/fm-backend-autodetect-smoke.XXXXXX")
+# Hermetic archive mirror so the ship teardown archive step never touches a
+# real captain-side archive repository when this suite runs on a developer host.
+mkdir -p "$TMP_ROOT/archives"
 HERDR_LAB_HELPER="$ROOT/bin/fm-herdr-lab.sh"
 HERDR_LAB_SESSION=$("$HERDR_LAB_HELPER" name fm-autodetect-smoke-concurrency-h3) || {
   rm -rf "$TMP_ROOT"
@@ -155,9 +158,14 @@ pass "real herdr: the auto-detected spawn's launch command actually ran in the h
 
 # --- teardown completes the trivial spawn/teardown cycle --------------------
 
+# The spawned worker's disposable worktree carries its task artifacts; the ship
+# teardown archive step copies them before the worktree is returned.
+mkdir -p "$WT/.agent/tasks/$ID"
+printf '%s\n' fixture > "$WT/.agent/tasks/$ID/plan.md"
+
 TEARDOWN_OUT="$TMP_ROOT/teardown.out"
 FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" \
-  FM_CONFIG_OVERRIDE="$CONFIG" \
+  FM_CONFIG_OVERRIDE="$CONFIG" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives" \
   "$ROOT/bin/fm-teardown.sh" "$ID" >"$TEARDOWN_OUT" 2>&1
 status=$?
 [ "$status" -eq 0 ] || fail "fm-teardown.sh failed for the auto-detected herdr task"$'\n'"$(cat "$TEARDOWN_OUT")"

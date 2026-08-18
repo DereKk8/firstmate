@@ -336,6 +336,10 @@ $FIRSTMATE_DISCLAIMER
 # Task
 {TASK}
 
+# Task artifact contract
+Create exactly one artifact directory at \`.agent/tasks/$ID/\` for this task.
+Keep every artifact for this task inside that directory and do not carry over or create directories for any other task.
+
 $HERDR_SECTION
 
 # Setup
@@ -460,6 +464,10 @@ $FIRSTMATE_DISCLAIMER
 
 # Task
 {TASK}
+
+# Task artifact contract
+Create exactly one artifact directory at \`.agent/tasks/$ID/\` for this task.
+Keep every artifact for this task inside that directory and do not carry over or create directories for any other task.
 
 $HERDR_SECTION
 
