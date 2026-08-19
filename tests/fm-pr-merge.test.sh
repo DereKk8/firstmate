@@ -32,7 +32,7 @@ make_case() {
   case_dir="$TMP_ROOT/$name"
   fakebin="$case_dir/fakebin"
   mkdir -p "$case_dir/state" "$case_dir/data" "$case_dir/project" "$fakebin"
-  printf '%s\n' '- project [no-mistakes] base=main - fixture project' > "$case_dir/data/projects.md"
+  printf '%s\n' "- project [no-mistakes] base=main path=$case_dir/project - fixture project" > "$case_dir/data/projects.md"
   # mode=direct-PR: fm-pr-merge.sh re-invokes fm-pr-check.sh internally, and
   # this file's gh mock never answers the body/mergeStateStatus/baseRefName
   # queries fm-pr-check.sh's mode=no-mistakes structure gate depends on; this
