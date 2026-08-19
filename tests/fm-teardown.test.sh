@@ -77,6 +77,7 @@ make_case() {
   case_dir="$TMP_ROOT/$name"
   fakebin="$case_dir/fakebin"
   mkdir -p "$case_dir/state" "$case_dir/config" "$case_dir/data" "$fakebin"
+  printf '%s\n' "- project [no-mistakes] base=main path=$case_dir/project - fixture project" > "$case_dir/data/projects.md"
   fm_git_init_commit "$case_dir/archives"
   git init -q --bare "$case_dir/archives-origin.git"
   git -C "$case_dir/archives-origin.git" symbolic-ref HEAD refs/heads/main
@@ -950,6 +951,8 @@ test_pr_check_does_not_refresh_stale_pr_head() {
   add_gh_pr_merged_for_head "$case_dir" "$pr_head"
 
   FM_ROOT_OVERRIDE="$ROOT" \
+  FM_HOME="$case_dir/home" \
+  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
     "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
@@ -958,6 +961,8 @@ test_pr_check_does_not_refresh_stale_pr_head() {
   new_head=$(git -C "$case_dir/wt" rev-parse HEAD)
 
   FM_ROOT_OVERRIDE="$ROOT" \
+  FM_HOME="$case_dir/home" \
+  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
     "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
@@ -987,6 +992,8 @@ test_pr_check_records_remote_head_when_local_lags() {
   add_gh_pr_merged_for_head "$case_dir" "$pr_head"
 
   FM_ROOT_OVERRIDE="$ROOT" \
+  FM_HOME="$case_dir/home" \
+  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
     "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null

@@ -670,6 +670,23 @@ registry_line_for_project() {
   printf '%s\n' "$line"
 }
 
+strip_parent_path_field() {
+  awk '
+    {
+      out = ""
+      sep = ""
+      stopped = 0
+      for (i = 1; i <= NF; i++) {
+        if (!stopped && $i ~ /^path=/) continue
+        out = out sep $i
+        sep = " "
+        if ($i == "-" && i > 2) stopped = 1
+      }
+      print out
+    }
+  '
+}
+
 project_mode_in_home() {
   local home=$1 project=$2 mode
   read -r mode _ <<EOF
@@ -701,7 +718,7 @@ sync_project_registry() {
     if [ -z "$line" ]; then
       line="- $project - cloned project (added $today)"
     fi
-    printf '%s\n' "$line" >> "$tmp"
+    printf '%s\n' "$line" | strip_parent_path_field >> "$tmp"
   done
   mv "$tmp" "$sub_reg"
 }

@@ -85,9 +85,16 @@ SH
   brief="$home_one/data/task-c/brief.md"
   grep -F ">> '$home_one/state/task-c.status'" "$brief" >/dev/null || fail "secondmate brief did not shell-quote FM_HOME state path"
 
-  printf 'project=%s\n' "$home_one/project" > "$home_one/state/task-a.meta"
-  FM_HOME="$home_one" PATH="$home_one/bin:$PATH" FM_GUARD_GRACE=999999 \
-    "$ROOT/bin/fm-pr-check.sh" task-a https://github.com/example/repo/pull/1 >/dev/null 2>/dev/null \
+  mkdir -p "$home_one/fakebin" "$home_one/x" "$home_one/projects"
+  printf '%s\n' '- x [no-mistakes] base=main - fixture project' >> "$home_one/data/projects.md"
+  ln -s ../x "$home_one/projects/x"
+  printf 'project=%s\n' "$home_one/x" > "$home_one/state/task-a.meta"
+  cat > "$home_one/fakebin/gh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+  chmod +x "$home_one/fakebin/gh"
+  PATH="$home_one/fakebin:$PATH" FM_HOME="$home_one" FM_GUARD_GRACE=999999 "$ROOT/bin/fm-pr-check.sh" task-a https://github.com/example/repo/pull/1 >/dev/null 2>/dev/null \
     || fail "fm-pr-check failed under FM_HOME"
   [ -f "$home_one/state/task-a.check.sh" ] || fail "pr check was not written under FM_HOME/state"
   [ ! -e "$home_two/state/task-a.check.sh" ] || fail "pr check leaked into another home"

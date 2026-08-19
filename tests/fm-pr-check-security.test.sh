@@ -68,7 +68,7 @@ make_case() {
   fakebin="$dir/fakebin"
   fake_root="$dir/root"
   mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/project" "$dir/wt" "$fakebin" "$fake_root/bin"
-  printf '%s\n' '- project [no-mistakes] base=main - fixture (added 2026-07-11)' > "$dir/home/data/projects.md"
+  printf '%s\n' "- project [no-mistakes] base=main path=$dir/project - fixture (added 2026-07-11)" > "$dir/home/data/projects.md"
   cat > "$fake_root/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"

@@ -103,6 +103,129 @@ EOF
   pass "fm-project-base.sh: empty base= target prints nothing"
 }
 
+test_base_in_description_not_parsed() {
+  local home out
+  home="$TMP_ROOT/desc-base-home"
+  mkdir -p "$home/data"
+  cat > "$home/data/projects.md" <<'EOF'
+- proj [no-mistakes] - docs mention base=main but no structured base (added 2026-07-01)
+EOF
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" proj) || fail "should exit 0"
+  [ -z "$out" ] || fail "base= inside description prose must not parse, got '$out'"
+  pass "fm-project-base.sh: base= in description prose is not parsed"
+}
+
+test_path_in_description_not_parsed() {
+  local home project out rc
+  home="$TMP_ROOT/desc-path-home"
+  project="$home/real/proj"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' "- proj [no-mistakes] - clone moved to path=$home/real/proj (added 2026-07-01)" > "$home/data/projects.md"
+  set +e
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "path= inside description prose must not resolve the identity"
+  assert_contains "$out" "cannot be resolved" \
+    "path= inside description prose should refuse instead of resolving"
+  pass "fm-project-base.sh: path= in description prose is not parsed"
+}
+
+test_path_explicit_base() {
+  local home project out
+  home="$TMP_ROOT/path-home"
+  project="$home/real/aide-body"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' "- aide-body [no-mistakes] base=dev path=$project - real-path clone (added 2026-07-01)" > "$home/data/projects.md"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project") || fail "path lookup should exit 0"
+  [ "$out" = dev ] || fail "path lookup expected base=dev, got '$out'"
+  pass "fm-project-base.sh: real project path resolves its registry base"
+}
+
+test_relative_path_field_refuses() {
+  local home project out rc
+  home="$TMP_ROOT/relative-path-home"
+  project="$home/real/aide-body"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' '- aide-body [no-mistakes] base=dev path=real/aide-body - malformed relative path (added 2026-07-01)' > "$home/data/projects.md"
+  set +e
+  out=$(cd "$home" && FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "relative path= fields must refuse"
+  assert_contains "$out" "path=real/aide-body" \
+    "relative path= refusal should name the invalid field"
+  assert_contains "$out" "must be absolute" \
+    "relative path= refusal should require an absolute path"
+  pass "fm-project-base.sh: relative path= fields refuse instead of resolving from cwd"
+}
+
+test_path_unregistered_refuses() {
+  local home project out rc
+  home="$TMP_ROOT/path-missing-home"
+  project="$home/real/unknown"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' '- another [no-mistakes] base=main - unrelated (added 2026-07-01)' > "$home/data/projects.md"
+  set +e
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "path lookup should refuse an unregistered project"
+  assert_contains "$out" "project '$project' cannot be resolved" \
+    "path lookup refusal should name the project"
+  pass "fm-project-base.sh: unregistered project paths refuse"
+}
+
+test_path_basename_collision_refuses() {
+  local home project out rc
+  home="$TMP_ROOT/path-collision-home"
+  mkdir -p "$home/data" "$home/projects/aide-brain" "$home/elsewhere/aide-brain"
+  printf '%s\n' '- aide-brain [no-mistakes] base=dev - the canonical clone (added 2026-07-01)' > "$home/data/projects.md"
+  project="$home/elsewhere/aide-brain"
+  set +e
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "a basename collision must refuse, not resolve the wrong base"
+  assert_contains "$out" "project '$project' cannot be resolved" \
+    "collision refusal should name the queried path"
+  pass "fm-project-base.sh: basename collision refuses instead of matching the wrong project"
+}
+
+test_path_foreign_projects_subdir_refuses() {
+  local home project out rc
+  home="$TMP_ROOT/path-foreign-home"
+  project="$home/elsewhere/projects/aide-body"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' '- aide-body [no-mistakes] base=dev - the canonical clone (added 2026-07-01)' > "$home/data/projects.md"
+  set +e
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "a foreign projects/<name> subdir must refuse, not resolve the wrong base"
+  assert_contains "$out" "project '$project' cannot be resolved" \
+    "foreign-projects refusal should name the queried path"
+  pass "fm-project-base.sh: a foreign projects/ subdirectory refuses instead of resolving"
+}
+
+test_path_stale_path_field_refuses_with_remedy() {
+  local home project out rc
+  home="$TMP_ROOT/path-stale-home"
+  project="$home/real/aide-body"
+  mkdir -p "$home/data" "$project"
+  printf '%s\n' "- aide-body [no-mistakes] base=dev path=$home/old/aide-body - moved real-path clone (added 2026-07-01)" > "$home/data/projects.md"
+  set +e
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-project-base.sh" --path "$project" 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "a stale path= field must refuse, not silently fall back"
+  assert_contains "$out" "registry entry 'aide-body' has path=$home/old/aide-body" \
+    "stale-path refusal should name the stale path= field"
+  assert_contains "$out" "update $home/data/projects.md" \
+    "stale-path refusal should point at the registry to update"
+  pass "fm-project-base.sh: a stale path= field refuses with a precise remedy"
+}
+
 test_explicit_base_extracted
 test_yolo_entry_extracts_base
 test_unset_base_prints_nothing
@@ -111,3 +234,11 @@ test_no_registry_prints_nothing
 test_legacy_no_brackets_prints_nothing
 test_explicit_base_after_brackets
 test_explicit_base_prints_nothing
+test_base_in_description_not_parsed
+test_path_in_description_not_parsed
+test_path_explicit_base
+test_relative_path_field_refuses
+test_path_unregistered_refuses
+test_path_basename_collision_refuses
+test_path_foreign_projects_subdir_refuses
+test_path_stale_path_field_refuses_with_remedy
