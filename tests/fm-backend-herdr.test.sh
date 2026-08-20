@@ -766,6 +766,141 @@ test_create_task_husk_replacement_creates_before_closing() {
   pass "fm_backend_herdr_create_task: creates the replacement tab BEFORE closing the husk tab, never the reverse"
 }
 
+# --- pane_agent_state: lifecycle-hook-authority ghost cross-check ------------
+#
+# When firstmate's Pi extension claims full lifecycle-hook authority, herdr
+# skips independent screen detection. A vanished agent freezes agent get at
+# its last registered status (often idle). The classifier must cross-check
+# pane process-info, but ONLY a positive plain-shell read may downgrade live
+# to no-agent - a failed or unexpected process-info read must keep live.
+
+pane_agent_state_process_info() {  # <pane> <name> [argv0]
+  local pane=$1 name=$2 argv0=${3:-$2}
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"%s","shell_pid":42,"foreground_process_group_id":42,"foreground_processes":[{"pid":42,"name":"%s","argv0":"%s"}]}}}\n' \
+    "$pane" "$name" "$argv0"
+}
+
+run_pane_agent_state() {  # <dir> -> prints classifier verdict on stdout
+  local dir=$1
+  PATH="$dir/fakebin:$PATH" FM_HERDR_LOG="$dir/log" FM_HERDR_RESPONSES="$dir/responses" \
+    bash -c '. "$0/bin/backends/herdr.sh"; fm_backend_herdr_pane_agent_state fmtest w1:p2' "$ROOT"
+}
+
+test_pane_agent_state_registered_shell_foreground_is_no_agent() {
+  local dir log resp fb out
+  dir="$TMP_ROOT/pane-agent-ghost-shell"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/2.out"
+  pane_agent_state_process_info w1:p2 /usr/bin/zsh zsh > "$resp/3.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = no-agent ] || fail "registered idle agent with plain-shell foreground must classify no-agent (lifecycle ghost), got '$out'"
+  assert_contains "$(cat "$log")" $'pane\x1fprocess-info' "ghost cross-check skipped pane process-info"
+  pass "fm_backend_herdr_pane_agent_state: registered agent + plain-shell process-info -> no-agent"
+}
+
+test_pane_agent_state_registered_harness_foreground_stays_live() {
+  local dir log resp fb out
+  dir="$TMP_ROOT/pane-agent-live-harness"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/2.out"
+  pane_agent_state_process_info w1:p2 pi pi > "$resp/3.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = live ] || fail "registered agent whose foreground is the harness process must stay live, got '$out'"
+  pass "fm_backend_herdr_pane_agent_state: registered agent + harness process-info -> live"
+}
+
+test_pane_agent_state_process_info_failure_keeps_live() {
+  local dir log resp fb out
+  dir="$TMP_ROOT/pane-agent-process-fail"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"pi","agent_status":"idle"}}}\n' > "$resp/2.out"
+  # Call fails entirely - absence must NEVER be inferred from a failed read.
+  printf '1\n' > "$resp/3.exit"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = live ] || fail "process-info failure must keep live (never false no-agent), got '$out'"
+
+  dir="$TMP_ROOT/pane-agent-process-bad-shape"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"pi","agent_status":"working"}}}\n' > "$resp/2.out"
+  # Unexpected shape (missing type / wrong envelope) must keep live.
+  printf '{"result":{"process":{"name":"zsh"}}}\n' > "$resp/3.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = live ] || fail "unexpected process-info shape must keep live, got '$out'"
+
+  dir="$TMP_ROOT/pane-agent-process-empty-fg"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"pi","agent_status":"blocked"}}}\n' > "$resp/2.out"
+  printf '{"result":{"type":"pane_process_info","process_info":{"pane_id":"w1:p2","shell_pid":42,"foreground_process_group_id":42,"foreground_processes":[]}}}\n' > "$resp/3.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = live ] || fail "empty foreground_processes must keep live, got '$out'"
+
+  dir="$TMP_ROOT/pane-agent-process-unrecognized"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"pi","agent_status":"done"}}}\n' > "$resp/2.out"
+  # Unrecognized non-shell (not the recorded harness either) is inconclusive.
+  pane_agent_state_process_info w1:p2 node node > "$resp/3.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = live ] || fail "unrecognized foreground must keep live (inconclusive), got '$out'"
+
+  pass "fm_backend_herdr_pane_agent_state: process-info failure/bad-shape/empty/unrecognized keeps live"
+}
+
+test_pane_agent_state_baseline_dead_no_agent_live_unknown() {
+  local dir log resp fb out
+  # dead: pane_not_found
+  dir="$TMP_ROOT/pane-agent-dead"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"error":{"code":"pane_not_found","message":"pane w1:p2 not found"}}\n' > "$resp/1.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = dead ] || fail "pane_not_found must classify dead, got '$out'"
+  assert_not_contains "$(cat "$log")" $'agent\x1fget' "dead pane must not call agent get"
+  assert_not_contains "$(cat "$log")" $'pane\x1fprocess-info' "dead pane must not call process-info"
+
+  # no-agent: agent_not_found (restored plain shell; no process-info needed)
+  dir="$TMP_ROOT/pane-agent-not-found"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"error":{"code":"agent_not_found","message":"agent target w1:p2 not found"}}\n' > "$resp/2.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = no-agent ] || fail "agent_not_found must classify no-agent, got '$out'"
+  assert_not_contains "$(cat "$log")" $'pane\x1fprocess-info' "agent_not_found path must not call process-info"
+
+  # live: registered status + harness still in foreground
+  dir="$TMP_ROOT/pane-agent-baseline-live"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent":"claude","agent_status":"working"}}}\n' > "$resp/2.out"
+  pane_agent_state_process_info w1:p2 claude claude > "$resp/3.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = live ] || fail "working registered agent with harness foreground must stay live, got '$out'"
+
+  # unknown: unexpected agent get error code (fail-safe; no process-info)
+  dir="$TMP_ROOT/pane-agent-unknown-err"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"error":{"code":"permission_denied","message":"nope"}}\n' > "$resp/2.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = unknown ] || fail "unrecognized agent get error must classify unknown, got '$out'"
+  assert_not_contains "$(cat "$log")" $'pane\x1fprocess-info' "unknown agent-get error must not call process-info"
+
+  # unknown: present pane but unparseable agent status
+  dir="$TMP_ROOT/pane-agent-unknown-status"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
+  printf '{"result":{"pane":{"pane_id":"w1:p2"}}}\n' > "$resp/1.out"
+  printf '{"result":{"agent":{"agent_status":"starting"}}}\n' > "$resp/2.out"
+  fb=$(make_herdr_fakebin "$dir")
+  out=$(run_pane_agent_state "$dir")
+  [ "$out" = unknown ] || fail "unrecognized agent_status must classify unknown, got '$out'"
+  assert_not_contains "$(cat "$log")" $'pane\x1fprocess-info' "unknown agent_status must not call process-info"
+
+  pass "fm_backend_herdr_pane_agent_state: dead/no-agent/live/unknown baselines unchanged"
+}
+
 test_create_task_creates_and_parses_ids() {
   local dir log resp fb out
   dir="$TMP_ROOT/create-task"; mkdir -p "$dir/responses"; log="$dir/log"; resp="$dir/responses"; : > "$log"
@@ -4355,6 +4490,10 @@ test_create_task_closes_all_duplicate_husks_after_replacement
 test_create_task_refuses_when_preexisting_husk_tab_remains
 test_create_task_refuses_when_agent_state_ambiguous
 test_create_task_husk_replacement_creates_before_closing
+test_pane_agent_state_registered_shell_foreground_is_no_agent
+test_pane_agent_state_registered_harness_foreground_stays_live
+test_pane_agent_state_process_info_failure_keeps_live
+test_pane_agent_state_baseline_dead_no_agent_live_unknown
 test_create_task_creates_and_parses_ids
 test_create_task_creates_with_no_focus_flag
 test_presentation_defaults_on_at_or_above_the_floor

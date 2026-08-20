@@ -1855,39 +1855,94 @@ fm_backend_herdr_explicit_close_pane_confirmed() {  # <session> <pane_id>
   [ "$presence" = dead ]
 }
 
+# fm_backend_herdr_pane_registered_agent_is_gone: true (0) only when a
+# successful, expected-shape `pane process-info` read positively shows that
+# every foreground process is a known interactive shell rather than the
+# registered harness (or any other non-shell). A failed, empty, timed-out,
+# unparseable, or unexpected-shape process-info read returns false (1) so the
+# caller keeps its existing live verdict - absence is never inferred from a
+# failed read. Optional <registered-agent> is the agent identity from
+# `agent get` (or a caller's recorded harness); a foreground basename that
+# matches it is positive proof the agent is still present.
+fm_backend_herdr_pane_registered_agent_is_gone() {  # <session> <pane_id> [registered-agent]
+  local session=$1 pane=$2 registered=${3:-} info names name base reg_base
+  info=$(fm_backend_herdr_cli "$session" pane process-info --pane "$pane" 2>/dev/null) || return 1
+  names=$(printf '%s' "$info" | jq -er --arg pane "$pane" '
+    .result as $r
+    | select($r.type == "pane_process_info")
+    | $r.process_info as $p
+    | select($p.pane_id == $pane)
+    | ($p.foreground_processes // null) as $fps
+    | select(($fps | type) == "array" and ($fps | length) > 0)
+    | select(all($fps[];
+        ((.name // empty) | type) == "string"
+        and ((.name // empty) | length) > 0))
+    | $fps[].name
+  ' 2>/dev/null) || return 1
+  [ -n "$names" ] || return 1
+  reg_base=${registered##*/}
+  reg_base=${reg_base#-}
+  while IFS= read -r name; do
+    [ -n "$name" ] || return 1
+    base=${name##*/}
+    base=${base#-}
+    [ -n "$base" ] || return 1
+    if [ -n "$reg_base" ] && [ "$base" = "$reg_base" ]; then
+      return 1
+    fi
+    case "$base" in
+      sh|bash|zsh|dash|ksh|fish) ;;
+      *) return 1 ;;
+    esac
+  done <<EOF
+$names
+EOF
+  return 0
+}
+
 # fm_backend_herdr_pane_agent_state: classify <pane_id> in <session> as one of
-# dead|no-agent|live|unknown, purely from the JSON body of two read-only
-# calls - never from process exit status, since a business-logic "not found"
-# response is a normal, expected outcome here, not a call failure (real herdr
-# 0.7.1 exits 1 for it; the canned-response test fakes exit 0; parsing only
-# the JSON keeps this function correct against either).
+# dead|no-agent|live|unknown from the JSON body of read-only herdr calls -
+# never from process exit status, since a business-logic "not found" response
+# is a normal, expected outcome here, not a call failure (real herdr 0.7.1
+# exits 1 for it; the canned-response test fakes exit 0; parsing only the JSON
+# keeps this function correct against either).
 #
 #   dead     - `pane get` responds with error code pane_not_found: the pane
 #              itself is gone (closed, or its process died and herdr already
 #              reaped it - verified empirically: killing a pane's shell pid
 #              on a live server makes herdr immediately drop both the pane
 #              and its tab from `pane get`/`tab list`).
-#   no-agent - `pane get` succeeds (the pane structurally exists) but `agent
-#              get` responds with error code agent_not_found: nothing is
-#              registered in it - exactly what a herdr session-layout restore
-#              produces (verified empirically: `session stop` + fresh `herdr
+#   no-agent - `pane get` succeeds (the pane structurally exists) and either
+#              `agent get` responds with error code agent_not_found (nothing
+#              registered - exactly what a herdr session-layout restore
+#              produces; verified empirically: `session stop` + fresh `herdr
 #              server` restart leaves the pane alive, agent_status "unknown",
 #              agent get -> agent_not_found - docs/herdr-backend.md "ID
-#              stability across a server restart"), and what a future
-#              `resume_agents_on_restore = false` restore would produce too
-#              (a plain shell, never an agent).
+#              stability across a server restart", and what a future
+#              `resume_agents_on_restore = false` restore would produce too),
+#              OR `agent get` still reports a registered status but a
+#              successful `pane process-info` positively shows only a plain
+#              interactive shell in the foreground. The latter catches a
+#              lifecycle-hook-authority ghost: when firstmate's own Pi
+#              extension claims full lifecycle-hook authority, herdr performs
+#              no independent screen detection, so a vanished agent freezes
+#              the registration at its last reported status (often idle).
 #   live     - `agent get` succeeds and reports a real agent_status (working,
-#              idle, done, or blocked - any registered value). An idle or
-#              blocked agent is still a genuine, still-registered agent, not
-#              a restored husk, so it is never a close-and-replace candidate.
-#   unknown  - anything else: an unparseable/unexpected response from either
-#              call, or a `pane get` success whose own echoed pane_id does not
-#              round-trip (guards against misreading a herdr response shape
-#              change as "the pane exists"). The caller must fail safe toward
-#              refusal here, never toward closing - this is the conservative
-#              backstop the husk check depends on.
+#              idle, done, or blocked) AND process-info does not positively
+#              prove a plain-shell foreground. An idle or blocked agent with
+#              a real harness process is still a genuine agent, not a husk.
+#              A failed, empty, unparseable, or unexpected-shape process-info
+#              read MUST leave this live verdict untouched - never infer
+#              absence from a failed read (a false no-agent would license
+#              closing or replacing a pane that still holds live work).
+#   unknown  - anything else: an unparseable/unexpected response from pane
+#              get or agent get, or a `pane get` success whose own echoed
+#              pane_id does not round-trip (guards against misreading a herdr
+#              response shape change as "the pane exists"). The caller must
+#              fail safe toward refusal here, never toward closing - this is
+#              the conservative backstop the husk check depends on.
 fm_backend_herdr_pane_agent_state() {  # <session> <pane_id>
-  local session=$1 pane_id=$2 out code presence status
+  local session=$1 pane_id=$2 out code presence status agent_name
   presence=$(fm_backend_herdr_pane_presence_state "$session" "$pane_id")
   if [ "$presence" != present ]; then
     case "$presence" in
@@ -1904,7 +1959,14 @@ fm_backend_herdr_pane_agent_state() {  # <session> <pane_id>
   fi
   status=$(printf '%s' "$out" | jq -r '.result.agent.agent_status // empty' 2>/dev/null)
   case "$status" in
-    working|idle|done|blocked) printf 'live' ;;
+    working|idle|done|blocked)
+      agent_name=$(printf '%s' "$out" | jq -r '.result.agent.agent // empty' 2>/dev/null)
+      if fm_backend_herdr_pane_registered_agent_is_gone "$session" "$pane_id" "$agent_name"; then
+        printf 'no-agent'
+      else
+        printf 'live'
+      fi
+      ;;
     *) printf 'unknown' ;;
   esac
 }
