@@ -191,6 +191,25 @@ run:
 EOF
 }
 
+run_pipeline_owned_advanced() {  # <branch>
+  cat <<EOF
+run:
+  id: "01LIVE"
+  branch: $1
+  status: running
+  head: "${FM_FAKE_RUN_HEAD:-abc1234}"
+  pr: ""
+  findings: none
+  steps[2]{step,status,findings,duration_ms}:
+    intent,completed,0,0
+    review,running,0,0
+branch_sync:
+  branch_role: pipeline_owned
+  submitted_head: "${FM_FAKE_RUN_SUBMITTED_HEAD:-submitted}"
+  current_head: "${FM_FAKE_RUN_HEAD:-abc1234}"
+EOF
+}
+
 run_fixing() {  # <branch>
   cat <<EOF
 run:
@@ -714,6 +733,69 @@ EOF
   assert_contains "$out" "state: working" "this branch's own run attributed via the runs list"
   assert_contains "$out" "source: run-step" "runs-list-resolved run -> run-step source"
   pass "cross-branch run is attributed via the real runs list"
+}
+
+# A pipeline-owned run may advance to a fix commit that is not in the crew's
+# local repository, while an older failed run remains bound to the local head.
+# The live run must win without allowing a rewritten or diverged local branch.
+test_pipeline_owned_advanced_run_beats_local_terminal_run() {
+  reset_fakes
+  local d local_head short out
+  d=$(new_case pipeline-owned-advanced)
+  make_repo_on_branch "$d/wt" fm/feat-pipeline-owned
+  local_head=$(git -C "$d/wt" rev-parse HEAD)
+  short=$(git -C "$d/wt" rev-parse --short=7 HEAD)
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-pipeline-owned.meta" "window=fm:fm-feat-pipeline-owned" \
+    "worktree=$d/wt" "kind=ship"
+  FM_FAKE_RUN_HEAD=4cca53cd
+  FM_FAKE_RUN_SUBMITTED_HEAD=$local_head
+  FM_FAKE_AXI_STATUS="$(run_pipeline_owned_advanced fm/feat-pipeline-owned)"
+  FM_FAKE_RUNS_LIST="$(cat <<EOF
+  running    fm/feat-pipeline-owned 4cca53cd  2026-08-17 12:00
+  failed     fm/feat-pipeline-owned ${short}  2026-08-17 11:00
+EOF
+)"
+  out=$(run_crew_state "$d" feat-pipeline-owned)
+  assert_contains "$out" "state: working" "pipeline-owned live run beats the older local terminal run"
+  assert_contains "$out" "source: run-step" "pipeline-owned live run remains authoritative"
+  assert_contains "$out" "validating (running)" "pipeline-owned live run reports its active step"
+  assert_not_contains "$out" "state: failed" "older local terminal run must not win"
+  pass "pipeline-owned advanced run beats an older local terminal run"
+}
+
+# The pipeline-owned exception still requires the submitted head to be the
+# local head, so a rewritten local branch cannot borrow an active run.
+test_pipeline_owned_binding_rejects_rewritten_local_head() {
+  reset_fakes
+  local d submitted current submitted_short out
+  d=$(new_case pipeline-owned-rewrite)
+  make_repo_on_branch "$d/wt" fm/feat-pipeline-rewrite
+  submitted=$(git -C "$d/wt" rev-parse HEAD)
+  git -C "$d/wt" checkout -q --orphan rewritten
+  git -C "$d/wt" commit -q --allow-empty -m 'rewritten local tip'
+  git -C "$d/wt" branch -q -M fm/feat-pipeline-rewrite
+  current=$(git -C "$d/wt" rev-parse HEAD)
+  submitted_short=$(git -C "$d/wt" rev-parse --short=7 "$submitted")
+  [ "$submitted" != "$current" ] || fail "rewrite did not produce a new local head"
+  make_fakebin "$d" >/dev/null
+  fm_write_meta "$d/state/feat-pipeline-rewrite.meta" "window=fm:fm-feat-pipeline-rewrite" \
+    "worktree=$d/wt" "kind=ship" "harness=claude"
+  printf 'working: local rewritten work remains current\n' > "$d/state/feat-pipeline-rewrite.status"
+  FM_FAKE_RUN_HEAD=4cca53cd
+  FM_FAKE_RUN_SUBMITTED_HEAD=$submitted
+  FM_FAKE_AXI_STATUS="$(run_pipeline_owned_advanced fm/feat-pipeline-rewrite)"
+  FM_FAKE_RUNS_LIST="$(cat <<EOF
+  running    fm/feat-pipeline-rewrite 4cca53cd  2026-08-17 12:00
+  failed     fm/feat-pipeline-rewrite ${submitted_short}  2026-08-17 11:00
+EOF
+)"
+  arm_idle_record "$d/state" feat-pipeline-rewrite
+  out=$(run_crew_state "$d" feat-pipeline-rewrite)
+  assert_not_contains "$out" "source: run-step" "rewritten local head must not borrow the pipeline run"
+  assert_contains "$out" "state: working" "rewritten local head keeps its current status"
+  assert_contains "$out" "source: status-log" "rewritten local head falls back to the status log"
+  pass "pipeline-owned attribution rejects a rewritten local head"
 }
 
 # The runs list is newest-first; a branch with an OLDER completed run must not
@@ -1330,6 +1412,8 @@ test_top_level_fixing_done_log_stays_working
 test_terminal_passed
 test_terminal_failed
 test_cross_branch_attribution_via_runs_list
+test_pipeline_owned_advanced_run_beats_local_terminal_run
+test_pipeline_owned_binding_rejects_rewritten_local_head
 test_cross_branch_attribution_picks_most_recent_row
 test_coarse_run_does_not_probe_other_branch_ci_log_for_ready_status
 test_other_branch_run_ignored

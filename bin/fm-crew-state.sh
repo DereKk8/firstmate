@@ -28,6 +28,10 @@
 #      is an ancestor of the run head (pipeline fix commits advanced the run on
 #      the same line of history). Local work that advanced past the run head, or
 #      diverged from it, invalidates attribution.
+#      An active pipeline-owned run may advance beyond the local head while its
+#      branch_sync submitted_head still equals that local head; when current_head
+#      differs, that run remains attributable without weakening rewrite/divergence
+#      protection.
 #      The run-step is AUTHORITATIVE: running/fixing -> working, ci -> working,
 #      awaiting_approval/fix_review -> parked (with gate findings), terminal
 #      passed/checks-passed -> done, failed/cancelled -> failed. EXCEPT: while
@@ -374,6 +378,51 @@ nm_run_head_matches_worktree() {
   fm_nm_head_matches_worktree "$WT" "$run_head"
 }
 
+# Scalar value nested in the branch_sync object of $RUN_OUT.
+nm_branch_sync_field() {  # <key>
+  local key=$1
+  printf '%s\n' "$RUN_OUT" | awk -v key="$key" '
+    /^[[:space:]]*branch_sync:[[:space:]]*$/ { in_sync=1; next }
+    in_sync && /^[^[:space:]]/ { exit }
+    in_sync {
+      prefix = "^[[:space:]]*" key ":[[:space:]]*"
+      if ($0 ~ prefix) {
+        sub(prefix, "")
+        print
+        exit
+      }
+    }
+  '
+}
+
+# A pipeline-owned active run can have a fix head that is not present in the
+# crew's local repository yet. The exact submitted-head binding proves that the
+# local branch is still the pipeline's starting point; current_head must differ
+# from it so a terminal run at the local head is never displaced accidentally.
+nm_pipeline_owned_advanced_run() {  # <branch> <run-status>
+  local branch=$1 run_status=$2 role submitted current local_head submitted_full current_full
+  case "$run_status" in
+    pending|running|fixing|ci) ;;
+    *) return 1 ;;
+  esac
+  [ "$branch" = "$CREW_BRANCH" ] || return 1
+  role=$(strip_quotes "$(nm_branch_sync_field branch_role)")
+  [ "$role" = pipeline_owned ] || return 1
+  submitted=$(strip_quotes "$(nm_branch_sync_field submitted_head)")
+  current=$(strip_quotes "$(nm_branch_sync_field current_head)")
+  [ -n "$submitted" ] && [ -n "$current" ] || return 1
+  local_head=$(git -C "$WT" rev-parse HEAD 2>/dev/null) || return 1
+  submitted_full=$(git -C "$WT" rev-parse --verify "${submitted}^{commit}" 2>/dev/null) || return 1
+  [ "$submitted_full" = "$local_head" ] || return 1
+  current_full=$(git -C "$WT" rev-parse --verify "${current}^{commit}" 2>/dev/null || true)
+  if [ -n "$current_full" ]; then
+    [ "$current_full" != "$local_head" ] || return 1
+    git -C "$WT" merge-base --is-ancestor "$local_head" "$current_full" 2>/dev/null || return 1
+  else
+    [ "$current" != "$submitted" ] || return 1
+  fi
+}
+
 # Coarse runs-list rows are "<status> <branch> <short-sha> ...". 0 if the short
 # sha for this branch row matches the worktree head under the same rules as
 # nm_run_head_matches_worktree (equal, or local is ancestor of run tip).
@@ -394,7 +443,10 @@ if [ "$KIND" = ship ] && [ -n "$CREW_BRANCH" ] && command -v no-mistakes >/dev/n
   RUN_OUT=$(nm_run axi status)
   if [ -n "$RUN_OUT" ]; then
     run_branch=$(strip_quotes "$(nm_field branch)")
+    run_status=$(strip_quotes "$(nm_field status)")
     if [ -n "$run_branch" ] && [ "$run_branch" = "$CREW_BRANCH" ] && nm_run_head_matches_worktree; then
+      HAVE_RUN=1
+    elif nm_pipeline_owned_advanced_run "$run_branch" "$run_status"; then
       HAVE_RUN=1
     else
       # The active-or-most-recent run is for another branch, or same branch with
