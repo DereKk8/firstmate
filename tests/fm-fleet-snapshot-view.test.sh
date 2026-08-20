@@ -793,4 +793,59 @@ test_parked_scout_decision_stays_pending
 test_scout_reports_include_teardown_reports
 test_backlog_tasks_axi_forms_and_overrides
 test_view_renders_snapshot
+test_large_payloads_survive_argv_limit() {
+  local home fakebin arg_max target_bytes rows out backlog_bytes status_bytes
+  home=$(make_home large-argv)
+  mkdir -p "$home/projects/argv-task-wt"
+  fakebin=$(make_fakebin "$home")
+  arg_max=$(getconf ARG_MAX 2>/dev/null) || fail "getconf ARG_MAX is required for the argv overflow regression"
+  case "$arg_max" in ''|*[!0-9]*) fail "getconf ARG_MAX returned an invalid limit: $arg_max" ;; esac
+  target_bytes=$((arg_max / 3))
+  {
+    echo "## In flight"
+    echo "- [ ] argv-secondmate - argv payload task (repo: alpha) (kind: secondmate) (since 2026-07-08)"
+    echo "## Queued"
+    awk -v target="$target_bytes" '
+      BEGIN {
+        total = 0
+        i = 0
+        while (total < target) {
+          line = sprintf("- [ ] queued-task-%05d - Queued task %d padded with descriptive text to grow the backlog payload toward the argv limit (repo: alpha) (kind: ship) (priority: 2) (since 2026-07-08)", i, i)
+          print line
+          total += length(line) + 1
+          i++
+        }
+      }'
+    echo "## Done"
+  } > "$home/data/backlog.md"
+  printf 'needs-decision [key=argv-overflow]: ' > "$home/state/argv-secondmate.status"
+  awk -v target="$arg_max" 'BEGIN { for (i = 0; i < target; i++) printf "x" }' >> "$home/state/argv-secondmate.status"
+  printf '\n' >> "$home/state/argv-secondmate.status"
+  fm_write_meta "$home/state/argv-secondmate.meta" \
+    "window=firstmate:fm-argv-secondmate" \
+    "worktree=$home/projects/argv-task-wt" \
+    "project=alpha" \
+    "harness=claude" \
+    "kind=secondmate" \
+    "mode=secondmate" \
+    "yolo=off"
+  rows=$(grep -c '^- \[ \] queued-task-' "$home/data/backlog.md")
+  out=$(PATH="$fakebin:$PATH" FM_HOME="$home" "$SNAPSHOT" --json) \
+    || fail "snapshot must succeed with backlog and status payloads sized from ARG_MAX ($arg_max bytes, $rows queued rows)"
+  backlog_bytes=$(printf '%s' "$out" | jq -c '.backlog' | wc -c | tr -d ' ')
+  status_bytes=$(printf '%s' "$out" | jq -r '.tasks[] | select(.id == "argv-secondmate") | .hints.open_decisions[0].summary' | wc -c | tr -d ' ')
+  [ "$backlog_bytes" -gt "$arg_max" ] \
+    || fail "regression backlog JSON must exceed ARG_MAX ($backlog_bytes <= $arg_max)"
+  [ "$status_bytes" -gt "$arg_max" ] \
+    || fail "regression status decision JSON must exceed ARG_MAX ($status_bytes <= $arg_max)"
+  printf '%s' "$out" | jq -e --argjson rows "$rows" '
+    .schema == "fm-fleet-snapshot.v1"
+      and (.backlog.records | length) == ($rows + 1)
+      and .main_inventory.valid == true
+      and ([.tasks[] | select(.id == "argv-secondmate") | .hints.pending_decision] | . == [true])
+  ' >/dev/null || fail "large argv payload snapshot must preserve schema and task decisions"
+  pass "backlog and status JSON larger than ARG_MAX produce a valid snapshot"
+}
+
 test_view_renders_dead_secondmate_agent_status
+test_large_payloads_survive_argv_limit
