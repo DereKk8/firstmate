@@ -414,6 +414,7 @@ tests/fm-operational-input.test.sh 184
 tests/fm-pending-reply.test.sh 7328
 tests/fm-pi-primary-live-e2e.test.sh 19
 tests/fm-pi-watch-extension.test.sh 16386
+tests/fm-pr-body-check.test.sh 962
 tests/fm-pr-check-security.test.sh 199573
 tests/fm-procevent.test.sh 42789
 tests/fm-public-followup.test.sh 23365
