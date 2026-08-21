@@ -247,6 +247,45 @@ test_unresolved_remote_default_refuses_pool() {
   pass "an unresolved remote default branch refuses the pooled worktree"
 }
 
+test_leased_pool_strips_archived_prior_scratch() {
+  local rec id exclude out status
+  id='pool-scratch-lease-r1'
+  rec=$(make_case scratch-lease "$id")
+  read_case_record "$rec"
+
+  exclude=$(git -C "$POOL_DIR" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$exclude")"
+  printf '%s\n' '.agent/' >> "$exclude"
+
+  mkdir -p "$POOL_DIR/.agent/tasks/old-archived" \
+    "$POOL_DIR/.agent/tasks/old-unarchived" \
+    "$POOL_DIR/.agent/tasks/still-live" \
+    "$POOL_DIR/.agent/tasks/$id" \
+    "$PROJECT_DIR/.agent/archive/old-archived"
+  printf 'old archived\n' > "$POOL_DIR/.agent/tasks/old-archived/plan.md"
+  printf 'old archived\n' > "$PROJECT_DIR/.agent/archive/old-archived/plan.md"
+  printf 'keep unarchived\n' > "$POOL_DIR/.agent/tasks/old-unarchived/plan.md"
+  printf 'keep live\n' > "$POOL_DIR/.agent/tasks/still-live/plan.md"
+  printf 'current\n' > "$POOL_DIR/.agent/tasks/$id/plan.md"
+  fm_write_meta "$HOME_DIR/state/still-live.meta" \
+    "worktree=$POOL_DIR" \
+    "project=$PROJECT_DIR" \
+    'kind=ship'
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should lease a pooled worktree that still has leftover scratch"
+  assert_absent "$POOL_DIR/.agent/tasks/old-archived" \
+    "spawn left an archived prior task directory in the leased worktree"
+  assert_present "$POOL_DIR/.agent/tasks/old-unarchived/plan.md" \
+    "spawn deleted an unarchived prior task directory"
+  assert_present "$POOL_DIR/.agent/tasks/still-live/plan.md" \
+    "spawn deleted a still-live task directory"
+  assert_present "$POOL_DIR/.agent/tasks/$id/plan.md" \
+    "spawn deleted the current task directory"
+  pass "a leased pooled worktree drops archived leftovers and preserves unarchived or live scratch"
+}
+
 test_stale_pool_base_refreshes_before_branching
 test_non_main_default_branch_refreshes_before_branching
 test_direct_pr_and_scout_refresh_before_launch
@@ -254,5 +293,6 @@ test_dirty_pool_refuses_without_discarding_work
 test_unresolved_remote_default_refuses_pool
 test_unreachable_origin_refuses_stale_pool_base
 test_no_origin_launches_from_local_head
+test_leased_pool_strips_archived_prior_scratch
 
 echo "# all fm-spawn-pool-base-freshen tests passed"

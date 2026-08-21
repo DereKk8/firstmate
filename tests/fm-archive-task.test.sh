@@ -72,6 +72,8 @@ test_happy_path_archives_and_mirrors() {
   leftovers=$(find "$case_dir" \( -name '.task-x1.archive.*' -o -name '.task-x1.mirror.*' \)) \
     || true
   [ -z "$leftovers" ] || fail "happy path left a staging directory behind: $leftovers"
+  assert_absent "$case_dir/wt/.agent/tasks/task-x1" \
+    "happy path left the archived source in the worktree"
   pass "archive happy path copies locally, mirrors, commits, and pushes"
 }
 
@@ -209,7 +211,34 @@ test_multiple_task_directories_report_and_select_named_one() {
     "multiple-task case copied another task directory"
   assert_absent "$case_dir/backup/project/other-task" \
     "multiple-task case mirrored another task directory"
+  assert_absent "$case_dir/wt/.agent/tasks/task-x1" \
+    "multiple-task case left the archived named source in the worktree"
+  assert_present "$case_dir/wt/.agent/tasks/other-task/plan.md" \
+    "multiple-task case removed another task directory"
   pass "multiple task directories are reported while only the named task is archived"
+}
+
+test_retry_with_missing_source_and_existing_archive_is_idempotent() {
+  local case_dir rc
+  case_dir=$(make_case retry-after-source-removal)
+  write_task_artifact "$case_dir" first
+  run_archive "$case_dir" >"$case_dir/out1" 2>"$case_dir/err1" \
+    || fail "first archive failed: $(cat "$case_dir/err1")"
+  assert_absent "$case_dir/wt/.agent/tasks/task-x1" \
+    "first archive did not remove the worktree source"
+
+  set +e
+  run_archive "$case_dir" >"$case_dir/out2" 2>"$case_dir/err2"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "retry with a missing source and existing archive should succeed"
+  grep -qx first "$case_dir/project/.agent/archive/task-x1/plan.md" \
+    || fail "source-gone retry lost the archived artifacts"
+  assert_grep "already present" "$case_dir/out2" \
+    "source-gone retry did not report the existing archive"
+  assert_no_grep "REFUSED" "$case_dir/err2" \
+    "source-gone retry refused despite the completed archive"
+  pass "a retry after the worktree source is gone succeeds idempotently when the archive exists"
 }
 
 test_happy_path_archives_and_mirrors
@@ -219,4 +248,5 @@ test_missing_task_directory_refuses
 test_existing_destination_refuses_without_force
 test_force_overwrites_existing_destination
 test_retry_with_gone_worktree_and_existing_archive_is_idempotent
+test_retry_with_missing_source_and_existing_archive_is_idempotent
 test_multiple_task_directories_report_and_select_named_one

@@ -7,6 +7,9 @@
 # It copies only .agent/tasks/<task-id> from the recorded worktree into the
 # product repository's local .agent/archive/<task-id>. The product repository is
 # never committed or pushed.
+# After that local copy succeeds, bin/fm-worktree-task-scratch.sh removes the
+# named source directory so a later pool lease does not inherit it. A missing
+# source is treated as complete when the local archive already exists.
 #
 # After the local copy succeeds, the archive is mirrored into
 # ${FM_AGENT_ARCHIVES_ROOT:-/home/dereklinux/oulow-agent-archives}/<product-repo>/<task-id>.
@@ -16,11 +19,12 @@
 # Usage: fm-archive-task.sh <task-id> [--force]
 #   --force replaces an existing local archive entry and its mirror entry.
 #   An existing archive entry is authoritative: when the recorded worktree is
-#   already gone, the entry is treated as complete and the command succeeds.
+#   already gone, or the named source directory is already gone, the entry is
+#   treated as complete and the command succeeds.
 #
 # A task directory is selected by its explicit task id even when the worktree
 # contains other task directories. Those other directories are reported and
-# are never copied or removed.
+# are never copied or removed by this command.
 set -u
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -297,14 +301,15 @@ fi
 
 TASKS_DIR="$WT/.agent/tasks"
 SOURCE="$TASKS_DIR/$ID"
-[ -d "$TASKS_DIR" ] && [ ! -L "$TASKS_DIR" ] || {
-  refuse "task artifact directory is missing: $SOURCE"
-  exit 1
-}
-[ -d "$SOURCE" ] && [ ! -L "$SOURCE" ] || {
+if [ ! -d "$SOURCE" ] || [ -L "$SOURCE" ]; then
+  if path_present "$LOCAL_ARCHIVE"; then
+    printf 'archived task %s already present at %s; worktree source %s is gone - nothing further to archive\n' \
+      "$ID" "$LOCAL_ARCHIVE" "$SOURCE"
+    exit 0
+  fi
   refuse "task artifact directory is missing or unsafe: $SOURCE"
   exit 1
-}
+fi
 OTHER_TASKS=
 for candidate in "$TASKS_DIR"/*; do
   [ -d "$candidate" ] && [ ! -L "$candidate" ] || continue
@@ -336,6 +341,10 @@ else
 fi
 
 replace_archive_entry "$ARCHIVE_ROOT" "$SOURCE" "$LOCAL_ARCHIVE" "$FORCE" || exit 1
+if ! "$SCRIPT_DIR/fm-worktree-task-scratch.sh" remove-archived \
+    --worktree "$WT" --task "$ID" --archive "$LOCAL_ARCHIVE"; then
+  printf 'warning: archived task %s but could not remove the worktree source at %s\n' "$ID" "$SOURCE" >&2
+fi
 PRODUCT_NAME=$(basename "$PROJ")
 printf 'archived task %s from %s into %s\n' "$ID" "$SOURCE" "$LOCAL_ARCHIVE"
 mirror_local_archive
