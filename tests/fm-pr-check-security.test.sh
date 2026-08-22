@@ -78,6 +78,11 @@ make_case() {
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"
 SH
   chmod +x "$fake_root/bin/fm-guard.sh"
+  cat > "$fake_root/bin/fm-project-base.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'main\n'
+SH
+  chmod +x "$fake_root/bin/fm-project-base.sh"
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
@@ -88,6 +93,8 @@ case " $* " in
     [ "${FM_TEST_GH_SLEEP:-0}" = 0 ] || sleep "$FM_TEST_GH_SLEEP"
     printf '%s\n' "${FM_TEST_GH_STATE:-OPEN}"
     ;;
+  *" baseRefName "*) printf 'main\n' ;;
+  *" body "*) printf '## What Changed\n- fixture change\n' ;;
 esac
 SH
   cat > "$fakebin/gh-axi" <<'SH'
