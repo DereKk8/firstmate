@@ -274,7 +274,6 @@ HARNESS_ARG=
 MODEL=
 EFFORT=
 BACKEND_ARG=
-STACKED_BASE=
 MODE=
 YOLO=
 TRACEPARENT_ARG=
@@ -282,7 +281,6 @@ HARNESS_SET=0
 MODEL_SET=0
 EFFORT_SET=0
 BACKEND_SET=0
-STACKED_BASE_SET=0
 MODE_SET=0
 YOLO_SET=0
 TRACEPARENT_SET=0
@@ -299,7 +297,6 @@ for a in "$@"; do
       model) MODEL=$a; MODEL_SET=1 ;;
       effort) EFFORT=$a; EFFORT_SET=1 ;;
       backend) BACKEND_ARG=$a; BACKEND_SET=1 ;;
-      stacked-base) STACKED_BASE=$a; STACKED_BASE_SET=1 ;;
       mode) MODE=$a; MODE_SET=1 ;;
       yolo) YOLO=$a; YOLO_SET=1 ;;
       traceparent) TRACEPARENT_ARG=$a; TRACEPARENT_SET=1 ;;
@@ -320,8 +317,6 @@ for a in "$@"; do
     --effort=*) EFFORT=${a#--effort=}; EFFORT_SET=1 ;;
     --backend) want_value=backend ;;
     --backend=*) BACKEND_ARG=${a#--backend=}; BACKEND_SET=1 ;;
-    --stacked-base) want_value=stacked-base ;;
-    --stacked-base=*) STACKED_BASE=${a#--stacked-base=}; STACKED_BASE_SET=1 ;;
     --mode) want_value=mode ;;
     --mode=*) MODE=${a#--mode=}; MODE_SET=1 ;;
     --yolo) want_value=yolo ;;
@@ -336,15 +331,6 @@ done
 [ "$MODEL_SET" -eq 0 ] || [ -n "$MODEL" ] || { echo "error: --model requires a non-empty value" >&2; exit 1; }
 [ "$EFFORT_SET" -eq 0 ] || [ -n "$EFFORT" ] || { echo "error: --effort requires a non-empty value" >&2; exit 1; }
 [ "$BACKEND_SET" -eq 0 ] || [ -n "$BACKEND_ARG" ] || { echo "error: --backend requires a non-empty value" >&2; exit 1; }
-[ "$STACKED_BASE_SET" -eq 0 ] || [ -n "$STACKED_BASE" ] || { echo "error: --stacked-base requires a non-empty value" >&2; exit 1; }
-if [ "$STACKED_BASE_SET" -eq 1 ] && ! git check-ref-format "refs/heads/$STACKED_BASE" >/dev/null 2>&1; then
-  echo "error: --stacked-base must be a valid branch name" >&2
-  exit 1
-fi
-if [ "$STACKED_BASE_SET" -eq 1 ] && [ "$KIND" != ship ]; then
-  echo "error: --stacked-base applies only to ship tasks" >&2
-  exit 1
-fi
 [ "$MODE_SET" -eq 0 ] || [ -n "$MODE" ] || { echo "error: --mode requires a non-empty value" >&2; exit 1; }
 [ "$YOLO_SET" -eq 0 ] || [ -n "$YOLO" ] || { echo "error: --yolo requires a non-empty value" >&2; exit 1; }
 [ "$TRACEPARENT_SET" -eq 0 ] || [ -n "$TRACEPARENT_ARG" ] || { echo "error: --traceparent requires a non-empty value" >&2; exit 1; }
@@ -375,7 +361,6 @@ if [ "$RELAUNCH" -eq 1 ]; then
   [ "$KIND_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded kind; --scout/--secondmate cannot override it" >&2; exit 1; }
   [ "$MODE_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded delivery mode; --mode cannot override it" >&2; exit 1; }
   [ "$YOLO_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded yolo posture; --yolo cannot override it" >&2; exit 1; }
-  [ "$STACKED_BASE_SET" -eq 0 ] || { echo "error: --relaunch reuses the task's recorded stacked PR base; --stacked-base cannot override it" >&2; exit 1; }
 else
   # Delivery contract (AGENTS.md section 7). A ship task's mode and yolo are
   # firstmate's per-task decision, so they are required and closed-set validated
@@ -387,7 +372,7 @@ else
       exit 1
     }
     [ "$YOLO_SET" -eq 1 ] || {
-      echo "error: ship spawns require --yolo <on|off>; it is this task's routine approval authority, not a project lookup" >&2
+      echo "error: ship spawns require --yolo <on|off>; it is this task's merge authority, not a project lookup" >&2
       exit 1
     }
     case "$MODE" in
@@ -880,7 +865,6 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
   [ -z "$MODEL" ] || shared_args+=(--model "$MODEL")
   [ -z "$EFFORT" ] || shared_args+=(--effort "$EFFORT")
   [ -z "$BACKEND_ARG" ] || shared_args+=(--backend "$BACKEND_ARG")
-   [ -z "$STACKED_BASE" ] || shared_args+=(--stacked-base "$STACKED_BASE")
   # One delivery contract applies to every pair in a batch, exactly like the shared
   # harness. Each pair still re-validates it against its own brief, so a batch
   # spanning several modes is two invocations rather than a silent mixed dispatch.
@@ -2165,53 +2149,6 @@ spawn_send_key() {  # <target> <key>
   esac
 }
 
-# A backend returning an endpoint id is not proof that the endpoint can still
-# receive input. Keep task metadata in place when the recorded endpoint does
-# not become reachable after launch.
-spawn_readiness_fail() {  # <reason>
-  local reason=$1
-  printf 'blocked: spawn readiness failed: %s\n' "$reason" >> "$STATE/$ID.status"
-  echo "error: spawn readiness failed for $ID: $reason; metadata retained at $STATE/$ID.meta" >&2
-  return 1
-}
-
-# Do not print "spawned" until the recorded endpoint answers a passive liveness
-# read. Codex's documented first-run directory-trust prompt is the only prompt
-# this readiness check may resolve automatically.
-spawn_wait_ready() {  # <target>
-  local target=$1 attempts=${FM_SPAWN_READY_ATTEMPTS:-20} delay=${FM_SPAWN_READY_SLEEP:-0.25}
-  local _ capture trust_seen=0
-  case "$attempts" in ''|*[!0-9]*|0) attempts=20 ;; esac
-  for _ in $(seq 1 "$attempts"); do
-    if ! fm_backend_target_exists "$BACKEND" "$target" "$W"; then
-      sleep "$delay"
-      continue
-    fi
-    if [ "$HARNESS" != codex ]; then
-      return 0
-    fi
-    capture=$(fm_backend_capture "$BACKEND" "$target" 80 "$W" 2>/dev/null || true)
-    case "$capture" in
-      *'Do you trust the contents of this directory?'*)
-        trust_seen=1
-        if ! spawn_send_key "$target" Enter; then
-          sleep "$delay"
-          continue
-        fi
-        ;;
-      *)
-        return 0
-        ;;
-    esac
-    sleep "$delay"
-  done
-  if [ "$trust_seen" -eq 1 ]; then
-    spawn_readiness_fail "Codex directory-trust prompt did not clear within ${attempts} checks at endpoint $target"
-  else
-    spawn_readiness_fail "backend endpoint $target was unreachable within ${attempts} checks (backend=$BACKEND)"
-  fi
-}
-
 kimi_capture() {
   fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null || true
 }
@@ -2354,6 +2291,21 @@ if [ "$KIND" != secondmate ]; then
   fi
   if ! git -C "$WT" config --worktree fm.firstmate-task "$ID"; then
     echo "error: could not record task ownership for $WT" >&2
+    exit 1
+  fi
+fi
+
+
+# Treehouse pools can inherit an upstream push policy and branch tracking for
+# the project's base branch. Make each provisioned task worktree push its own
+# checked-out branch, regardless of those shared-pool defaults.
+if [ "$KIND" != secondmate ]; then
+  if ! git -C "$WT" config extensions.worktreeConfig true; then
+    echo "error: could not enable worktree-local git config for $WT" >&2
+    exit 1
+  fi
+  if ! git -C "$WT" config --worktree push.default current; then
+    echo "error: could not set worktree-local push.default=current for $WT" >&2
     exit 1
   fi
 fi
@@ -2516,48 +2468,28 @@ EOF
 // Firstmate semantic busy-state events + turn-end notification; written by
 // fm-spawn under the contract owned by bin/fm-busy-lib.sh.
 // Semantic state: "agent_start" -> busy when a low-level agent run begins;
-// "agent_settled" -> idle when Pi has no automatic continuation remaining.
-// Pi guarantees that state for this event, except that another extension can
-// start a fresh run before the event completes. Its agent_start then wins.
-// Never read the event ctx here: a skill reload can replace its session while
-// this handler is pending, making that captured ctx stale and fatal.
+// "agent_settled" -> idle only when ctx.isIdle() confirms Pi will not
+// continue automatically - auto-retries, auto-compaction retries, tool
+// loops, and queued continuations all keep the run un-settled, and a settle
+// that raced another extension's fresh run keeps state busy via isIdle().
 // "turn_end" fires at every inner turn boundary (one LLM response plus its
 // tool calls) and stays a wake NOTIFICATION touch for the watcher, never
 // current-state truth.
 import { execFile } from "node:child_process";
-const quietly = async (work: () => Promise<void> | void) => {
-  try {
-    await work();
-  } catch {
-    // Busy-state telemetry must never fail the worker session.
-  }
-};
 const busyEvent = (state: string, event: string) =>
   new Promise<void>((resolve) => {
-    try {
-      execFile("$FM_ROOT/bin/fm-busy-event.sh", [
-        "apply", "$STATE_REAL", "$ID", state,
-        "--gen", "$BUSY_GEN", "--source", "pi-ext", "--event", event,
-      ], () => resolve());
-    } catch {
-      resolve();
-    }
+    execFile("$FM_ROOT/bin/fm-busy-event.sh", [
+      "apply", "$STATE_REAL", "$ID", state,
+      "--gen", "$BUSY_GEN", "--source", "pi-ext", "--event", event,
+    ], () => resolve());
   });
 export default function (pi: any) {
-  let active = true;
-  const report = (state: string, event: string) =>
-    active ? quietly(() => busyEvent(state, event)) : undefined;
-  pi.on("session_shutdown", () => {
-    active = false;
+  pi.on("agent_start", () => busyEvent("busy", "agent-start"));
+  pi.on("agent_settled", (_event: any, ctx: any) => {
+    if (ctx && typeof ctx.isIdle === "function" && !ctx.isIdle()) return;
+    return busyEvent("idle", "agent-settled");
   });
-  pi.on("agent_start", () => report("busy", "agent-start"));
-  pi.on("agent_settled", () => report("idle", "agent-settled"));
-  pi.on("turn_end", () => {
-    if (!active) return;
-    return quietly(() => {
-      execFile("touch", ["$TURNEND"], () => {});
-    });
-  });
+  pi.on("turn_end", () => execFile("touch", ["$TURNEND"]));
 }
 EOF
       ;;
@@ -2765,7 +2697,6 @@ preserve_relaunch_meta() {
   echo "tasktmp=$TASK_TMP"
   echo "model=${MODEL:-default}"
   echo "effort=${EFFORT:-default}"
-  [ -z "$STACKED_BASE" ] || echo "stacked_base=$STACKED_BASE"
   [ -z "${BUSY_GEN:-}" ] || echo "busy_gen=$BUSY_GEN"
   echo "spawn_gen=$SPAWN_GEN"
   # Default-off writes no traceparent= line.
@@ -2929,7 +2860,6 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
-spawn_wait_ready "$T"
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"

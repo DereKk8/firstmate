@@ -806,6 +806,40 @@ test_no_mistakes_origin_remote_allows() {
   pass "no-mistakes worktree with HEAD on origin is torn down (no regression)"
 }
 
+test_landed_work_with_absent_endpoint_cleans_state() {
+  local case_dir rc gen artifact
+  case_dir=$(make_case landed-no-endpoint)
+  write_meta "$case_dir" no-mistakes ship
+  wt_commit "$case_dir" "landed work"
+  git -C "$case_dir/wt" push -q origin fm/task-x1
+  git -C "$case_dir/project" fetch -q origin
+  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
+  rm -f "$case_dir/state/task-x1.meta.bak"
+  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$case_dir/state" task-x1)
+  printf 'busy_gen=%s\n' "$gen" >> "$case_dir/state/task-x1.meta"
+  for artifact in status pi-ext.ts turn-ended; do
+    : > "$case_dir/state/task-x1.$artifact"
+  done
+  : > "$case_dir/state/.hb-surfaced-task-x1"
+  : > "$case_dir/state/.seen-task-x1"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "landed-no-endpoint: teardown should succeed"
+  for artifact in meta status busy-gen busy-state pi-ext.ts turn-ended; do
+    assert_absent "$case_dir/state/task-x1.$artifact" \
+      "landed-no-endpoint: teardown left $artifact behind"
+  done
+  assert_present "$case_dir/state/.hb-surfaced-task-x1" \
+    "landed-no-endpoint: teardown removed heartbeat history"
+  assert_present "$case_dir/state/.seen-task-x1" \
+    "landed-no-endpoint: teardown removed seen history"
+  pass "landed work with an absent endpoint clears task state and preserves watcher history"
+}
+
 test_no_mistakes_truly_unpushed_refuses() {
   local case_dir rc
   case_dir=$(make_case nm-unpushed)
@@ -822,6 +856,27 @@ test_no_mistakes_truly_unpushed_refuses() {
   expect_code 1 "$rc" "nm-unpushed: teardown should refuse"
   grep -q REFUSED "$case_dir/stderr" || fail "nm-unpushed: no REFUSED line in stderr"
   pass "no-mistakes worktree with genuinely unlanded work is refused (safety preserved)"
+}
+
+test_unlanded_work_with_absent_endpoint_refuses() {
+  local case_dir rc
+  case_dir=$(make_case unlanded-no-endpoint)
+  write_meta "$case_dir" no-mistakes ship
+  wt_commit_file "$case_dir" feature.txt hello "unpushed work"
+  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
+  rm -f "$case_dir/state/task-x1.meta.bak"
+
+  set +e
+  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "unlanded-no-endpoint: teardown should refuse"
+  assert_present "$case_dir/state/task-x1.meta" \
+    "unlanded-no-endpoint: teardown erased metadata"
+  grep -q 'not landed' "$case_dir/stderr" \
+    || fail "unlanded-no-endpoint: landed-work refusal was not preserved"
+  pass "unlanded work with an absent endpoint still refuses"
 }
 
 test_squash_merged_branch_deleted_allows() {
@@ -2188,44 +2243,6 @@ land_shippable_commit() {
   git -C "$case_dir/project" fetch -q origin
 }
 
-test_landed_work_with_absent_endpoint_cleans_state() {
-  local case_dir rc
-  case_dir=$(make_case landed-no-endpoint)
-  write_meta "$case_dir" no-mistakes ship
-  land_shippable_commit "$case_dir"
-  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
-  rm -f "$case_dir/state/task-x1.meta.bak"
-
-  set +e
-  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-
-  expect_code 0 "$rc" "landed-no-endpoint: teardown should succeed"
-  assert_absent "$case_dir/state/task-x1.meta" "landed-no-endpoint: metadata was not removed"
-  assert_contains "$(cat "$case_dir/stdout")" "no endpoint" "landed-no-endpoint: output should identify the absent endpoint"
-  pass "landed work with an absent endpoint clears task state without touching a runtime target"
-}
-
-test_unlanded_work_with_absent_endpoint_refuses() {
-  local case_dir rc
-  case_dir=$(make_case unlanded-no-endpoint)
-  write_meta "$case_dir" no-mistakes ship
-  wt_commit_file "$case_dir" feature.txt hello "unpushed work"
-  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
-  rm -f "$case_dir/state/task-x1.meta.bak"
-
-  set +e
-  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-
-  expect_code 1 "$rc" "unlanded-no-endpoint: teardown should refuse"
-  assert_present "$case_dir/state/task-x1.meta" "unlanded-no-endpoint: metadata was removed"
-  assert_contains "$(cat "$case_dir/stderr")" "not landed" "unlanded-no-endpoint: refusal should preserve landed-work safety"
-  pass "unlanded work with an absent endpoint still refuses cleanup"
-}
-
 test_parked_own_run_is_aborted_before_teardown() {
   local case_dir rc head
   case_dir=$(make_case parked-run-abort)
@@ -2779,7 +2796,9 @@ test_teardown_manual_backend_prompts_hand_edit_even_when_tasks_axi_present
 test_local_only_truly_unpushed_refuses
 test_local_only_merged_to_local_main_allows
 test_no_mistakes_origin_remote_allows
+test_landed_work_with_absent_endpoint_cleans_state
 test_no_mistakes_truly_unpushed_refuses
+test_unlanded_work_with_absent_endpoint_refuses
 test_local_only_force_overrides_unpushed
 test_teardown_missing_busy_sidecar_completes
 test_herdr_teardown_clears_escalation_marker
@@ -2814,8 +2833,6 @@ test_transient_index_lock_clears_after_first_attempt_and_retry_succeeds
 test_persistent_index_lock_exhausts_retries_and_refuses_loudly
 test_empty_retry_wait_uses_default_without_aborting
 test_fractional_legacy_retry_wait_refuses_without_arithmetic_error
-test_landed_work_with_absent_endpoint_cleans_state
-test_unlanded_work_with_absent_endpoint_refuses
 test_parked_own_run_is_aborted_before_teardown
 test_parked_own_run_refuses_when_abort_is_unconfirmed
 test_mismatched_run_after_abort_refuses_unconfirmed
