@@ -192,7 +192,7 @@ EOF
   ' _ "$ROOT/bin/fm-wake-lib.sh" "$home/state" "$home/state/$id.status" \
     || fail "captain-held bookkeeping closes re-woke their own home"
   assert_grep "decisions_reviewed=1" "$home/state/$id.meta" "completion attestation missing"
-  assert_grep "decision_keys=access,route" "$home/state/$id.meta" "decision inventory was not deterministic"
+  assert_grep "decision_keys=sample-systems-review-decision-access,sample-systems-review-decision-route" "$home/state/$id.meta" "decision inventory was not deterministic"
   open=$(bash -c '. "$1"; status_open_decisions "$2"' _ \
     "$ROOT/bin/fm-classify-lib.sh" "$home/state/$id.status")
   [ -z "$open" ] || fail "captain-held transfer did not close duplicate live status decisions: $open"
