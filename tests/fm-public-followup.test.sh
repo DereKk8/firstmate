@@ -1938,8 +1938,8 @@ test_retire_reason_closes_the_open_loop() {
   emit_terminal "$home" "$home" pf-retire main work-retire >/dev/null || fail "emit failed"
   FAKE_CURL_LOG="$log" run_pf "$home" consume >/dev/null || fail "consume failed"
   FAKE_CURL_LOG="$log" run_pf "$home" deliver pf-retire >/dev/null || fail "deliver failed"
-  run_pf "$home" pending | grep -q '^open-loop pf-retire ' \
-    || fail "pending must show the delivered open loop"
+  out=$(run_pf "$home" pending) || fail "pending must show the delivered open loop"
+  assert_contains "$out" "open-loop pf-retire " "pending must show the delivered open loop"
   expect_failure "retire without --reason must refuse" run_pf "$home" retire pf-retire
   assert_contains "$EXPECT_OUT" "--reason" "the refusal must name the required reason"
   assert_present "$home/state/public-followup/registry/pf-retire" \
@@ -1988,6 +1988,10 @@ test_retention_creates_no_false_teardown_refusal() {
   local home home2 rc out registry tmp
   home=$(make_home retain-teardown)
   seed_commitment "$home" pf-retain req-retain discord main ship-retain
+  # The recorded worktree is already gone, so seed the product-local archive
+  # that proves the landed task's artifacts were preserved before teardown.
+  mkdir -p "$home/projects/sample/.agent/archive/ship-retain"
+  printf '%s\n' archived > "$home/projects/sample/.agent/archive/ship-retain/plan.md"
   fm_write_meta "$home/state/ship-retain.meta" \
     "window=firstmate:fm-ship-retain" \
     "worktree=$home/projects/gone" \
@@ -2005,7 +2009,8 @@ test_retention_creates_no_false_teardown_refusal() {
   rc=0
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" ship-retain \
+    FM_CONFIG_OVERRIDE="$home/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/retain-teardown-archives" \
+    "$TEARDOWN" ship-retain \
     > "$home/td.out" 2> "$home/td.err" || rc=$?
   [ "$rc" -eq 0 ] || fail "teardown must proceed with a retained delivered registration (rc=$rc)"
   case "$(cat "$home/td.err")" in
