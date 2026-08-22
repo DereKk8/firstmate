@@ -125,8 +125,8 @@ You are integrating new upstream advances from `upstream/main` into this fork.
 
 4. **Never add any agent as co-author.**
 
-5. After producing the actual merge commit on the integration branch, run `bin/fm-merge-content-check.sh <merge-commit>` against that commit.
-   The check must pass before reporting `done:`.
+5. After producing the actual merge commit on the integration branch, run `git diff-tree --check -m -r --no-commit-id <merge-commit>` against the committed merge result, then run `bin/fm-merge-content-check.sh <merge-commit>` separately for named-content loss.
+   Both checks must pass before reporting `done:`.
    If it flags paths, every path must be individually justified with `--allow <path>`.
    Each `--allow` needs a one-line justification in the report or PR description for a deliberate, already-approved removal - never for something you cannot explain.
 
@@ -145,8 +145,8 @@ The genuinely new, never-gated surface of a sync is exactly two things:
 
 Validation must target that surface, not the fast-forwarded history.
 
-**Required gates:** a focused code review of the seam (the reconciliation/conflict diff) plus all net-new code, and a passing `bin/fm-merge-content-check.sh <merge-commit>` run against the actual merge commit produced on the integration branch.
-The mechanical check must pass before the worker appends `done:`.
+**Required gates:** a focused code review of the seam (the reconciliation/conflict diff) plus all net-new code, a passing `git diff-tree --check -m -r --no-commit-id <merge-commit>` run against the actual committed merge result, and a separate passing `bin/fm-merge-content-check.sh <merge-commit>` run for named-content loss.
+The mechanical checks must pass before the worker appends `done:`.
 Every flagged path must instead be individually justified with `--allow <path>`.
 Each justification must be one line in the worker's report or PR description and cover a deliberate, already-approved removal - never something the worker cannot explain.
 The mechanical check is in addition to the seam code review, not a replacement for it, because the human/LLM review still covers judgment calls the script cannot catch.
