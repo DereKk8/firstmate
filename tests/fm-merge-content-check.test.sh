@@ -171,8 +171,29 @@ EOF
 
   out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh 2>&1)
   rc=$?
-  [ "$rc" -eq 0 ] || fail "--allow lib.sh must suppress the finding, got $rc: $out"
-  pass "--allow <path> suppresses findings for that exact path"
+  [ "$rc" -eq 2 ] || fail "missing rationale must exit 2, got $rc: $out"
+  assert_contains "$out" "requires exactly one --reason" "missing rationale must be rejected"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh --reason 'deliberate replacement approved in refit' 2>&1)
+  rc=$?
+  [ "$rc" -eq 0 ] || fail "valid path-specific rationale must suppress the finding, got $rc: $out"
+  pass "valid path-specific rationale suppresses findings for that exact path"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh --reason first --allow lib.sh --reason second 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "duplicate allowance must exit 2, got $rc: $out"
+  assert_contains "$out" "duplicate allowance" "duplicate allowance must be rejected"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --reason extra 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "extra rationale must exit 2, got $rc: $out"
+  assert_contains "$out" "preceding --allow" "extra rationale must be rejected"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow missing.sh --reason extra 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "extra allowance must exit 2, got $rc: $out"
+  assert_contains "$out" "extra allowance" "extra allowance must be rejected"
+  pass "missing, duplicate, and extra allowance records are rejected"
 }
 
 # fixture_conflicting_merge <path> <content>: create a merge whose parents

@@ -125,10 +125,10 @@ You are integrating new upstream advances from `upstream/main` into this fork.
 
 4. **Never add any agent as co-author.**
 
-5. After producing the actual merge commit on the integration branch, run `git diff-tree --check -m -r --no-commit-id <merge-commit>` against the committed merge result, then run `bin/fm-merge-content-check.sh <merge-commit>` separately for named-content loss.
+5. After producing the actual merge commit on the integration branch, run `git diff-tree --check -m -r --no-commit-id <merge-commit>` against the committed merge result, then run `bin/fm-merge-content-check.sh <merge-commit> [--allow <path> --reason <one-line-rationale>]...` separately for named-content loss.
    Both checks must pass before reporting `done:`.
-   If it flags paths, every path must be individually justified with `--allow <path>`.
-   Each `--allow` needs a one-line justification in the report or PR description for a deliberate, already-approved removal - never for something you cannot explain.
+   If it flags paths, every path must be individually paired with exactly one non-empty, one-line `--reason` through that invocation.
+   The worker must separately confirm that each rationale describes a deliberate removal already approved by the captain; the rationale is evidence, not proof of approval, and never something the worker cannot explain.
 
 6. Ask firstmate for validation approval and model choice before running anything.
 
@@ -145,10 +145,10 @@ The genuinely new, never-gated surface of a sync is exactly two things:
 
 Validation must target that surface, not the fast-forwarded history.
 
-**Required gates:** a focused code review of the seam (the reconciliation/conflict diff) plus all net-new code, a passing `git diff-tree --check -m -r --no-commit-id <merge-commit>` run against the actual committed merge result, and a separate passing `bin/fm-merge-content-check.sh <merge-commit>` run for named-content loss.
+**Required gates:** a focused code review of the seam (the reconciliation/conflict diff) plus all net-new code, a passing `git diff-tree --check -m -r --no-commit-id <merge-commit>` run against the actual committed merge result, and a separate passing `bin/fm-merge-content-check.sh <merge-commit> [--allow <path> --reason <one-line-rationale>]...` run for named-content loss.
 The mechanical checks must pass before the worker appends `done:`.
-Every flagged path must instead be individually justified with `--allow <path>`.
-Each justification must be one line in the worker's report or PR description and cover a deliberate, already-approved removal - never something the worker cannot explain.
+Every flagged path must instead be individually paired in the invocation with `--allow <path> --reason <one-line-rationale>`.
+The worker must separately confirm that each rationale covers a deliberate removal already approved by the captain; it is evidence, not proof of approval, and never something the worker cannot explain.
 The mechanical check is in addition to the seam code review, not a replacement for it, because the human/LLM review still covers judgment calls the script cannot catch.
 
 **Optional judgment:** run the test suite over the integrated whole to catch cross-feature interaction bugs between independently validated features.
