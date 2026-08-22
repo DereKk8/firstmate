@@ -26,7 +26,7 @@
 #
 # <merge-commit> must be an ordinary two-parent merge commit. Each --allow
 # <path> must be followed by exactly one non-empty, one-line --reason <text>
-# (both repeatable); paths are relative to repo root. The reason records evidence
+# (whitespace-only text is rejected; both repeatable); paths are relative to repo root. The reason records evidence
 # for a deliberate removal (e.g. a fork feature dropped in favor of an upstream
 # equivalent adopted on the merits), but does not prove approval. Missing,
 # duplicate, or extra allowance records are usage errors.
@@ -73,6 +73,10 @@ while [ $# -gt 0 ]; do
       [ $# -ge 4 ] && [ "$3" = "--reason" ] || { printf 'error: --allow %s requires exactly one --reason <text>\n' "$path" >&2; exit 2; }
       reason=$4
       [ -n "$reason" ] || { printf 'error: --reason for %s must be non-empty\n' "$path" >&2; exit 2; }
+      case "$reason" in
+        *[!$' \t\r\n']*) ;;
+        *) printf 'error: --reason for %s must contain non-whitespace text\n' "$path" >&2; exit 2 ;;
+      esac
       case "$reason" in
         *$'\n'*|*$'\r'*) printf 'error: --reason for %s must be one line\n' "$path" >&2; exit 2 ;;
       esac

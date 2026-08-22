@@ -180,6 +180,14 @@ EOF
   [ "$rc" -eq 2 ] || fail "missing rationale must exit 2, got $rc: $out"
   assert_contains "$out" "requires exactly one --reason" "missing rationale must be rejected"
 
+  for reason in '   ' $'\t\t'; do
+    out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh --reason "$reason" 2>&1)
+    rc=$?
+    [ "$rc" -eq 2 ] || fail "whitespace-only rationale must exit 2, got $rc: $out"
+    assert_contains "$out" "non-whitespace text" "whitespace-only rationale must be rejected"
+  done
+  pass "empty and whitespace-only rationales are rejected"
+
   out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh --reason 'deliberate replacement approved in refit' 2>&1)
   rc=$?
   [ "$rc" -eq 0 ] || fail "valid path-specific rationale must suppress the finding, got $rc: $out"
