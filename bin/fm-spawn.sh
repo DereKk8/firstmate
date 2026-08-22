@@ -2149,6 +2149,26 @@ spawn_send_key() {  # <target> <key>
   esac
 }
 
+spawn_readiness_fail() {  # <reason>
+  local reason=$1
+  printf 'blocked: spawn readiness failed: %s\n' "$reason" >> "$STATE/$ID.status"
+  echo "error: spawn readiness failed for $ID: $reason; metadata retained at $STATE/$ID.meta" >&2
+  return 1
+}
+
+spawn_wait_ready() {  # <target>
+  local target=$1 attempts=${FM_SPAWN_READY_ATTEMPTS:-20} delay=${FM_SPAWN_READY_SLEEP:-0.25}
+  local i
+  case "$attempts" in ''|*[!0-9]*|0) attempts=20 ;; esac
+  for i in $(seq 1 "$attempts"); do
+    if fm_backend_target_exists "$BACKEND" "$target" "$W"; then
+      return 0
+    fi
+    sleep "$delay"
+  done
+  spawn_readiness_fail "backend endpoint $target was unreachable within ${attempts} checks (backend=$BACKEND)"
+}
+
 kimi_capture() {
   fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null || true
 }
@@ -2860,6 +2880,9 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
+if ! spawn_wait_ready "$T"; then
+  exit 1
+fi
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"
