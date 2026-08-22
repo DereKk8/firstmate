@@ -218,11 +218,6 @@ while IFS= read -r path; do
     *.sh|*.mjs|*.md) ;;
     *) continue ;;
   esac
-  if is_allowed "$path"; then
-    ALLOW_USED["$path"]=1
-    continue
-  fi
-
   if p1_names="$(extract_names "$P1" "$path")"; then
     :
   else
@@ -261,6 +256,11 @@ while IFS= read -r path; do
       parents_desc="$P1_SHORT"
     else
       parents_desc="$P2_SHORT"
+    fi
+
+    if is_allowed "$path"; then
+      ALLOW_USED["$path"]=1
+      continue
     fi
 
     case "$path" in

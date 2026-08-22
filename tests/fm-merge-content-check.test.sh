@@ -111,6 +111,12 @@ EOF
   rc=$?
   [ "$rc" -eq 0 ] || fail "clean synthetic merge must exit 0, got $rc: $out"
   pass "synthetic clean merge (foo/bar both kept) exits 0"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow other.sh --reason 'no named content was removed' 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "unused allowance on a changed clean path must exit 2, got $rc: $out"
+  assert_contains "$out" "extra allowance" "unused allowance must be rejected"
+  pass "allowance must match an actual content-loss finding"
 }
 
 test_synthetic_dropped_function_and_allow() {
