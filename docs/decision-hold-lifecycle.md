@@ -1,15 +1,16 @@
-# Decision hold lifecycle mechanism
+# Decision hold lifecycle compatibility mechanism
 
-The normative policy is owned by `.agents/skills/decision-hold-lifecycle/SKILL.md` and is not restated here.
+The current normative policy is owned by `.agents/skills/captain-hold-lifecycle/SKILL.md` and the current command owner is `bin/fm-captain-hold.sh`.
+This document and `bin/fm-decision-hold.sh` remain compatibility pointers for historical decision identities and records.
 This document records the deterministic mechanism, structured surfaces, and privacy-safe regression evidence.
 
 ## Mechanism
 
-`bin/fm-decision-hold.sh` is the only lifecycle command for an investigation or visual review's unresolved captain decisions.
+Historical investigations and visual reviews used `bin/fm-decision-hold.sh`; current work uses `bin/fm-captain-hold.sh` for the lifecycle command.
 The command runs tasks-axi in the active `FM_HOME`, so the existing backlog remains the only durable work database and a secondmate-owned decision stays in the secondmate home.
 It never reads report bodies, review artifacts, terminal output, or chat.
 
-The `hold` subcommand maps an originating work id and stable decision key to `<origin-id>-decision-<decision-key>`.
+The legacy `hold` subcommand maps an originating work id and stable decision key to `<origin-id>-decision-<decision-key>`.
 It creates a kind `captain` backlog item when absent and invokes `tasks-axi hold <id> --reason <reason> --kind captain` on every retry.
 It rejects an identity collision, a changed title, and attempts to reopen an already resolved identity.
 
@@ -20,7 +21,8 @@ It verifies every listed identity against tasks-axi before recording completion.
 For an open keyed status decision, it appends a `captain-held [key=<key>]: ...` transfer event only after the matching backlog hold is durable.
 `bin/fm-classify-lib.sh` recognizes that transfer as closing the live status copy without claiming that the captain has answered it.
 
-Scout teardown calls the script's read-only `verify` subcommand after checking for the report and before removing any source state.
+Historical scout teardown called the script's read-only `verify` subcommand after checking for the report and before removing any source state.
+Current teardown uses the captain-hold owner.
 The `--force` path remains the explicit captain-approved discard escape hatch.
 
 The `resolve` and `decline` subcommands close active holds, while `repair` attests a hold already closed outside the script.

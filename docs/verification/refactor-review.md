@@ -3,7 +3,8 @@
 Audience: maintainer verification.
 
 This record supports the on-demand `/refactor-review` contract in `.agents/skills/refactor-review/SKILL.md`.
-The skill is instruction-owned: the existing scout lifecycle, decision lifecycle, and delivery paths remain the executable owners.
+The skill is instruction-owned: the existing scout lifecycle, captain-hold lifecycle, and delivery paths remain the executable owners.
+`decision-hold-lifecycle` and `bin/fm-decision-hold.sh` remain compatibility pointers for historical records and are not current owners.
 
 ## Verification record
 
@@ -38,7 +39,7 @@ Each review is pinned to an immutable source commit and merge base, and each sou
 - Signal-to-noise fixture: a structural ownership issue is emitted while naming and style cleanup is rejected or deferred.
 - Tentative concern: the output is a focused scout card rather than an implementation card.
 - Multiple findings: cards are independently scoped, capped at five, and dependency-aware.
-- Unresolved architecture choice: the existing `decision-hold-lifecycle` completion gate requires a durable decision inventory before cleanup.
+- Unresolved architecture choice: the existing `captain-hold-lifecycle` completion gate requires a durable captain-held task before cleanup.
 - Recommendation selection: no code work, issue, or implementation backlog item exists before explicit captain intent; selected IDs become ordinary follow-up tasks afterward.
 - Source moves during review: the report names the pinned SHA and revalidation is required before dispatching any card.
 
