@@ -631,10 +631,11 @@ task_json_lines() {
 # used by secondmate_home_summary_json, without inventing live task rows.
 # Meta inventory remains the sole source of live workers; this object only
 # discloses backlog↔task inconsistency for renderers (Bearings omitted/gates).
-main_inventory_json() {  # <backlog-json> <tasks-json>
+main_inventory_json() {  # <backlog-json-file> <tasks-json-file>
   jq -n \
-    --argjson backlog "$1" \
-    --argjson tasks "$2" '
+    --slurpfile backlog "$1" \
+    --slurpfile tasks "$2" '
+    ($backlog[0]) as $backlog | ($tasks[0]) as $tasks |
     ([ $backlog.records[]?
        | select((.state == "in_flight" or .state == "queued") and (.structured | not)) ]) as $unstructured_current
     | ([ $backlog.records[]?
@@ -667,8 +668,9 @@ secondmate_home_summary_json() {  # <backlog-json> <tasks-json>
     --argjson queued_n "$FM_SNAPSHOT_SECONDMATE_QUEUED" \
     --argjson decisions_n "$FM_SNAPSHOT_SECONDMATE_DECISIONS" \
     --argjson landed_n "$FM_SNAPSHOT_SECONDMATE_LANDED_PER_HOME" \
-    --argjson backlog "$1" \
-    --argjson tasks "$2" '
+    --slurpfile backlog "$1" \
+    --slurpfile tasks "$2" '
+    ($backlog[0]) as $backlog | ($tasks[0]) as $tasks |
     def trunc($n):
       tostring | gsub("\\s+"; " ")
       | if length > $n then .[:$n] + "…" else . end;
@@ -1144,7 +1146,8 @@ secondmate_current_json() {  # <parent-tasks-json>
   local activity_scan activities decisions reconciliation provenance freshness reason summary summary_rc summary_bytes summary_valid summary_reason summary_invalidity state current_reason terminal terminal_contradiction contradiction
   local records='[]' seen_homes=''
   registry=$(registry_secondmates_json) || return 1
-  union=$(jq -n --argjson registry "$registry" --argjson tasks "$tasks" '
+  union=$(jq -n --argjson registry "$registry" --slurpfile tasks "$tasks" '
+    ($tasks[0]) as $tasks |
     ($registry.records // []) as $registered
     | (($registered | map(.id)) // []) as $registered_ids
     | ([ $registered[] as $r
@@ -1373,19 +1376,23 @@ scout_report_lines() {
     | jq -s 'sort_by(.id)'
 }
 
-BACKLOG_JSON=$(backlog_json) || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
-TASKS_JSON=$(task_json_lines) || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
+SNAPSHOT_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") || exit 1
+trap 'rm -rf "$SNAPSHOT_TMP"' EXIT
+BACKLOG_FILE="$SNAPSHOT_TMP/backlog.json"
+TASKS_FILE="$SNAPSHOT_TMP/tasks.json"
+backlog_json > "$BACKLOG_FILE" || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
+task_json_lines > "$TASKS_FILE" || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
 
 if [ "$OUTPUT_MODE" = secondmate-home-summary ]; then
-  secondmate_home_summary_json "$BACKLOG_JSON" "$TASKS_JSON" \
+  secondmate_home_summary_json "$BACKLOG_FILE" "$TASKS_FILE" \
     || { echo "fm-fleet-snapshot: secondmate home summary failed" >&2; exit 1; }
   exit 0
 fi
 
 SCOUT_REPORTS_JSON=$(scout_report_lines)
-MAIN_INVENTORY_JSON=$(main_inventory_json "$BACKLOG_JSON" "$TASKS_JSON") \
+MAIN_INVENTORY_JSON=$(main_inventory_json "$BACKLOG_FILE" "$TASKS_FILE") \
   || { echo "fm-fleet-snapshot: main inventory summary failed" >&2; exit 1; }
-SECONDMATE_CURRENT_JSON=$(secondmate_current_json "$TASKS_JSON") \
+SECONDMATE_CURRENT_JSON=$(secondmate_current_json "$TASKS_FILE") \
   || { echo "fm-fleet-snapshot: registered secondmate aggregation failed" >&2; exit 1; }
 SECONDMATE_LANDED_JSON=$(secondmate_landed_from_current_json "$SECONDMATE_CURRENT_JSON") \
   || { echo "fm-fleet-snapshot: secondmate landed projection failed" >&2; exit 1; }
@@ -1398,13 +1405,14 @@ jq -n \
   --arg data "$DATA" \
   --arg config "$CONFIG" \
   --arg projects "$PROJECTS" \
-  --argjson backlog "$BACKLOG_JSON" \
-  --argjson tasks "$TASKS_JSON" \
+  --slurpfile backlog "$BACKLOG_FILE" \
+  --slurpfile tasks "$TASKS_FILE" \
   --argjson main_inventory "$MAIN_INVENTORY_JSON" \
   --argjson scout_reports "$SCOUT_REPORTS_JSON" \
   --argjson secondmate_current "$SECONDMATE_CURRENT_JSON" \
   --argjson secondmate_landed "$SECONDMATE_LANDED_JSON" \
-  'def backlog_by_id($id): ($backlog.records[]? | select(.structured == true and .id == $id) | .) // null;
+  '($backlog[0]) as $backlog | ($tasks[0]) as $tasks
+   | def backlog_by_id($id): ($backlog.records[]? | select(.structured == true and .id == $id) | .) // null;
    def task_by_id($id): ($tasks[]? | select(.id == $id) | .) // null;
    def report_kind($id): (task_by_id($id).kind // backlog_by_id($id).kind // "scout");
    {
