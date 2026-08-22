@@ -1396,6 +1396,14 @@ SECONDMATE_CURRENT_JSON=$(secondmate_current_json "$TASKS_FILE") \
   || { echo "fm-fleet-snapshot: registered secondmate aggregation failed" >&2; exit 1; }
 SECONDMATE_LANDED_JSON=$(secondmate_landed_from_current_json "$SECONDMATE_CURRENT_JSON") \
   || { echo "fm-fleet-snapshot: secondmate landed projection failed" >&2; exit 1; }
+FINAL_MAIN_INVENTORY_FILE="$SNAPSHOT_TMP/main-inventory.json"
+FINAL_SCOUT_REPORTS_FILE="$SNAPSHOT_TMP/scout-reports.json"
+FINAL_SECONDMATE_CURRENT_FILE="$SNAPSHOT_TMP/secondmate-current.json"
+FINAL_SECONDMATE_LANDED_FILE="$SNAPSHOT_TMP/secondmate-landed.json"
+printf '%s' "$MAIN_INVENTORY_JSON" > "$FINAL_MAIN_INVENTORY_FILE" || { echo "fm-fleet-snapshot: main inventory payload write failed" >&2; exit 1; }
+printf '%s' "$SCOUT_REPORTS_JSON" > "$FINAL_SCOUT_REPORTS_FILE" || { echo "fm-fleet-snapshot: scout reports payload write failed" >&2; exit 1; }
+printf '%s' "$SECONDMATE_CURRENT_JSON" > "$FINAL_SECONDMATE_CURRENT_FILE" || { echo "fm-fleet-snapshot: secondmate current payload write failed" >&2; exit 1; }
+printf '%s' "$SECONDMATE_LANDED_JSON" > "$FINAL_SECONDMATE_LANDED_FILE" || { echo "fm-fleet-snapshot: secondmate landed payload write failed" >&2; exit 1; }
 
 jq -n \
   --arg generated "$SNAPSHOT_NOW" \
@@ -1407,11 +1415,15 @@ jq -n \
   --arg projects "$PROJECTS" \
   --slurpfile backlog "$BACKLOG_FILE" \
   --slurpfile tasks "$TASKS_FILE" \
-  --argjson main_inventory "$MAIN_INVENTORY_JSON" \
-  --argjson scout_reports "$SCOUT_REPORTS_JSON" \
-  --argjson secondmate_current "$SECONDMATE_CURRENT_JSON" \
-  --argjson secondmate_landed "$SECONDMATE_LANDED_JSON" \
+  --slurpfile main_inventory_arr "$FINAL_MAIN_INVENTORY_FILE" \
+  --slurpfile scout_reports_arr "$FINAL_SCOUT_REPORTS_FILE" \
+  --slurpfile secondmate_current_arr "$FINAL_SECONDMATE_CURRENT_FILE" \
+  --slurpfile secondmate_landed_arr "$FINAL_SECONDMATE_LANDED_FILE" \
   '($backlog[0]) as $backlog | ($tasks[0]) as $tasks
+   | ($main_inventory_arr[0]) as $main_inventory
+   | ($scout_reports_arr[0]) as $scout_reports
+   | ($secondmate_current_arr[0]) as $secondmate_current
+   | ($secondmate_landed_arr[0]) as $secondmate_landed
    | def backlog_by_id($id): ($backlog.records[]? | select(.structured == true and .id == $id) | .) // null;
    def task_by_id($id): ($tasks[]? | select(.id == $id) | .) // null;
    def report_kind($id): (task_by_id($id).kind // backlog_by_id($id).kind // "scout");
