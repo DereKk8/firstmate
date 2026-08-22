@@ -207,7 +207,7 @@ command_repair() {
   [ -n "$decision_file" ] || fail "--decision-file is required"
   show=$(task_show "$id") || fail "captain decision $id does not exist in the active home"
   state=$(show_field "$show" state)
-  [ "$state" = done ] || fail "captain hold $id is still open (state=$state); use answer to close it with the captain's decision"
+  [ "$state" = "done" ] || fail "captain hold $id is still open (state=$state); use answer to close it with the captain's decision"
   exec "$CAPTAIN_HOLD" answer "$id" --decision-file "$decision_file"
 }
 

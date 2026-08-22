@@ -580,7 +580,7 @@ test_resolve_matches_quoted_blocked_by_edges() {
 # routed close path cannot express the answer. The unrouted close path must record
 # that answer durably while still refusing to release work the hold blocks.
 test_declined_decision_closes_without_routed_work() {
-  local home id hold routed_hold json show
+  local home id hold json show
   home=$(make_home declined-decision)
   id=sample-benchmark-review
   mkdir -p "$home/data/$id"
