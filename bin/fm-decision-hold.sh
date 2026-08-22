@@ -192,6 +192,25 @@ command_complete() {
   exec "$CAPTAIN_HOLD" complete "$origin" $mapped
 }
 
+command_repair() {
+  local origin=${1:-} key=${2:-} decision_file='' id show state
+  [ "$#" -ge 2 ] || { usage >&2; exit 2; }
+  id=$(compose "$origin" "$key")
+  shift 2
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --decision-file) shift; decision_file=${1:-} ;;
+      *) usage >&2; exit 2 ;;
+    esac
+    shift
+  done
+  [ -n "$decision_file" ] || fail "--decision-file is required"
+  show=$(task_show "$id") || fail "captain decision $id does not exist in the active home"
+  state=$(show_field "$show" state)
+  [ "$state" = done ] || fail "captain hold $id is still open (state=$state); use answer to close it with the captain's decision"
+  exec "$CAPTAIN_HOLD" answer "$id" --decision-file "$decision_file"
+}
+
 command_close() {  # <origin> <key> <flag-args...>
   local origin=${1:-} key=${2:-} id
   [ "$#" -ge 2 ] || { usage >&2; exit 2; }
@@ -222,7 +241,8 @@ case "${1:-}" in
   complete) shift; command_complete "$@" ;;
   verify) shift; exec "$CAPTAIN_HOLD" verify "$@" ;;
   resolve) shift; command_resolve "$@" ;;
-  answer|decline|repair) shift; command_close "$@" ;;
+  answer|decline) shift; command_close "$@" ;;
+  repair) shift; command_repair "$@" ;;
   answers) shift; exec "$CAPTAIN_HOLD" answers "$@" ;;
   bind) shift; exec "$CAPTAIN_HOLD" bind "$@" ;;
   unbind) shift; exec "$CAPTAIN_HOLD" unbind "$@" ;;
