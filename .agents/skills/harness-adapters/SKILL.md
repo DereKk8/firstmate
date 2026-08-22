@@ -148,15 +148,13 @@ Use the discovery surface in the current authenticated environment because suppo
 | claude | Open the current interactive session's `/model` picker; `claude --help` documents the accepted alias or full-model-name input shape. |
 | codex | Open the current interactive session's `/model` picker. |
 | opencode | Run `opencode models [provider]`, which lists available provider/model identifiers. |
-| pi | Run `pi --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
-| pi-signed | Run `pi-signed --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
+| pi / pi-signed | Run the selected executable as `<executable> --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
 | grok | Run `grok models`, which lists the models available to the current Grok installation and account. |
 | kimi | Run `kimi provider list --json`, which lists the current provider and model configuration. |
 | cursor | Run `cursor-agent --list-models` (or the legacy `agent --list-models`), which lists the ids available to the current Cursor account. `cursor` is not the CLI name. |
 
 For an unfamiliar harness or model namespace, establish support and provider identity from that harness's authoritative CLI help, model listing, or current documentation rather than guessing from a name or prefix.
 A listing that reaches the account and does not contain the model is concrete evidence the model is unsupported: block that candidate and quote the result.
-If those sources do not establish the relationship needed for dispatch, fail loudly and report the unresolved candidate.
 A discovery surface you could not reach establishes nothing; report that as uncertainty rather than turning it into a supported or unsupported verdict.
 
 When a requested effort value is outside the harness-specific accepted set, `fm-spawn` records the requested `effort=` in meta but emits no effort flag for that harness.
@@ -256,23 +254,15 @@ Opencode can auto-upgrade itself in the background and the running TUI can exit 
 If a pane shows the exit banner, relaunch with `--continue` to resume the session.
 `--prompt` does not auto-submit alongside `--continue`, so send the next instruction via `fm-send` once the TUI is up.
 
-**Busy-queued Enter (opencode 1.18.4, tmux backend fix, herdr known gap).**
+**Busy-queued Enter (opencode 1.18.4).**
 While opencode is mid-turn, the composer accepts Enter as a "send when the turn
 ends" keystroke but does not clear the typed text from the composer until the
 turn actually finishes.
-Without a fix, every `fm-send` to a busy opencode pane exits non-zero on a
+Without a conversion, every `fm-send` to a busy opencode pane exits non-zero on a
 false "Enter swallowed", and every daemon escalation that lands while the
 primary is mid-turn is treated as wedged.
-The shared `fm_tmux_submit_enter_core` (`bin/fm-tmux-lib.sh`) now falls back
-to `fm_pane_is_busy` once the Enter-retry budget is spent: a busy pane means
-the Enter was accepted and queued (reported as `empty` so the caller does not
-re-send), while an idle pane keeps `pending` as a genuine swallow. The herdr
-adapter observes the same opencode behavior but needs a separate fix; it is
-recorded as a known gap in `docs/herdr-backend.md` rather than patched here,
-so the tmux adapter does not paper over a herdr-specific shape.
-Regression coverage: `tests/fm-tmux-submit-busy.test.sh` covers the four
-scenarios (busy + pending -> `empty`, idle + pending -> `pending`, busy +
-cleared -> `empty`, idle + cleared -> `empty`).
+Both tmux and herdr delegate this exception to the one policy in `fm_composer_queued_enter_verdict` (`bin/fm-composer-lib.sh`), with backend-specific signals documented in `docs/tmux-backend.md` and `docs/herdr-backend.md`.
+Regression coverage is `tests/fm-tmux-submit-busy.test.sh`, `tests/fm-composer-lib.test.sh`, and `tests/fm-backend-herdr.test.sh`; the live Herdr Claude guard is `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh`.
 
 **Primary-session guard fact (verified 2026-07-08, OpenCode 1.17.6).**
 The firstmate PRIMARY's own `.opencode/plugins/fm-primary-turnend-guard.js` listens for `session.idle`.
@@ -284,7 +274,7 @@ The follow-up was verified in the interactive TUI; `opencode run` can exit befor
 
 | Fact | Value |
 |---|---|
-| Busy state | The Firstmate-owned extension's `agent_start` (busy) and `agent_settled` (idle) with `session_shutdown` guard. Pi guarantees `agent_settled` fires only when no automatic continuation remains; the extension never reads the event ctx. |
+| Busy state | The Firstmate-owned extension's `agent_start` (busy) and `agent_settled` confirmed by `ctx.isIdle()` (idle), which covers retries, compaction, tool loops, and queued continuations. |
 | Exit command | `/quit` |
 | Interrupt | single Escape |
 

@@ -5,10 +5,6 @@
 # live only in a private sidecar and are never interpolated into shell source.
 # A GitHub pull request URL and a GitLab merge request URL are both accepted,
 # including a merge request on a self-hosted GitLab instance.
-# Before arming a GitHub PR, verifies structured forge state. The gate is
-# fail-closed: every path that cannot verify refuses explicitly.
-# A GitLab merge request arms directly because its structured fields are not
-# available through the supported plain glab output.
 # Usage: fm-pr-check.sh <task-id> <pr-url>
 set -eu
 
@@ -37,25 +33,6 @@ PROVIDER=$FM_PR_PROVIDER
 HOST=$FM_PR_HOST
 PROJECT_PATH=$FM_PR_PATH
 NUMBER=$FM_PR_NUMBER
-
-pr_check_refuse() {  # <message>
-  echo "pr-check: REFUSED: $1" >&2
-  exit 1
-}
-
-# Detect the no-mistakes pipeline's canonical "## What Changed" bulleted
-# section. Real merged no-mistakes PRs freely carry other sections around it
-# (Intent, Risk Assessment, Testing, per-stage Pipeline detail), so this only
-# requires the heading to exist and be followed by a markdown bullet list.
-pr_check_what_changed_bulleted() {  # <body>
-  printf '%s\n' "$1" | awk '
-    /^## What Changed[ \t]*$/ { heading = 1; next }
-    heading && /^[ \t]*$/ { next }
-    heading && /^-[ \t]/ { bulleted = 1; heading = 0; next }
-    { heading = 0 }
-    END { exit(bulleted ? 0 : 1) }
-  '
-}
 
 # Task-derived paths are constructed only after the canonical ID validation.
 META="$STATE/$ID.meta"
@@ -94,6 +71,23 @@ fi
 # bin/fm-teardown.sh reads the head from the forge at teardown rather than from
 # metadata and falls back to its provider-agnostic content check, and
 # bin/fm-review-diff.sh resolves the head from the remote when none is recorded.
+# bin/fm-pr-merge.sh reads a GitLab head live at merge time for the same reason,
+# and treats a recorded value that disagrees as stale rather than authoritative.
+pr_check_refuse() {  # <message>
+  echo "pr-check: REFUSED: $1" >&2
+  exit 1
+}
+
+pr_check_what_changed_bulleted() {  # <body>
+  printf '%s\n' "$1" | awk '
+    /^## What Changed[ \t]*$/ { heading = 1; next }
+    heading && /^[ \t]*$/ { next }
+    heading && /^-[ \t]/ { bulleted = 1; heading = 0; next }
+    { heading = 0 }
+    END { exit(bulleted ? 0 : 1) }
+  '
+}
+
 WT=$(grep '^worktree=' "$META" | tail -1 | cut -d= -f2- || true)
 PR_HEAD=
 if [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/dev/null 2>&1; then

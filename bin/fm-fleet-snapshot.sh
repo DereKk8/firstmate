@@ -15,11 +15,21 @@
 #     data/backlog.md and cover In flight, Queued, and Done.
 #     Canonical tasks-axi rows are structured; free-form non-empty lines in
 #     those sections are preserved as unstructured records.
-#     Structured rows preserve captain-hold metadata such as hold_kind and
-#     hold_reason when tasks-axi emits it. They also carry normalized current_role,
-#     requires_child_metadata, blocked_by_ids, unresolved_blocker_ids, and
-#     captain_actionable fields. Repeated blocker tokens remain ordered; a blocker
-#     resolves only when its structured record is Done, and missing ids stay open.
+#     Structured rows preserve captain-hold metadata such as hold_kind,
+#     hold_reason, and hold_until when tasks-axi emits it. They also carry
+#     normalized current_role, requires_child_metadata, blocked_by_ids,
+#     unresolved_blocker_ids, captain_actionable, and deferred_marker fields.
+#     Repeated blocker tokens remain ordered; a blocker resolves only when its
+#     structured record is Done, and missing ids stay open.
+#     captain_actionable means "waiting on the captain now": queued, held for
+#     the captain, unblocked, and due (no hold_until, or hold_until at or
+#     before the observation date, matching tasks-axi's own date-gate rule).
+#     There is no separate decision type: any captain-held task is the same
+#     primitive, whatever kind its row carries.
+#     deferred_marker is a presentation hint only: the row's hold reason or
+#     body carries an explicit SUPERSEDED / NOT REQUIRED / DEFERRED marker.
+#     It never changes captain_actionable; renderers may use it to keep
+#     prose-deferred rows out of default views.
 #   tasks[]: one row per state/<id>.meta, sorted by id.
 #     current_state is parsed from bin/fm-crew-state.sh <id> and preserves
 #     state, source, detail, and raw line separately.
@@ -74,6 +84,14 @@ else
     || date +%s)
 fi
 case "$SNAPSHOT_EPOCH" in ''|*[!0-9]*) SNAPSHOT_EPOCH=$(date +%s) ;; esac
+# The observation date gates captain-hold deferral: a `hold-until` date still in
+# the future keeps a captain hold out of captain_actionable until it is due
+# (tasks-axi's own contract: the hold is inactive on and after that date).
+SNAPSHOT_TODAY=${SNAPSHOT_NOW%%T*}
+case "$SNAPSHOT_TODAY" in
+  [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) : ;;
+  *) SNAPSHOT_TODAY=$(date -u +%Y-%m-%d) ;;
+esac
 
 # Cross-home bounds are explicit so one broken or unexpectedly large home cannot
 # hang or explode the parent snapshot.
@@ -151,8 +169,9 @@ validated registered-home handoff. It is local-only, skips nested secondmate
 aggregation, and marks inventory contradictions or unavailable child state invalid.
 Its invalidity object names the normalized failure kind and affected ids.
 Actionable tasks-axi captain holds appear as decisions_open and stay visible in
-queued with hold_reason, hold_kind, and plural blocker fields for downstream
-projections. A captain hold is actionable only when every blocker is Done.
+queued with hold_reason, hold_kind, hold_until, deferred_marker, and plural
+blocker fields for downstream projections. A captain hold is actionable only
+when every blocker is Done and any hold-until date has arrived.
 Cross-home reads use FM_SNAPSHOT_SECONDMATES (default 20, 0 lifts the count
 bound), FM_SNAPSHOT_SECONDMATE_TIMEOUT, and FM_SNAPSHOT_SECONDMATE_MAX_BYTES.
 Terminal contradiction evidence uses
@@ -179,28 +198,6 @@ command -v jq >/dev/null 2>&1 || { echo "fm-fleet-snapshot: jq not found" >&2; e
 
 bool_json() {
   if [ "$1" = 1 ]; then printf 'true'; else printf 'false'; fi
-}
-
-# Writes JSON text to a fresh temp file and prints its path, so callers can
-# --slurpfile a large payload into jq instead of passing it through argv.
-# A backlog or task-set JSON blob can exceed the execve() ARG_MAX limit once
-# the fleet grows past a few dozen records; argv is fine for small, bounded
-# values but never for anything sized off backlog or task count.
-jq_argjson_tempfile() {  # <json>
-  local f tmpdir=${TMPDIR:-/tmp}
-  if f=$(mktemp "$tmpdir/fm-fleet-snapshot.XXXXXX" 2>/dev/null); then
-    :
-  elif command -v perl >/dev/null 2>&1; then
-    f=$(TMPDIR="$tmpdir" perl -MFile::Temp=tempfile -e '
-      my ($fh, $path) = tempfile("fm-fleet-snapshot.XXXXXX", DIR => $ENV{TMPDIR}, UNLINK => 0);
-      close $fh or exit 1;
-      print $path;
-    ' 2>/dev/null) || return 1
-  else
-    return 1
-  fi
-  printf '%s' "$1" > "$f" || { rm -f "$f"; return 1; }
-  printf '%s\n' "$f"
 }
 
 path_present_json() {  # <path>
@@ -280,7 +277,7 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
   fi
 
   # shellcheck disable=SC2094
-  jq -Rn --arg path "$backlog" '
+  jq -Rn --arg path "$backlog" --arg today "$SNAPSHOT_TODAY" '
     def trim: gsub("^[[:space:]]+|[[:space:]]+$"; "");
     def section_state:
       if . == "In flight" then "in_flight"
@@ -299,7 +296,7 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
     def links($rest): [$rest | scan(url_pattern)];
     def strip_trailing_metadata:
       reduce range(0; 20) as $_ (.;
-        sub("[[:space:]]*\\([[:space:]]*(?:(?:repo|kind|priority|hold|hold-kind):[[:space:]]*[^)]*|(?:since|merged|reported|done)[[:space:]]+[^)]*)[[:space:]]*\\)[[:space:]]*$"; ""));
+        sub("[[:space:]]*\\([[:space:]]*(?:(?:repo|kind|priority|hold|hold-kind|hold-until):[[:space:]]*[^)]*|(?:since|merged|reported|done)[[:space:]]+[^)]*)[[:space:]]*\\)[[:space:]]*$"; ""));
     def strip_title_artifacts:
       sub("[[:space:]]+-[[:space:]]+data/[^[:space:])]+/report\\.md$"; "")
       | sub("[[:space:]]+data/[^[:space:])]+/report\\.md$"; "")
@@ -359,6 +356,7 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
              priority:metadata($rest; "priority"),
              hold_reason:metadata($rest; "hold"),
              hold_kind:metadata($rest; "hold-kind"),
+             hold_until:metadata($rest; "hold-until"),
              blocked_by:cap($rest; ".*blocked-by:[[:space:]]*(?<v>[^[:space:])]+).*"),
              blocked_by_ids:blocked_by_ids($rest),
              blocked_reason:blocked_reason($rest),
@@ -415,8 +413,12 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
                else "done" end)
           | .requires_child_metadata = (.current_role == "worker")
           | .captain_actionable =
-              (.state == "queued" and .kind == "captain" and .hold_kind == "captain"
-               and .hold_reason != null and (.unresolved_blocker_ids | length) == 0)
+              (.state == "queued" and .hold_kind == "captain"
+               and .hold_reason != null and (.unresolved_blocker_ids | length) == 0
+               and (.hold_until == null or .hold_until <= $today))
+          | .deferred_marker =
+              ((((.hold_reason // "") + " " + (.body_excerpt // ""))
+                | test("SUPERSEDED|NOT REQUIRED|NOT-REQUIRED|DEFERRED"; "i")))
         else . end)
     | del(.section,.order)
   ' < "$backlog"
@@ -629,17 +631,12 @@ task_json_lines() {
 # used by secondmate_home_summary_json, without inventing live task rows.
 # Meta inventory remains the sole source of live workers; this object only
 # discloses backlog↔task inconsistency for renderers (Bearings omitted/gates).
-main_inventory_json() {  # <backlog-json> <tasks-json>
-  local backlog_file tasks_file
-  backlog_file=$(jq_argjson_tempfile "$1") || return 1
-  tasks_file=$(jq_argjson_tempfile "$2") || return 1
-  trap 'rm -f "$backlog_file" "$tasks_file"' RETURN
+main_inventory_json() {  # <backlog-json-file> <tasks-json-file>
   jq -n \
-    --slurpfile backlog_arr "$backlog_file" \
-    --slurpfile tasks_arr "$tasks_file" '
-    ($backlog_arr[0]) as $backlog
-    | ($tasks_arr[0]) as $tasks
-    | ([ $backlog.records[]?
+    --slurpfile backlog "$1" \
+    --slurpfile tasks "$2" '
+    ($backlog[0]) as $backlog | ($tasks[0]) as $tasks |
+    ([ $backlog.records[]?
        | select((.state == "in_flight" or .state == "queued") and (.structured | not)) ]) as $unstructured_current
     | ([ $backlog.records[]?
          | select(.state == "in_flight" and .structured and .requires_child_metadata) ]) as $owned_in_flight
@@ -664,10 +661,6 @@ main_inventory_json() {  # <backlog-json> <tasks-json>
 # This mode never reads parent events or terminal text and never aggregates
 # nested secondmates.
 secondmate_home_summary_json() {  # <backlog-json> <tasks-json>
-  local backlog_file tasks_file
-  backlog_file=$(jq_argjson_tempfile "$1") || return 1
-  tasks_file=$(jq_argjson_tempfile "$2") || return 1
-  trap 'rm -f "$backlog_file" "$tasks_file"' RETURN
   jq -n \
     --arg generated "$SNAPSHOT_NOW" \
     --arg home "$FM_HOME" \
@@ -675,11 +668,10 @@ secondmate_home_summary_json() {  # <backlog-json> <tasks-json>
     --argjson queued_n "$FM_SNAPSHOT_SECONDMATE_QUEUED" \
     --argjson decisions_n "$FM_SNAPSHOT_SECONDMATE_DECISIONS" \
     --argjson landed_n "$FM_SNAPSHOT_SECONDMATE_LANDED_PER_HOME" \
-    --slurpfile backlog_arr "$backlog_file" \
-    --slurpfile tasks_arr "$tasks_file" '
-    ($backlog_arr[0]) as $backlog
-    | ($tasks_arr[0]) as $tasks
-    | def trunc($n):
+    --slurpfile backlog "$1" \
+    --slurpfile tasks "$2" '
+    ($backlog[0]) as $backlog | ($tasks[0]) as $tasks |
+    def trunc($n):
       tostring | gsub("\\s+"; " ")
       | if length > $n then .[:$n] + "…" else . end;
     ([ $backlog.records[]?
@@ -694,8 +686,10 @@ secondmate_home_summary_json() {  # <backlog-json> <tasks-json>
     | ([ $queued_all[]
          | select(.captain_actionable == true)
          | {id,key:.id,verb:"captain-hold",summary:(.title | trunc(160)),
-            reason:(.hold_reason | trunc(160)),source:"backlog"} ]) as $captain_holds_all
-    | ([ $backlog.records[]? | select(.state == "done" and .structured and .kind != "captain")
+            reason:(.hold_reason | trunc(160)),
+            hold_until:(.hold_until // null),
+            deferred_marker:(.deferred_marker // false),source:"backlog"} ]) as $captain_holds_all
+    | ([ $backlog.records[]? | select(.state == "done" and .structured and .hold_kind != "captain")
          | {id:(.id | trunc(120)),title:(.title | trunc(120)),
             pr_url:((.pr_url // null) | if . == null then null else trunc(500) end),
             report_path:((.report_path // null) | if . == null then null else trunc(500) end),
@@ -791,6 +785,8 @@ secondmate_home_summary_json() {  # <backlog-json> <tasks-json>
           blocked_reason:((.blocked_reason // null) | if . == null then null else trunc(160) end),
           hold_reason:((.hold_reason // null) | if . == null then null else trunc(160) end),
           hold_kind:((.hold_kind // null) | if . == null then null else trunc(40) end),
+          hold_until:((.hold_until // null) | if . == null then null else trunc(40) end),
+          deferred_marker:(.deferred_marker // false),
           captain_actionable:(.captain_actionable // false),
           repo:((.repo // null) | if . == null then null else trunc(120) end),
           kind:((.kind // null) | if . == null then null else trunc(40) end)}][:$queued_n]),
@@ -1150,14 +1146,9 @@ secondmate_current_json() {  # <parent-tasks-json>
   local activity_scan activities decisions reconciliation provenance freshness reason summary summary_rc summary_bytes summary_valid summary_reason summary_invalidity state current_reason terminal terminal_contradiction contradiction
   local records='[]' seen_homes=''
   registry=$(registry_secondmates_json) || return 1
-  local registry_file tasks_file
-  registry_file=$(jq_argjson_tempfile "$registry") || return 1
-  tasks_file=$(jq_argjson_tempfile "$tasks") || return 1
-  trap 'rm -f "$registry_file" "$tasks_file"' RETURN
-  union=$(jq -n --slurpfile registry_arr "$registry_file" --slurpfile tasks_arr "$tasks_file" '
-    ($registry_arr[0]) as $registry
-    | ($tasks_arr[0]) as $tasks
-    | ($registry.records // []) as $registered
+  union=$(jq -n --argjson registry "$registry" --slurpfile tasks "$tasks" '
+    ($tasks[0]) as $tasks |
+    ($registry.records // []) as $registered
     | (($registered | map(.id)) // []) as $registered_ids
     | ([ $registered[] as $r
          | $r + {parent_task:([$tasks[] | select(.id == $r.id)][0] // null)} ]
@@ -1385,26 +1376,34 @@ scout_report_lines() {
     | jq -s 'sort_by(.id)'
 }
 
-BACKLOG_JSON=$(backlog_json) || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
-TASKS_JSON=$(task_json_lines) || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
+SNAPSHOT_TMP=$(mktemp -d "${TMPDIR:-/tmp}/fm-fleet-snapshot.XXXXXX") || exit 1
+trap 'rm -rf "$SNAPSHOT_TMP"' EXIT
+BACKLOG_FILE="$SNAPSHOT_TMP/backlog.json"
+TASKS_FILE="$SNAPSHOT_TMP/tasks.json"
+backlog_json > "$BACKLOG_FILE" || { echo "fm-fleet-snapshot: backlog read failed" >&2; exit 1; }
+task_json_lines > "$TASKS_FILE" || { echo "fm-fleet-snapshot: task snapshot failed" >&2; exit 1; }
 
 if [ "$OUTPUT_MODE" = secondmate-home-summary ]; then
-  secondmate_home_summary_json "$BACKLOG_JSON" "$TASKS_JSON" \
+  secondmate_home_summary_json "$BACKLOG_FILE" "$TASKS_FILE" \
     || { echo "fm-fleet-snapshot: secondmate home summary failed" >&2; exit 1; }
   exit 0
 fi
 
 SCOUT_REPORTS_JSON=$(scout_report_lines)
-MAIN_INVENTORY_JSON=$(main_inventory_json "$BACKLOG_JSON" "$TASKS_JSON") \
+MAIN_INVENTORY_JSON=$(main_inventory_json "$BACKLOG_FILE" "$TASKS_FILE") \
   || { echo "fm-fleet-snapshot: main inventory summary failed" >&2; exit 1; }
-SECONDMATE_CURRENT_JSON=$(secondmate_current_json "$TASKS_JSON") \
+SECONDMATE_CURRENT_JSON=$(secondmate_current_json "$TASKS_FILE") \
   || { echo "fm-fleet-snapshot: registered secondmate aggregation failed" >&2; exit 1; }
 SECONDMATE_LANDED_JSON=$(secondmate_landed_from_current_json "$SECONDMATE_CURRENT_JSON") \
   || { echo "fm-fleet-snapshot: secondmate landed projection failed" >&2; exit 1; }
-
-FINAL_BACKLOG_FILE=$(jq_argjson_tempfile "$BACKLOG_JSON") || { echo "fm-fleet-snapshot: backlog payload write failed" >&2; exit 1; }
-FINAL_TASKS_FILE=$(jq_argjson_tempfile "$TASKS_JSON") || { echo "fm-fleet-snapshot: tasks payload write failed" >&2; exit 1; }
-trap 'rm -f "$FINAL_BACKLOG_FILE" "$FINAL_TASKS_FILE"' EXIT
+FINAL_MAIN_INVENTORY_FILE="$SNAPSHOT_TMP/main-inventory.json"
+FINAL_SCOUT_REPORTS_FILE="$SNAPSHOT_TMP/scout-reports.json"
+FINAL_SECONDMATE_CURRENT_FILE="$SNAPSHOT_TMP/secondmate-current.json"
+FINAL_SECONDMATE_LANDED_FILE="$SNAPSHOT_TMP/secondmate-landed.json"
+printf '%s' "$MAIN_INVENTORY_JSON" > "$FINAL_MAIN_INVENTORY_FILE" || { echo "fm-fleet-snapshot: main inventory payload write failed" >&2; exit 1; }
+printf '%s' "$SCOUT_REPORTS_JSON" > "$FINAL_SCOUT_REPORTS_FILE" || { echo "fm-fleet-snapshot: scout reports payload write failed" >&2; exit 1; }
+printf '%s' "$SECONDMATE_CURRENT_JSON" > "$FINAL_SECONDMATE_CURRENT_FILE" || { echo "fm-fleet-snapshot: secondmate current payload write failed" >&2; exit 1; }
+printf '%s' "$SECONDMATE_LANDED_JSON" > "$FINAL_SECONDMATE_LANDED_FILE" || { echo "fm-fleet-snapshot: secondmate landed payload write failed" >&2; exit 1; }
 
 jq -n \
   --arg generated "$SNAPSHOT_NOW" \
@@ -1414,14 +1413,17 @@ jq -n \
   --arg data "$DATA" \
   --arg config "$CONFIG" \
   --arg projects "$PROJECTS" \
-  --slurpfile backlog_arr "$FINAL_BACKLOG_FILE" \
-  --slurpfile tasks_arr "$FINAL_TASKS_FILE" \
-  --argjson main_inventory "$MAIN_INVENTORY_JSON" \
-  --argjson scout_reports "$SCOUT_REPORTS_JSON" \
-  --argjson secondmate_current "$SECONDMATE_CURRENT_JSON" \
-  --argjson secondmate_landed "$SECONDMATE_LANDED_JSON" \
-  '($backlog_arr[0]) as $backlog
-   | ($tasks_arr[0]) as $tasks
+  --slurpfile backlog "$BACKLOG_FILE" \
+  --slurpfile tasks "$TASKS_FILE" \
+  --slurpfile main_inventory_arr "$FINAL_MAIN_INVENTORY_FILE" \
+  --slurpfile scout_reports_arr "$FINAL_SCOUT_REPORTS_FILE" \
+  --slurpfile secondmate_current_arr "$FINAL_SECONDMATE_CURRENT_FILE" \
+  --slurpfile secondmate_landed_arr "$FINAL_SECONDMATE_LANDED_FILE" \
+  '($backlog[0]) as $backlog | ($tasks[0]) as $tasks
+   | ($main_inventory_arr[0]) as $main_inventory
+   | ($scout_reports_arr[0]) as $scout_reports
+   | ($secondmate_current_arr[0]) as $secondmate_current
+   | ($secondmate_landed_arr[0]) as $secondmate_landed
    | def backlog_by_id($id): ($backlog.records[]? | select(.structured == true and .id == $id) | .) // null;
    def task_by_id($id): ($tasks[]? | select(.id == $id) | .) // null;
    def report_kind($id): (task_by_id($id).kind // backlog_by_id($id).kind // "scout");

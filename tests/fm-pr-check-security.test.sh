@@ -26,6 +26,10 @@ REAL_MV=$(command -v mv)
 REAL_STAT=$(command -v stat)
 REAL_CHMOD=$(command -v chmod)
 REAL_BASENAME=$(command -v basename)
+# The merge path reads a merge request's JSON with the real jq, and BASE_PATH is
+# deliberately restricted, so a case that needs jq exposes this one rather than
+# depending on the host keeping jq in one of those four directories.
+REAL_JQ=$(command -v jq) || fail "these tests read glab's JSON with the real jq, which was not found"
 
 ack_watcher_cycle() {  # <state>
   local state=$1 err sequence generation
@@ -74,11 +78,6 @@ make_case() {
 printf 'guard\n' >> "$FM_TEST_GUARD_LOG"
 SH
   chmod +x "$fake_root/bin/fm-guard.sh"
-  cat > "$fake_root/bin/fm-project-base.sh" <<'SH'
-#!/usr/bin/env bash
-printf 'main\n'
-SH
-  chmod +x "$fake_root/bin/fm-project-base.sh"
   cat > "$fakebin/gh" <<'SH'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$FM_TEST_GH_LOG"
@@ -89,8 +88,6 @@ case " $* " in
     [ "${FM_TEST_GH_SLEEP:-0}" = 0 ] || sleep "$FM_TEST_GH_SLEEP"
     printf '%s\n' "${FM_TEST_GH_STATE:-OPEN}"
     ;;
-  *" baseRefName "*) printf 'main\n' ;;
-  *" body "*) printf '## What Changed\n- fixture change\n' ;;
 esac
 SH
   cat > "$fakebin/gh-axi" <<'SH'
@@ -127,11 +124,9 @@ write_task_meta() {
 }
 
 write_poll_meta() {
-  local state=$1 id=$2 url=$3 project
-  project="${state%/home/state}/project"
+  local state=$1 id=$2 url=$3
   fm_write_meta "$state/$id.meta" \
     "window=fm-$id" \
-    "project=$project" \
     "pr=$url"
 }
 
@@ -139,7 +134,6 @@ write_ambiguous_poll() {
   local dir=$1 id=${2:-task-a}
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=fm-$id" \
-    "project=$dir/project" \
     'pr=https://github.com/o/r/pull/10' \
     'window=unexpected-after-pr'
   printf 'legacy ambiguous bytes\n' > "$dir/home/state/$id.check.sh"
@@ -2260,9 +2254,7 @@ test_direct_registration_refreshes_v1_x_shim() {
     dir=$(make_case "direct-registration-x-transition-$marker_kind")
     state="$dir/home/state"
     shim="$state/x-watch.check.sh"
-    fm_write_meta "$state/task-a.meta" \
-      'window=fm-task-a' \
-      "project=$dir/project"
+    fm_write_meta "$state/task-a.meta" 'window=fm-task-a'
     write_v1_x_shim "$shim" "$dir/home" "$dir/root"
     chmod 0755 "$shim"
     case "$marker_kind" in
@@ -2301,9 +2293,7 @@ test_direct_registration_refreshes_v1_x_shim() {
   dir=$(make_case direct-registration-x-lookalike)
   state="$dir/home/state"
   shim="$state/x-watch.check.sh"
-  fm_write_meta "$state/task-a.meta" \
-    'window=fm-task-a' \
-    "project=$dir/project"
+  fm_write_meta "$state/task-a.meta" 'window=fm-task-a'
   write_v1_x_shim "$shim" "$dir/home" "$dir/root"
   printf '# unrecognized version\n' >> "$shim"
   chmod 0755 "$shim"
@@ -2901,15 +2891,27 @@ EOF
   esac
   [ ! -e "$state/task-b.check.sh" ] || fail "refused GitLab arming left a poll armed"
 
-  # The merge path still addresses GitHub only, so it refuses rather than
-  # sending a merge request to the wrong forge.
+  # The merge path addresses the forge the URL names, and never the other one.
+  # This fixture's glab answers with the field output the poll reads, so the
+  # merge's JSON read cannot be parsed, which must refuse rather than merge on a
+  # state it could not read.
   write_task_meta "$dir" task-c
+  : > "$dir/glab.log"
+  # The merge path needs jq before it reads anything, so this case supplies it
+  # and the refusal below is the unreadable state rather than a missing tool.
+  ln -sf "$REAL_JQ" "$dir/fakebin/jq"
   set +e
-  run_merge_entry "$dir" task-c "$url" >/dev/null 2>&1
+  run_merge_entry "$dir" task-c "$url" >/dev/null 2> "$dir/merge-c.err"
   rc=$?
   set -e
-  [ "$rc" -eq 2 ] || fail "merge wrapper did not refuse a GitLab merge request URL"
+  [ "$rc" -ne 0 ] || fail "merge wrapper merged a GitLab merge request it could not read"
+  grep -qF 'could not read the GitLab merge request state before merging' "$dir/merge-c.err" \
+    || fail "merge wrapper refused for some reason other than the state it could not read"
   [ ! -s "$dir/gh-axi.log" ] || fail "merge wrapper reached the GitHub CLI for a GitLab URL"
+  grep -qF "mr view 7 -R https://gitlab.example/group/subgroup/project" "$dir/glab.log" \
+    || fail "merge wrapper did not read the merge request through glab at its own instance"
+  ! grep -qF ' mr merge ' "$dir/glab.log" \
+    || fail "merge wrapper merged despite an unreadable merge request state"
 
   pass "GitLab merge requests are followed on any instance and never wake falsely"
 }

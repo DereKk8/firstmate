@@ -250,6 +250,28 @@ test_mjs_function_declarations_detected() {
   pass "detects plain and exported .mjs function declarations"
 }
 
+test_committed_merge_whitespace_check() {
+  local dir out rc
+  dir=$(fixture_conflicting_merge clean.sh 'kept() { :; }')
+  printf 'resolved\n' > "$dir/conflict.txt"
+  printf 'kept() { :; }\ntrailing  \n' > "$dir/clean.sh"
+  git -C "$dir" add conflict.txt clean.sh
+  git -C "$dir" -c core.editor=true commit -q --no-edit || fail "whitespace merge fixture commit failed"
+
+  out=$(git -C "$dir" diff-tree --check -m -r --no-commit-id HEAD 2>&1)
+  rc=$?
+  [ "$rc" -ne 0 ] || fail "committed whitespace merge must fail diff-tree --check"
+  assert_contains "$out" "clean.sh" "whitespace check must name the committed file"
+
+  printf 'kept() { :; }\n' > "$dir/clean.sh"
+  git -C "$dir" add clean.sh
+  git -C "$dir" commit -q -m clean-merge-result
+  out=$(git -C "$dir" diff-tree --check -m -r --no-commit-id HEAD 2>&1)
+  rc=$?
+  [ "$rc" -eq 0 ] || fail "clean committed merge must pass diff-tree --check, got $out"
+  pass "committed whitespace fails and clean committed merge passes the merge-aware check"
+}
+
 test_non_commit_object_is_usage_error() {
   local dir blob out rc
   dir=$(fixture_repo)
@@ -271,4 +293,5 @@ test_synthetic_dropped_function_and_allow
 test_merge_result_only_drop_on_parent_identical_file
 test_whole_file_deleted_by_merge
 test_mjs_function_declarations_detected
+test_committed_merge_whitespace_check
 test_non_commit_object_is_usage_error
