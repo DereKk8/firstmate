@@ -2170,13 +2170,14 @@ spawn_readiness_fail() {  # <reason>
 
 spawn_wait_ready() {  # <target>
   local target=$1 attempts=${FM_SPAWN_READY_ATTEMPTS:-20} delay=${FM_SPAWN_READY_SLEEP:-0.25}
-  local i capture trust_seen=0
+  local i capture trust_seen=0 target_seen=0
   case "$attempts" in ''|*[!0-9]*|0) attempts=20 ;; esac
   for i in $(seq 1 "$attempts"); do
     if ! fm_backend_target_exists "$BACKEND" "$target" "$W"; then
       sleep "$delay"
       continue
     fi
+    target_seen=1
     if [ "$HARNESS" != codex ] || [ "$SPAWN_ISOLATED_WORKTREE" -ne 1 ]; then
       return 0
     fi
@@ -2192,6 +2193,7 @@ spawn_wait_ready() {  # <target>
       *)
         [ "$trust_seen" -eq 1 ] && return 0
         [ -n "$capture" ] && return 0
+        [ "$target_seen" -eq 1 ] && return 0
         ;;
     esac
     sleep "$delay"
