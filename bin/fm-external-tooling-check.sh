@@ -4,7 +4,7 @@
 # READ-ONLY: never installs packages, updates tools, restarts daemons, writes
 # tracked files, or changes any fleet state.
 #
-# The npm tools use `npm view <tool> version` as their published-version source.
+# The npm tools use `npm view <package> version` as their published-version source.
 # The no-mistakes CLI's update banner is not used as a release source because it
 # is cached or absent on some invocations; its latest stable release comes from
 # the authoritative GitHub releases/latest API endpoint via gh-axi instead.
@@ -22,8 +22,8 @@ usage() {
   cat <<EOF
 Usage: $SCRIPT_NAME [--help]
 
-Report installed versus latest versions for gh-axi, lavish-axi,
-chrome-devtools-axi, and no-mistakes without updating anything.
+Report installed versus latest versions for the active agent, fleet, and AXI
+tools without updating anything.
 EOF
 }
 
@@ -71,18 +71,47 @@ emit_result() {
 }
 
 check_npm_tool() {
-  local tool=$1 installed=unavailable latest=unavailable raw
+  local tool=$1 package=$2 coordination=$3 installed=unavailable latest=unavailable raw
   if command -v "$tool" >/dev/null 2>&1; then
     raw=$("$tool" --version 2>/dev/null) || raw=
     installed=$(extract_version "$raw")
     [ -n "$installed" ] || installed=unavailable
   fi
   if command -v npm >/dev/null 2>&1; then
-    raw=$(npm view "$tool" version 2>/dev/null) || raw=
+    raw=$(npm view "$package" version 2>/dev/null) || raw=
     latest=$(extract_version "$raw")
     [ -n "$latest" ] || latest=unavailable
   fi
-  emit_result "$tool" "$installed" "$latest" safe-anytime npm
+  emit_result "$tool" "$installed" "$latest" "$coordination" npm
+}
+
+check_brew_tool() {
+  local tool=$1 package=$2 kind=$3 coordination=$4 installed=unavailable latest=unavailable raw
+  if command -v "$tool" >/dev/null 2>&1; then
+    raw=$($tool --version 2>/dev/null) || raw=
+    installed=$(extract_version "$raw")
+    [ -n "$installed" ] || installed=unavailable
+  fi
+  if command -v brew >/dev/null 2>&1; then
+    raw=$(brew info "--$kind" "$package" 2>/dev/null | head -n 1) || raw=
+    latest=$(extract_version "$raw")
+    [ -n "$latest" ] || latest=unavailable
+  fi
+  emit_result "$tool" "$installed" "$latest" "$coordination" brew-"$kind"
+}
+
+check_pypi_tool() {
+  local tool=$1 package=$2 coordination=$3 installed=unavailable latest=unavailable raw
+  if command -v "$tool" >/dev/null 2>&1; then
+    raw=$($tool --version 2>/dev/null) || raw=
+    installed=$(extract_version "$raw")
+    [ -n "$installed" ] || installed=unavailable
+  fi
+  if command -v curl >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
+    latest=$(curl -fsSL "https://pypi.org/pypi/$package/json" 2>/dev/null | jq -r '.info.version' 2>/dev/null) || latest=
+    [ -n "$latest" ] || latest=unavailable
+  fi
+  emit_result "$tool" "$installed" "$latest" "$coordination" pypi
 }
 
 check_no_mistakes() {
@@ -103,9 +132,20 @@ check_no_mistakes() {
 
 case "${1:-}" in
   '' )
-    check_npm_tool gh-axi
-    check_npm_tool lavish-axi
-    check_npm_tool chrome-devtools-axi
+    check_npm_tool claude @anthropic-ai/claude-code needs-quiet-fleet
+    check_npm_tool gh-axi gh-axi safe-anytime
+    check_npm_tool lavish-axi lavish-axi safe-anytime
+    check_npm_tool chrome-devtools-axi chrome-devtools-axi safe-anytime
+    check_npm_tool notion-axi notion-axi safe-anytime
+    check_npm_tool quota-axi quota-axi safe-anytime
+    check_npm_tool tasks-axi tasks-axi safe-anytime
+    check_npm_tool pnpm pnpm safe-anytime
+    check_brew_tool codex codex cask needs-quiet-fleet
+    check_brew_tool opencode opencode formula needs-quiet-fleet
+    check_brew_tool pi pi-coding-agent formula needs-quiet-fleet
+    check_brew_tool herdr herdr formula needs-quiet-fleet
+    check_brew_tool rtk rtk formula needs-quiet-fleet
+    check_pypi_tool headroom headroom-ai needs-quiet-fleet
     check_no_mistakes
     exit "$CHECK_FAILURE"
     ;;

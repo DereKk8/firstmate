@@ -50,10 +50,31 @@ if [ "${1:-}" != view ] || [ "${3:-}" != version ]; then
   printf '%s\n' 'unexpected npm command' >&2
   exit 9
 fi
-case "$2" in
-  gh-axi) printf '%s\n' '0.1.30' ;;
-  lavish-axi) printf '%s\n' '0.1.46' ;;
-  chrome-devtools-axi) printf '%s\n' '0.1.29' ;;
+  case "$2" in
+    @anthropic-ai/claude-code) printf '%s\n' '2.1.241' ;;
+    gh-axi) printf '%s\n' '0.1.30' ;;
+    lavish-axi) printf '%s\n' '0.1.46' ;;
+    chrome-devtools-axi) printf '%s\n' '0.1.29' ;;
+    notion-axi|quota-axi|tasks-axi|pnpm) printf '%s\n' '0.1.30' ;;
+    *) exit 2 ;;
+  esac
+SH
+  for tool_version in 'claude:2.1.240' 'notion-axi:0.1.30' 'quota-axi:0.1.30' 'tasks-axi:0.1.30' 'codex:0.149.0' 'opencode:1.18.20' 'pi:0.84.2' 'herdr:0.8.2' 'rtk:0.45.0'; do
+    tool=${tool_version%%:*}
+    version=${tool_version#*:}
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$version" > "$fakebin/$tool"
+  done
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "0.35.0"\n' > "$fakebin/headroom"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "0.36.5"\n' > "$fakebin/jq"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "{}"\n' > "$fakebin/curl"
+  cat > "$fakebin/brew" <<'SH'
+#!/usr/bin/env bash
+case "${3:-${2:-}}" in
+  codex) printf '%s\n' '==> codex (Codex): 0.149.1' ;;
+  opencode) printf '%s\n' '==> opencode: stable 1.18.20 (bottled)' ;;
+  pi-coding-agent) printf '%s\n' '==> pi-coding-agent: stable 0.84.2 (bottled)' ;;
+  herdr) printf '%s\n' '==> herdr: stable 0.8.3 (bottled)' ;;
+  rtk) printf '%s\n' '==> rtk: stable 0.45.0 (bottled)' ;;
   *) exit 2 ;;
 esac
 SH
@@ -86,8 +107,14 @@ test_reports_npm_and_no_mistakes_drift() {
   : > "$log"
 
   out=$(run_check "$fakebin" "$log")
-  [ "$(printf '%s\n' "$out" | grep -c '^tool=')" -eq 4 ] \
-    || fail "report must contain exactly four tool lines"
+  [ "$(printf '%s\n' "$out" | grep -c '^tool=')" -eq 15 ] \
+    || fail "report must contain exactly fifteen tool lines"
+
+  line=$(printf '%s\n' "$out" | grep '^tool=claude ')
+  assert_field "$line" installed 2.1.240 "claude installed version"
+  assert_field "$line" latest 2.1.241 "claude npm version"
+  assert_field "$line" status behind "claude drift"
+  assert_field "$line" coordination needs-quiet-fleet "claude coordination"
 
   line=$(printf '%s\n' "$out" | grep '^tool=gh-axi ')
   assert_field "$line" installed 0.1.29 "gh-axi installed version"
@@ -110,6 +137,20 @@ test_reports_npm_and_no_mistakes_drift() {
   assert_field "$line" status behind "no-mistakes drift"
   assert_field "$line" coordination needs-quiet-fleet "no-mistakes coordination"
   assert_field "$line" source github-release "no-mistakes source"
+
+  line=$(printf '%s\n' "$out" | grep '^tool=codex ')
+  assert_field "$line" status behind "codex brew drift"
+  assert_field "$line" coordination needs-quiet-fleet "codex coordination"
+  assert_field "$line" source brew-cask "codex source"
+
+  line=$(printf '%s\n' "$out" | grep '^tool=opencode ')
+  assert_field "$line" status current "opencode brew status"
+  assert_field "$line" source brew-formula "opencode source"
+
+  line=$(printf '%s\n' "$out" | grep '^tool=headroom ')
+  assert_field "$line" status behind "headroom PyPI drift"
+  assert_field "$line" coordination needs-quiet-fleet "headroom coordination"
+  assert_field "$line" source pypi "headroom source"
 
   assert_not_contains "$(<"$log")" 'no-mistakes update' \
     "the checker must never invoke no-mistakes update"
