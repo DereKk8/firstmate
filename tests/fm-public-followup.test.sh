@@ -2148,6 +2148,10 @@ test_prechange_registration_is_open_and_unrechainable() {
 test_x_request_teardown_warns_when_final_unposted() {
   local home rc
   home=$(make_home xreq-warn)
+  # The recorded worktree is already gone, so seed the product-local archive
+  # that proves the landed task's artifacts were preserved before teardown.
+  mkdir -p "$home/projects/sample/.agent/archive/linked-task"
+  printf '%s\n' archived > "$home/projects/sample/.agent/archive/linked-task/plan.md"
   fm_write_meta "$home/state/linked-task.meta" \
     "window=firstmate:fm-linked-task" \
     "worktree=$home/projects/gone" \
@@ -2158,7 +2162,8 @@ test_x_request_teardown_warns_when_final_unposted() {
   rc=0
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" linked-task \
+    FM_CONFIG_OVERRIDE="$home/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/xreq-warn-archives" \
+    "$TEARDOWN" linked-task \
     > "$home/td.out" 2> "$home/td.err" || rc=$?
   [ "$rc" -eq 0 ] || fail "legacy-link warning must not block teardown (rc=$rc)"
   assert_grep "still carries an unreconciled Relay request link (req-legacy-final) on its task record" "$home/td.err" \
