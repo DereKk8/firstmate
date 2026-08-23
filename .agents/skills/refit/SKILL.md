@@ -159,8 +159,65 @@ Never merge without the captain's explicit word.
 
 After the crewmate reports `done:`, follow the normal delivery-mode gate -> PR -> captain-merge flow.
 
+## Post-PR repair
+
+The PR opening is not the end of a refit integration.
+Treat a red CI board as a distinct repair phase with its own evidence and assembly gates.
+
+### 1. Expect layered failures
+
+A test shard stops at its first failing assertion, so a red report is a floor, not a complete failure list.
+Brief repair workers to run each affected file to completion and report every remaining failure verbatim.
+Do not promise a green board after one repair round.
+Expect the next assertion to appear when the named one is fixed.
+`tests/fm-public-followup.test.sh` failed at three successive points across three rounds in the first real refit run, but only two were real failures.
+The third appeared only in the worker's local environment and did not reproduce in CI.
+
+### 2. Prove baseline behavior
+
+For every failure, run the test at the unmodified base and at the changed head.
+Establish pre-existing versus introduced from those runs, never from inference.
+Record the evidence in the repair commit message.
+This distinguishes a regression introduced by the refit repairs from a pre-existing failure merely unmasked by them.
+
+### 3. Repair the actual defect
+
+Determine whether production code regressed or the test encodes an intentionally changed expectation.
+Fix the side that is wrong.
+Never weaken, skip, or delete an assertion to reach green.
+A changed fixture must still assert the current contract at full strength.
+In the first run, nine of eleven breaks were stale test fixtures, while two were genuine product breaks.
+Treat stale scaffolding as the default hypothesis, not as a conclusion.
+Prove it separately for every failure.
+
+### 4. Assemble before pushing
+
+Parallel repairs made from one base are individually verified but have never met each other.
+Assemble them into one branch before pushing.
+Run every affected test file together, including shared suites touched by a production change even when no worker named them.
+Verify that the assembled tree is identical to a merge of the individual repair branches.
+Confirm that no repair was dropped or altered during assembly.
+
+### 5. Bundle diverged repairs
+
+A repair branch stops fast-forwarding when another parallel repair lands first.
+The guarded local merge correctly refuses that divergence.
+Dispatch one worker to cherry-pick all parallel repair commits onto the current base as one bundle instead of relaunching every worker for a one-commit rebase.
+Preserve each repair commit separately so each root cause remains documented.
+
+### 6. Confirm local-only failures in CI
+
+A failure seen only in a worker's local copy may be an environment artifact rather than a product or test defect.
+Confirm a suspected remaining failure against a CI run before dispatching more repair work.
+The first run nearly caused a wasted repair dispatch for a failure that did not reproduce in CI.
+
 ## Safety
 
+- **Never self-inherit firstmate updates into the live home.** The captain's ruling is that firstmate tooling updates through the PR, land only when the captain merges it, and then the running home fast-forwards from the merged base.
+- Do not use `bin/fm-merge-local.sh` to absorb a worker branch when the project is firstmate's own live code root.
+- Push that worker branch to the PR branch instead, because automatically inheriting worker changes and reconciliation into a running supervisor can leave the supervisor broken and make its repair needlessly difficult.
+- This already happened in the first real refit run: commit `a83a23a` was merged into local `main` and became live in the running supervisor.
+- CI then proved that it broke the spawn success path in five test files, leaving the supervisor executing known-broken spawn code until a repair landed.
 - **Never merge without the captain's explicit word** (prime directive #2; `yolo` does not waive it for this skill because a real merge into `origin/main` is irreversible).
 - **Never skip the pipeline-run approval ask** - the captain owns that decision.
 - The crewmate must not force, stash, or discard any unlanded work.
