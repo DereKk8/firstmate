@@ -14,9 +14,9 @@
 #   complete <origin> (--none | <key>...)  -> complete <origin> (--none | <origin>-decision-<key>...)
 #   verify <origin>                        -> verify <origin>
 #   resolve <origin> <key> --decision-file <f> --routed-to <id>...
-#                                          -> answer <origin>-decision-<key> with the routed ids
-#                                             appended to the decision text, then clear the
-#                                             recorded blocked-by edges through tasks-axi; an
+#                                          -> record the routed decision while retaining the hold,
+#                                             clear the recorded blocked-by edges through tasks-axi,
+#                                             then close the hold; an
 #                                             exact replay of a pre-collapse routed record reuses
 #                                             its historical digest and text before clearing edges
 #   answer|decline|repair <origin> <key> --decision-file <f>
@@ -161,18 +161,27 @@ command_resolve() {
   fi
   answer_file=$tmp
   [ "$legacy_replay" = 0 ] || answer_file=$decision_file
+  if ! "$CAPTAIN_HOLD" answer "$id" --decision-file "$answer_file" --keep-open; then
+    rm -f -- "$tmp"
+    exit 1
+  fi
+  for dep in $routed; do
+    show=$(task_show "$dep") || {
+      rm -f -- "$tmp"
+      fail "routed task $dep disappeared before routing"
+    }
+    if list_has_key "$(normalized_blocked_by "$show")" "$id"; then
+      if ! (cd "$FM_HOME" && tasks-axi unblock "$dep" --by "$id" >/dev/null); then
+        rm -f -- "$tmp"
+        fail "could not route the recorded decision to $dep"
+      fi
+    fi
+  done
   if ! "$CAPTAIN_HOLD" answer "$id" --decision-file "$answer_file"; then
     rm -f -- "$tmp"
     exit 1
   fi
   rm -f -- "$tmp"
-  for dep in $routed; do
-    show=$(task_show "$dep") || fail "routed task $dep disappeared before routing"
-    if list_has_key "$(normalized_blocked_by "$show")" "$id"; then
-      (cd "$FM_HOME" && tasks-axi unblock "$dep" --by "$id" >/dev/null) \
-        || fail "could not route the recorded decision to $dep"
-    fi
-  done
   printf 'resolved: %s -> %s\n' "$id" "$routed"
 }
 

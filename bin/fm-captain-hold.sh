@@ -21,7 +21,7 @@
 # Usage:
 #   fm-captain-hold.sh hold <task-id> --reason <reason> \
 #     [--title <title>] [--repo <repo>] [--origin <origin-id>] [--until YYYY-MM-DD]
-#   fm-captain-hold.sh answer <task-id> --decision-file <path> [--release]
+#   fm-captain-hold.sh answer <task-id> --decision-file <path> [--release] [--keep-open]
 #   fm-captain-hold.sh answers [<legacy-origin> | --any-origin] --source <provenance>   (keyed answers on stdin)
 #   fm-captain-hold.sh bind <source-id> [<legacy-origin> | --any-origin]
 #   fm-captain-hold.sh unbind <source-id>
@@ -45,8 +45,11 @@
 # preserved below the block and archived through tasks-axi --archive-body),
 # then closes the task with `tasks-axi done` - or, with `--release`, lifts the
 # hold with `tasks-axi unhold` so a captain-gated WORK item resumes instead of
-# closing. An exact retry is idempotent only when its requested close mode
-# matches the newest record; a changed decision or a mode mismatch is rejected.
+# closing. `--keep-open` is reserved for the legacy routed compatibility shim:
+# it records the answer while retaining the active hold until every dependent
+# edge is cleared. An exact retry is idempotent only when its requested close
+# mode matches the newest record; a changed decision or a mode mismatch is
+# rejected.
 # A re-held task may record a new answer on top. On a task already closed outside this script,
 # `answer` records the missing resolution block (the old `repair` path) only
 # when the task still carries the captain-hold provenance tasks-axi preserves
@@ -476,18 +479,21 @@ close_answered() {  # <task-id> <release-0-or-1>
 }
 
 command_answer() {
-  local id=${1:-} decision_file='' release=0 show state hold_kind body outcome recorded_mode
+  local id=${1:-} decision_file='' release=0 keep_open=0 show state hold_kind body outcome recorded_mode
   [ "$#" -ge 1 ] || { usage >&2; exit 2; }
   shift
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --decision-file) shift; decision_file=${1:-} ;;
       --release) release=1 ;;
+      --keep-open) keep_open=1 ;;
       *) usage >&2; exit 2 ;;
     esac
     shift
   done
   validate_slug task-id "$id"
+  [ "$keep_open" = 0 ] || [ "$release" = 0 ] \
+    || fail "--keep-open cannot be combined with --release"
   load_decision "$decision_file"
   require_tasks_axi
   show=$(task_show "$id") || fail "captain-held task $id is absent from $FM_HOME/data/backlog.md"
@@ -531,18 +537,34 @@ command_answer() {
     # its own record on top. Either way the close mode is the caller's flag,
     # checked against an interrupted close's recorded mode so a retry cannot
     # silently flip a release into a close.
-    if body_has_resolution_record "$body" \
-      && [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
-      recorded_mode=$(recorded_resolution_mode "$body" || true)
-      case "$recorded_mode" in
-        released) [ "$release" = 1 ] || fail "task $id records this answer as a release; retry with --release" ;;
-        answered) [ "$release" = 0 ] || fail "task $id records this answer as a close; retry without --release" ;;
-      esac
-      close_answered "$id" "$release"
-      printf '%s: %s\n' "$outcome" "$id"
-      return 0
+    if body_has_resolution_record "$body"; then
+      if [ "$(recorded_decision_digest "$body" || true)" = "$DECISION_DIGEST" ]; then
+        recorded_mode=$(recorded_resolution_mode "$body" || true)
+        case "$recorded_mode" in
+          released) [ "$release" = 1 ] || fail "task $id records this answer as a release; retry with --release" ;;
+          answered) [ "$release" = 0 ] || fail "task $id records this answer as a close; retry without --release" ;;
+        esac
+        if [ "$keep_open" = 1 ]; then
+          printf 'recorded: %s\n' "$id"
+          return 0
+        fi
+        close_answered "$id" "$release"
+        printf '%s: %s\n' "$outcome" "$id"
+        return 0
+      fi
+      [ "$keep_open" = 0 ] \
+        || fail "captain-held task $id records a different captain decision"
     fi
     write_resolution_record "$id" "$outcome" "$body"
+    if [ "$keep_open" = 1 ]; then
+      show=$(task_show "$id") || fail "task $id disappeared after recording"
+      [ "$(show_field "$show" state)" != "done" ] \
+        || fail "recording the captain decision closed task $id"
+      [ "$(show_field_value "$show" hold_kind)" = captain ] \
+        || fail "recording the captain decision released task $id"
+      printf 'recorded: %s\n' "$id"
+      return 0
+    fi
     close_answered "$id" "$release"
     show=$(task_show "$id") || fail "task $id disappeared after closing"
     body_has_resolution_record "$(show_field "$show" body)" \
