@@ -57,6 +57,10 @@ Report missing indexed files and unindexed files separately.
 Check for dangling `data/` pointers by resolving path references in maintained instructions and startup-memory files against the relevant repository or home root.
 Report every missing target with the referring file and line, while distinguishing an intentionally historical archive reference from an actionable dangling pointer.
 
+Check agent-policy surfaces for coverage and drift. Inspect the shared `AGENTS.md`, Claude `CLAUDE.md` pointer and settings, Codex hooks and rules, OpenCode agent instructions and plugins, and Pi authored settings and extensions when those files are present in the active home or dotfiles checkout. Verify that each active harness has an explicit policy source, that pointers resolve, and that runtime-managed files have not been mistaken for authored policy.
+
+For the dotfiles Pi baseline, use the canonical remote settings file as a comparison reference: [`kunchenguid/dotfiles/home/.pi/agent/settings.json`](https://github.com/kunchenguid/dotfiles/blob/main/home/.pi/agent/settings.json). Compare its policy-relevant settings and pinned packages with the local authored file, then report missing, changed, or locally deliberate entries separately. This reference is read-only evidence; `/refit` never overwrites local policy or package configuration.
+
 Review loaded skill instructions and startup-memory entries for obvious semantic corruption, including stray-keystroke prose such as `lqun a /grilling session` and captain/product identity conflation such as `Address the captain as Oulow`.
 Report the exact source line and consequence without repairing it.
 
@@ -78,7 +82,7 @@ In FIT, compare newly available capabilities with the existing fleet flow and re
 In MEMORY, invoke `/stow` and relay its completion receipt.
 In INTEGRITY, perform both-direction memory-index checks, dangling-`data/`-pointer checks, and agent-skills repository checks.
 
-Report the upstream gap, notable upstream capabilities, external-tooling and installed-skill drift with coordination tags, the fit verdict, stow's receipt, and every integrity finding in plain outcomes language.
+Report the upstream gap, notable upstream capabilities, external-tooling and installed-skill drift with coordination tags, the fit verdict, stow's receipt, agent-policy coverage and remote-baseline drift, and every other integrity finding in plain outcomes language.
 Stop after the report.
 The captain decides whether to proceed to full-sync mode.
 
