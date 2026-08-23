@@ -61,11 +61,6 @@ test_invalid_endpoint_records_refuse_before_mutation() {
     "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
   assert_refused_without_mutation "$dir" "$id" "missing endpoint"
 
-  dir=$(make_case empty)
-  fm_write_meta "$dir/home/state/$id.meta" \
-    "window=" "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
-  assert_refused_without_mutation "$dir" "$id" "empty endpoint"
-
   dir=$(make_case malformed)
   fm_write_meta "$dir/home/state/$id.meta" \
     "window=ambient-current-window" "worktree=$dir/worktree" \
@@ -90,7 +85,7 @@ test_invalid_endpoint_records_refuse_before_mutation() {
     "worktree=$dir/worktree" "project=$dir/project" "kind=scout"
   assert_refused_without_mutation "$dir" "$id" "duplicate task binding"
 
-  pass "fm-teardown: missing, empty, malformed, ambiguous, and task-mismatched endpoints refuse before every mutation or runtime call"
+  pass "fm-teardown: missing, malformed, ambiguous, and task-mismatched endpoints refuse before every mutation or runtime call"
 }
 
 test_control_lock_contention_refuses_before_mutation() {

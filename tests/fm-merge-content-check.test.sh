@@ -111,6 +111,12 @@ EOF
   rc=$?
   [ "$rc" -eq 0 ] || fail "clean synthetic merge must exit 0, got $rc: $out"
   pass "synthetic clean merge (foo/bar both kept) exits 0"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow other.sh --reason 'no named content was removed' 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "unused allowance on a changed clean path must exit 2, got $rc: $out"
+  assert_contains "$out" "extra allowance" "unused allowance must be rejected"
+  pass "allowance must match an actual content-loss finding"
 }
 
 test_synthetic_dropped_function_and_allow() {
@@ -171,8 +177,37 @@ EOF
 
   out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh 2>&1)
   rc=$?
-  [ "$rc" -eq 0 ] || fail "--allow lib.sh must suppress the finding, got $rc: $out"
-  pass "--allow <path> suppresses findings for that exact path"
+  [ "$rc" -eq 2 ] || fail "missing rationale must exit 2, got $rc: $out"
+  assert_contains "$out" "requires exactly one --reason" "missing rationale must be rejected"
+
+  for reason in '   ' $'\t\t'; do
+    out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh --reason "$reason" 2>&1)
+    rc=$?
+    [ "$rc" -eq 2 ] || fail "whitespace-only rationale must exit 2, got $rc: $out"
+    assert_contains "$out" "non-whitespace text" "whitespace-only rationale must be rejected"
+  done
+  pass "empty and whitespace-only rationales are rejected"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh --reason 'deliberate replacement approved in refit' 2>&1)
+  rc=$?
+  [ "$rc" -eq 0 ] || fail "valid path-specific rationale must suppress the finding, got $rc: $out"
+  pass "valid path-specific rationale suppresses findings for that exact path"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow lib.sh --reason first --allow lib.sh --reason second 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "duplicate allowance must exit 2, got $rc: $out"
+  assert_contains "$out" "duplicate allowance" "duplicate allowance must be rejected"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --reason extra 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "extra rationale must exit 2, got $rc: $out"
+  assert_contains "$out" "preceding --allow" "extra rationale must be rejected"
+
+  out=$(FM_ROOT_OVERRIDE="$dir" "$CHECK" HEAD --allow missing.sh --reason extra 2>&1)
+  rc=$?
+  [ "$rc" -eq 2 ] || fail "extra allowance must exit 2, got $rc: $out"
+  assert_contains "$out" "extra allowance" "extra allowance must be rejected"
+  pass "missing, duplicate, and extra allowance records are rejected"
 }
 
 # fixture_conflicting_merge <path> <content>: create a merge whose parents
@@ -250,6 +285,28 @@ test_mjs_function_declarations_detected() {
   pass "detects plain and exported .mjs function declarations"
 }
 
+test_committed_merge_whitespace_check() {
+  local dir out rc
+  dir=$(fixture_conflicting_merge clean.sh 'kept() { :; }')
+  printf 'resolved\n' > "$dir/conflict.txt"
+  printf 'kept() { :; }\ntrailing  \n' > "$dir/clean.sh"
+  git -C "$dir" add conflict.txt clean.sh
+  git -C "$dir" -c core.editor=true commit -q --no-edit || fail "whitespace merge fixture commit failed"
+
+  out=$(git -C "$dir" diff-tree --check -m -r --no-commit-id HEAD 2>&1)
+  rc=$?
+  [ "$rc" -ne 0 ] || fail "committed whitespace merge must fail diff-tree --check"
+  assert_contains "$out" "clean.sh" "whitespace check must name the committed file"
+
+  printf 'kept() { :; }\n' > "$dir/clean.sh"
+  git -C "$dir" add clean.sh
+  git -C "$dir" commit -q -m clean-merge-result
+  out=$(git -C "$dir" diff-tree --check -m -r --no-commit-id HEAD 2>&1)
+  rc=$?
+  [ "$rc" -eq 0 ] || fail "clean committed merge must pass diff-tree --check, got $out"
+  pass "committed whitespace fails and clean committed merge passes the merge-aware check"
+}
+
 test_non_commit_object_is_usage_error() {
   local dir blob out rc
   dir=$(fixture_repo)
@@ -271,4 +328,5 @@ test_synthetic_dropped_function_and_allow
 test_merge_result_only_drop_on_parent_identical_file
 test_whole_file_deleted_by_merge
 test_mjs_function_declarations_detected
+test_committed_merge_whitespace_check
 test_non_commit_object_is_usage_error

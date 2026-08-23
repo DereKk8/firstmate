@@ -21,15 +21,15 @@
 #     is not proof the merge is otherwise correct.
 #
 # Usage:
-#   fm-merge-content-check.sh <merge-commit> [--allow <path>]...
+#   fm-merge-content-check.sh <merge-commit> [--allow <path> --reason <text>]...
 #   fm-merge-content-check.sh --help
 #
-# <merge-commit> must be an ordinary two-parent merge commit. --allow <path>
-# (repeatable) suppresses findings for one file path (relative to repo root)
-# for cases where the removal was intentional (e.g. a fork feature dropped in
-# favor of an upstream equivalent adopted on the merits) - there is no way to
-# tell an intentional removal from an accidental one mechanically, so the
-# default posture flags everything and the caller allowlists on purpose.
+# <merge-commit> must be an ordinary two-parent merge commit. Each --allow
+# <path> must be followed by exactly one non-empty, one-line --reason <text>
+# (whitespace-only text is rejected; both repeatable); paths are relative to repo root. The reason records evidence
+# for a deliberate removal (e.g. a fork feature dropped in favor of an upstream
+# equivalent adopted on the merits), but does not prove approval. Missing,
+# duplicate, or extra allowance records are usage errors.
 #
 # Read-only: never checks out, writes to the working tree, index, or refs.
 # Everything is read via `git show <ref>:<path>`.
@@ -43,7 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 usage() {
-  printf 'usage: fm-merge-content-check.sh <merge-commit> [--allow <path>]...\n' >&2
+  printf 'usage: fm-merge-content-check.sh <merge-commit> [--allow <path> --reason <text>]...\n' >&2
   printf '       fm-merge-content-check.sh --help\n' >&2
 }
 
@@ -61,12 +61,32 @@ MERGE_REF=$1
 shift
 
 ALLOW_PATHS=()
+declare -A ALLOW_REASONS=()
+declare -A ALLOW_USED=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --allow)
       [ $# -ge 2 ] || { printf 'error: --allow requires a path\n' >&2; exit 2; }
-      ALLOW_PATHS+=("$2")
-      shift 2
+      path=$2
+      [ -n "$path" ] || { printf 'error: --allow requires a non-empty path\n' >&2; exit 2; }
+      [ -z "${ALLOW_REASONS[$path]+set}" ] || { printf 'error: duplicate allowance for %s\n' "$path" >&2; exit 2; }
+      [ $# -ge 4 ] && [ "$3" = "--reason" ] || { printf 'error: --allow %s requires exactly one --reason <text>\n' "$path" >&2; exit 2; }
+      reason=$4
+      [ -n "$reason" ] || { printf 'error: --reason for %s must be non-empty\n' "$path" >&2; exit 2; }
+      case "$reason" in
+        *[!$' \t\r\n']*) ;;
+        *) printf 'error: --reason for %s must contain non-whitespace text\n' "$path" >&2; exit 2 ;;
+      esac
+      case "$reason" in
+        *$'\n'*|*$'\r'*) printf 'error: --reason for %s must be one line\n' "$path" >&2; exit 2 ;;
+      esac
+      ALLOW_PATHS+=("$path")
+      ALLOW_REASONS["$path"]=$reason
+      shift 4
+      ;;
+    --reason)
+      printf 'error: --reason requires a preceding --allow path\n' >&2
+      exit 2
       ;;
     *)
       printf 'error: unrecognized argument: %s\n' "$1" >&2
@@ -202,8 +222,6 @@ while IFS= read -r path; do
     *.sh|*.mjs|*.md) ;;
     *) continue ;;
   esac
-  is_allowed "$path" && continue
-
   if p1_names="$(extract_names "$P1" "$path")"; then
     :
   else
@@ -244,6 +262,11 @@ while IFS= read -r path; do
       parents_desc="$P2_SHORT"
     fi
 
+    if is_allowed "$path"; then
+      ALLOW_USED["$path"]=1
+      continue
+    fi
+
     case "$path" in
       *.md) kind="heading '$name'" ;;
       *) kind="function '$name'" ;;
@@ -258,5 +281,12 @@ EOF
 done <<EOF
 $CHANGED_PATHS
 EOF
+
+for path in "${ALLOW_PATHS[@]}"; do
+  if [ -z "${ALLOW_USED[$path]+set}" ]; then
+    printf 'error: extra allowance for %s has no content-loss finding\n' "$path" >&2
+    exit 2
+  fi
+done
 
 exit "$FOUND"

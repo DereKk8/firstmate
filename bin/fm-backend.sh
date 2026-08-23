@@ -439,9 +439,9 @@ fm_backend_endpoint_atom_valid() {  # <value>
   esac
 }
 
-# Validate cleanup-critical metadata that remains meaningful after an endpoint
-# has already disappeared. On success, sets FM_BACKEND_VALIDATED_BACKEND and
-# leaves FM_BACKEND_VALIDATED_TARGET empty.
+# fm_backend_validate_task_cleanup_metadata: validate the cleanup-critical
+# metadata that remains meaningful after an endpoint has already disappeared.
+# On success, sets FM_BACKEND_VALIDATED_BACKEND and leaves its target empty.
 fm_backend_validate_task_cleanup_metadata() {  # <meta-file> <task-id>
   local meta=$1 id=$2 backend_count backend worktree project
   FM_BACKEND_VALIDATED_BACKEND=
@@ -479,8 +479,9 @@ fm_backend_validate_task_cleanup_metadata() {  # <meta-file> <task-id>
   FM_BACKEND_VALIDATED_BACKEND=$backend
 }
 
-# True only for one unambiguous empty window= record. Missing, duplicate, and
-# malformed endpoint records remain invalid cleanup identities.
+# fm_backend_task_endpoint_is_absent: true only for an unambiguous empty
+# window= record, which means there is no target to close. Missing, duplicate,
+# and malformed endpoint records remain invalid cleanup identities.
 fm_backend_task_endpoint_is_absent() {  # <meta-file>
   local meta=$1 count
   [ -f "$meta" ] && [ ! -L "$meta" ] || return 1
@@ -489,44 +490,18 @@ fm_backend_task_endpoint_is_absent() {  # <meta-file>
 }
 
 fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
-  local meta=$1 id=$2 backend_count backend window worktree project binding_count binding
-  local session pane recorded_session workspace tab terminal worktree_id surface
-  FM_BACKEND_VALIDATED_BACKEND=
-  FM_BACKEND_VALIDATED_TARGET=
-  [ -f "$meta" ] && [ ! -L "$meta" ] || {
-    echo "REFUSED: task $id has no regular endpoint metadata at $meta; preserving task state." >&2
-    return 1
-  }
-  case "$id" in ''|*[!A-Za-z0-9._-]*)
-    echo "REFUSED: task endpoint identity has an invalid task id; preserving task state." >&2
-    return 1
-  esac
+  local meta=$1 id=$2 window binding_count binding
+  local session pane recorded_session workspace tab terminal worktree_id surface backend
+  fm_backend_validate_task_cleanup_metadata "$meta" "$id" || return 1
+  backend=$FM_BACKEND_VALIDATED_BACKEND
   window=$(fm_backend_meta_exact_value "$meta" window) || {
     echo "REFUSED: task $id has a missing, empty, or ambiguous window endpoint; preserving task state." >&2
     return 1
   }
-  worktree=$(fm_backend_meta_exact_value "$meta" worktree) || {
-    echo "REFUSED: task $id has a missing, empty, or ambiguous worktree identity; preserving task state." >&2
-    return 1
-  }
-  project=$(fm_backend_meta_exact_value "$meta" project) || {
-    echo "REFUSED: task $id has a missing, empty, or ambiguous project identity; preserving task state." >&2
-    return 1
-  }
-  case "$worktree$project$window" in *$'\n'*|*$'\r'*|*$'\t'*)
+  case "$window" in *$'\n'*|*$'\r'*|*$'\t'*)
     echo "REFUSED: task $id has malformed endpoint metadata; preserving task state." >&2
     return 1
   esac
-  backend_count=$(grep -c '^backend=' "$meta" 2>/dev/null || true)
-  case "$backend_count" in
-    0) backend=tmux ;;
-    1) backend=$(fm_backend_meta_exact_value "$meta" backend) || backend= ;;
-    *) backend= ;;
-  esac
-  if [ -z "$backend" ] || ! fm_backend_is_known "$backend"; then
-    echo "REFUSED: task $id has a missing, ambiguous, or unknown backend identity; preserving task state." >&2
-    return 1
-  fi
   binding_count=$(grep -c '^endpoint_task_id=' "$meta" 2>/dev/null || true)
   case "$binding_count" in
     0) binding= ;;

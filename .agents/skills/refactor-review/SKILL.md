@@ -135,7 +135,9 @@ Independent cards are independent tasks and must preserve their IDs, source repo
 Do not bundle a portfolio into the broad review scout; ordinary scout promotion is available only for one direct continuation while that scout is still live.
 Do not automatically invoke `request-refactor-plan`; use it only as a later, separately requested RFC or issue-writing step.
 
-Before completing the scout report, load and follow `decision-hold-lifecycle`.
+Before completing the scout report, load and follow `captain-hold-lifecycle`.
+
+`decision-hold-lifecycle` is a compatibility pointer for historical decision identities and records; it is not the current policy owner.
 Give only genuine unresolved choices stable keys such as `ar-01-storage-boundary`, register them through that existing lifecycle, and make dependent cards reference the matching decision.
 Do not create a decision merely because a captain has not authorized a recommendation.
 Routine recommendation selection is authorization, not an unresolved decision.

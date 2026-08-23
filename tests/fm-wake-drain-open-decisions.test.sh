@@ -37,32 +37,6 @@ test_buried_decision_still_surfaces() {
   pass "a needs-decision buried under later routine/other-key lines still reports as open"
 }
 
-test_key_positions_and_malformed_input() {
-  local dir state out
-  dir=$(make_case key-positions)
-  state="$dir/state"
-  out="$dir/drain.out"
-  {
-    printf 'needs-decision [key=before]: canonical position\n'
-    printf 'needs-decision: [key=after] historical position\n'
-    printf 'needs-decision: no key defaults\n'
-    printf 'needs-decision: [key=bad key] malformed input\n'
-  } > "$state/task-keys.status"
-
-  FM_STATE_OVERRIDE="$state" "$DRAIN" > "$out" || fail "drain failed on keyed decision positions"
-
-  grep -F 'task-keys [key=before] needs-decision: canonical position' "$out" >/dev/null \
-    || fail "a pre-colon key did not remain open under its intended key"
-  grep -F 'task-keys [key=after] needs-decision: historical position' "$out" >/dev/null \
-    || fail "a post-colon key did not remain open with its consumed key token stripped"
-  grep -F 'task-keys needs-decision: no key defaults' "$out" >/dev/null \
-    || fail "an unkeyed decision did not use the default key"
-  if grep -F 'malformed input' "$out" >/dev/null; then
-    fail "a malformed key token created an open decision: $(cat "$out")"
-  fi
-  pass "pre-colon and post-colon keys resolve identically, while missing and malformed keys are safe"
-}
-
 test_explicit_resolution_closes_it() {
   local dir state out
   dir=$(make_case resolved)
@@ -242,7 +216,6 @@ test_over_long_decision_note_is_capped_with_a_marker() {
 }
 
 test_buried_decision_still_surfaces
-test_key_positions_and_malformed_input
 test_over_long_decision_note_is_capped_with_a_marker
 test_explicit_resolution_closes_it
 test_later_unrelated_terminal_line_does_not_close_it

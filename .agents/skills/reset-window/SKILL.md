@@ -1,6 +1,8 @@
 ---
 name: reset-window
 description: Reset the running firstmate session into a fresh-context successor (a "context reset"). Flushes volatile conversation context to durable state, releases the fleet lock, and launches a new firstmate session that catches up from disk. Use when the captain invokes /reset-window, says context is full / getting long, or asks to reset context and continue in a new session. (Distinct from backlog handoff to a secondmate.)
+metadata:
+  internal: true
 ---
 
 # reset-window

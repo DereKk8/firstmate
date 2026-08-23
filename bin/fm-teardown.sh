@@ -434,11 +434,13 @@ fi
 
 KIND=$(grep '^kind=' "$META" | cut -d= -f2- || true)
 [ -n "$KIND" ] || KIND=ship
+
 # This is the first cleanup authorization check. It is metadata-only and must
 # complete before fm-guard, a backend command, file removal, branch deletion,
 # worktree return, registry change, or process termination can run. An exactly
-# empty window= record means the endpoint already disappeared, so only the
-# cleanup-critical identity is validated and no runtime target is touched.
+# empty window= records a normal task endpoint that has already disappeared, so
+# there is no target to close. It still requires every cleanup-critical identity
+# and the ordinary landed-work safety proof below.
 ENDPOINT_PRESENT=1
 if [ "$KIND" != scout ] && [ "$KIND" != secondmate ] \
   && fm_backend_task_endpoint_is_absent "$META"; then
@@ -1985,27 +1987,27 @@ preflight_descendant_task_locks() {
     meta="$state/$task_id.meta"
     control_lock="$state/.control-$task_id.lock"
     meta_lock=$(fm_meta_lock_path "$meta") || {
-      echo "REFUSED: descendant task $task_id has an invalid metadata lock path; forced teardown: nothing was changed" >&2
+      echo "REFUSED: descendant task $task_id has an invalid metadata lock path; forced teardown changed nothing" >&2
       return 1
     }
     if ! fm_lock_try_acquire "$control_lock"; then
-      echo "REFUSED: descendant task $task_id has a lifecycle action in flight (control lock is held); forced teardown: nothing was changed" >&2
+      echo "REFUSED: descendant task $task_id has a lifecycle action in flight (control lock is held); forced teardown changed nothing" >&2
       return 1
     fi
     DESCENDANT_LOCK_PATHS+=("$control_lock")
     if ! fm_lock_try_acquire "$meta_lock"; then
-      echo "REFUSED: descendant task $task_id has a metadata update in flight (metadata lock is held); forced teardown: nothing was changed" >&2
+      echo "REFUSED: descendant task $task_id has a metadata update in flight (metadata lock is held); forced teardown changed nothing" >&2
       return 1
     fi
     DESCENDANT_LOCK_PATHS+=("$meta_lock")
     [ -f "$meta" ] || {
-      echo "REFUSED: descendant task $task_id changed while forced teardown acquired its locks; forced teardown: nothing was changed" >&2
+      echo "REFUSED: descendant task $task_id changed while forced teardown acquired its locks; forced teardown changed nothing" >&2
       return 1
     }
     kind=$(meta_value "$meta" kind)
     [ -n "$kind" ] || kind=ship
     [ "$kind" = "${DESCENDANT_TASK_KINDS[$i]}" ] || {
-      echo "REFUSED: descendant task $task_id changed kind while forced teardown acquired its locks; forced teardown: nothing was changed" >&2
+      echo "REFUSED: descendant task $task_id changed kind while forced teardown acquired its locks; forced teardown changed nothing" >&2
       return 1
     }
     if [ "$kind" = secondmate ]; then
@@ -2013,7 +2015,7 @@ preflight_descendant_task_locks() {
       child_home=$(meta_value "$meta" home)
       [ -n "$child_home" ] || child_home=$child_wt
       [ "$child_home" = "${DESCENDANT_TASK_HOMES[$i]}" ] || {
-        echo "REFUSED: descendant task $task_id changed home while forced teardown acquired its locks; forced teardown: nothing was changed" >&2
+        echo "REFUSED: descendant task $task_id changed home while forced teardown acquired its locks; forced teardown changed nothing" >&2
         return 1
       }
     fi
@@ -2170,10 +2172,7 @@ preflight_firstmate_home_herdr_children() {  # <home>
   for child_meta in "$sub_state"/*.meta; do
     [ -e "$child_meta" ] || continue
     child_id=$(basename "$child_meta" .meta)
-    if ! fm_backend_validate_task_endpoint "$child_meta" "$child_id"; then
-      echo "error: child task $child_id endpoint preflight failed; nothing was changed - repair the child metadata and rerun teardown" >&2
-      return 1
-    fi
+    fm_backend_validate_task_endpoint "$child_meta" "$child_id" || return 1
     child_backend=$FM_BACKEND_VALIDATED_BACKEND
     child_target=$FM_BACKEND_VALIDATED_TARGET
     if [ "$child_backend" = herdr ]; then
@@ -2304,15 +2303,9 @@ if [ "$KIND" = secondmate ]; then
     exit 1
   fi
   if [ "$FORCE" = "--force" ]; then
-    if ! validate_firstmate_home_children_removal "$HOME_PATH"; then
-      echo "error: secondmate child preflight failed for $ID; nothing was changed - repair the child records and rerun teardown" >&2
-      exit 1
-    fi
+    validate_firstmate_home_children_removal "$HOME_PATH" || exit 1
     preflight_descendant_task_locks "$HOME_PATH" || exit 1
-    if ! validate_firstmate_home_children_removal "$HOME_PATH"; then
-      echo "error: secondmate child preflight failed for $ID; nothing was changed - repair the child records and rerun teardown" >&2
-      exit 1
-    fi
+    validate_firstmate_home_children_removal "$HOME_PATH" || exit 1
     if [ "$BACKEND" = herdr ]; then
       teardown_herdr_preflight_target "$T" "$ID" || exit 1
     fi
@@ -2348,9 +2341,9 @@ if [ "$KIND" = scout ] && [ "$FORCE" != "--force" ]; then
     exit 1
   fi
   if ! FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" FM_DATA_OVERRIDE="$DATA" \
-      FM_CONFIG_OVERRIDE="$CONFIG" "$SCRIPT_DIR/fm-decision-hold.sh" verify "$ID" >/dev/null; then
-    echo "REFUSED: scout task $ID has not passed the unresolved-decision completion gate." >&2
-    echo "Inventory its report and any visual review through bin/fm-decision-hold.sh before teardown." >&2
+      FM_CONFIG_OVERRIDE="$CONFIG" "$SCRIPT_DIR/fm-captain-hold.sh" verify "$ID" >/dev/null; then
+    echo "REFUSED: scout task $ID has not passed the captain-call completion gate." >&2
+    echo "Inventory its report and any visual review through bin/fm-captain-hold.sh before teardown." >&2
     exit 1
   fi
 fi
@@ -2375,6 +2368,22 @@ if [ "$FORCE" != "--force" ] \
     echo "Deliver it with bin/fm-public-followup.sh deliver <obligation-id>, waive it with tasks-axi public-followup waive, or use --force after explicit discard approval." >&2
     exit 1
   fi
+fi
+
+# Non-blocking: a delivered public loop is not a teardown refusal (guard-work
+# already passed), but tearing down a ship whose PR merged while a loop is still
+# open with nothing owed is the moment the drop is detectable.
+if [ "$KIND" = ship ] && [ -n "$PR_URL" ] \
+    && [ -n "$PUBLIC_FOLLOWUP_STATE" ] \
+    && [ "${PUBLIC_FOLLOWUP_RELAY_ACTIVE:-0}" = 1 ] \
+    && fm_pf_has_delivered_open_loops "$PUBLIC_FOLLOWUP_STATE"; then
+  echo "warning: an open public loop with nothing owed is still recorded in the consent-holding home while cleaning up ship task $ID. Hand it on with bin/fm-public-followup.sh rechain or close it with retire --reason." >&2
+fi
+
+# Non-blocking: the legacy Relay link is not guarded as a refusal.
+X_REQUEST=$(grep '^x_request=' "$META" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+if [ -n "$X_REQUEST" ]; then
+  echo "warning: task $ID still carries an unreconciled Relay request link ($X_REQUEST) on its task record." >&2
 fi
 
 if [ "$BACKEND" = orca ] && [ "$KIND" != scout ] && [ "$KIND" != secondmate ] && [ "$FORCE" != "--force" ]; then
@@ -2488,7 +2497,7 @@ HERDR_PRESENTATION_JOURNAL="$STATE/$ID.herdr-presentation"
 HERDR_PRESENTATION_RETIRE_CANDIDATE=0
 HERDR_PRESENTATION_SESSION=
 HERDR_PRESENTATION_PANE=
-if [ "$BACKEND" = herdr ] && [ "$ENDPOINT_PRESENT" = 1 ] \
+if [ "$BACKEND" = herdr ] \
    && { [ -e "$HERDR_PRESENTATION_JOURNAL" ] || [ -L "$HERDR_PRESENTATION_JOURNAL" ]; }; then
   fm_backend_source herdr || true
   HERDR_PRESENTATION_SESSION=$(meta_value "$META" herdr_session)
@@ -2522,7 +2531,7 @@ if [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
   else
     echo "warning: herdr presentation focus lock unavailable; refusing a concurrent focus-unsafe pane close" >&2
   fi
-elif [ "$BACKEND" = herdr ] && [ "$ENDPOINT_PRESENT" = 1 ]; then
+elif [ "$BACKEND" = herdr ]; then
   if teardown_herdr_session_lock_held "$TEARDOWN_HERDR_SESSION"; then
     fm_backend_herdr_kill_serialized "$TEARDOWN_HERDR_SESSION" "$TEARDOWN_HERDR_PANE" 2>/dev/null || true
   else

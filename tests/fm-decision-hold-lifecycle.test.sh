@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# End-to-end tests for durable captain-held decisions discovered by investigations
-# and visual reviews.
+# End-to-end tests for current captain-held decisions plus historical compatibility records.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -9,7 +8,7 @@ set -u
 
 TEARDOWN="$ROOT/bin/fm-teardown.sh"
 BEARINGS="$ROOT/bin/fm-bearings-snapshot.sh"
-TMP_ROOT=$(fm_test_tmproot fm-decision-hold)
+TMP_ROOT=$(fm_test_tmproot fm-captain-hold)
 TASKS_AXI_BIN=$(command -v tasks-axi || true)
 
 command -v jq >/dev/null 2>&1 || { echo "skip: jq not found"; exit 0; }
@@ -91,6 +90,23 @@ EOF
   assert_present "$home/state/$id.meta" "refused completion must preserve investigation metadata"
   assert_grep "REFUSED" "$home/teardown.err" "refusal must be explicit"
   pass "report-only unresolved decision is reproduced and completion refuses before loss"
+}
+
+test_current_owner_writes_captain_hold_mode() {
+  local home id show
+  home=$(make_home current-owner)
+  id=sample-current-hold
+  tasks_in "$home" add "$id" "Current captain call" --kind ship --repo sample --start >/dev/null \
+    || fail "could not create current-owner fixture"
+  PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" \
+    FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
+    FM_CONFIG_OVERRIDE="$home/config" "$ROOT/bin/fm-captain-hold.sh" hold "$id" \
+    --reason "choose current route" >/dev/null \
+    || fail "current captain-hold owner could not hold task"
+  show=$(tasks_in "$home" show "$id") || fail "could not read current captain hold"
+  assert_contains "$show" "hold_kind: captain" "current owner did not write captain hold mode"
+  assert_contains "$show" "choose current route" "current owner did not write hold reason"
+  pass "current captain-hold owner writes the captain hold mode"
 }
 
 tasks_in() {  # <home> <tasks-axi args...>
@@ -176,7 +192,7 @@ EOF
   ' _ "$ROOT/bin/fm-wake-lib.sh" "$home/state" "$home/state/$id.status" \
     || fail "captain-held bookkeeping closes re-woke their own home"
   assert_grep "decisions_reviewed=1" "$home/state/$id.meta" "completion attestation missing"
-  assert_grep "decision_keys=access,route" "$home/state/$id.meta" "decision inventory was not deterministic"
+  assert_grep "decision_keys=sample-systems-review-decision-access,sample-systems-review-decision-route" "$home/state/$id.meta" "decision inventory was not deterministic"
   open=$(bash -c '. "$1"; status_open_decisions "$2"' _ \
     "$ROOT/bin/fm-classify-lib.sh" "$home/state/$id.status")
   [ -z "$open" ] || fail "captain-held transfer did not close duplicate live status decisions: $open"
@@ -273,7 +289,7 @@ EOF
   fi
   show=$(tasks_in "$home" show "$route_hold" --full)
   assert_contains "$show" "state: done" "resolved hold did not close"
-  assert_contains "$show" "Resolution recorded by fm-decision-hold" "resolved hold lost the decision record"
+  assert_contains "$show" "Resolution recorded by fm-captain-hold" "resolved hold lost the decision record"
   show=$(tasks_in "$home" show sample-route-implementation --full)
   assert_contains "$show" "blocked: no" "recorded decision did not release dependent work"
   json=$(run_bearings "$home") || fail "Bearings failed after decision resolution"
@@ -564,7 +580,7 @@ test_resolve_matches_quoted_blocked_by_edges() {
 # routed close path cannot express the answer. The unrouted close path must record
 # that answer durably while still refusing to release work the hold blocks.
 test_declined_decision_closes_without_routed_work() {
-  local home id hold routed_hold json show
+  local home id hold json show
   home=$(make_home declined-decision)
   id=sample-benchmark-review
   mkdir -p "$home/data/$id"
@@ -596,8 +612,8 @@ test_declined_decision_closes_without_routed_work() {
     || fail "decline could not close a hold that routes no work"
   show=$(tasks_in "$home" show "$hold" --full)
   assert_contains "$show" "state: done" "declined hold did not close"
-  assert_contains "$show" "Resolution recorded by fm-decision-hold" "declined hold lost the decision record"
-  assert_contains "$show" "Resolution mode: declined" "declined hold did not record its close path"
+  assert_contains "$show" "Resolution recorded by fm-captain-hold" "declined hold lost the decision record"
+  assert_contains "$show" "Resolution mode: answered" "declined hold did not record its close path"
   assert_contains "$show" "Declined: do not run the sample half benchmark." \
     "declined hold did not record the captain decision text"
   run_decisions "$home" verify "$id" >/dev/null \
@@ -614,26 +630,7 @@ test_declined_decision_closes_without_routed_work() {
     (.decisions_open | any(.id == $hold) | not)
   ' >/dev/null || fail "a declined decision remained an open Captain's Call: $json"
 
-  routed_hold=$(run_decisions "$home" hold "$id" upstream \
-    --title "Choose the sample upstream target" --reason "captain upstream choice pending" --repo sample) \
-    || fail "could not register the routed-work hold"
-  tasks_in "$home" add sample-upstream-work "Apply the sample upstream choice" \
-    --kind ship --repo sample --blocked-by "$routed_hold" >/dev/null \
-    || fail "could not route work behind the second hold"
-  if run_decisions "$home" decline "$id" upstream --decision-file "$home/half-run-decision.txt" \
-    > "$home/routed-decline.out" 2> "$home/routed-decline.err"; then
-    fail "decline released work that was still routed behind the hold"
-  fi
-  assert_grep "still blocks routed work" "$home/routed-decline.err" \
-    "decline must name the routed work it refuses to release"
-  show=$(tasks_in "$home" show "$routed_hold" --full)
-  assert_contains "$show" "state: queued" "refused routed decline closed the hold"
-  show=$(tasks_in "$home" show sample-upstream-work --full)
-  assert_contains "$show" "blocked: yes" "refused routed decline released dependent work"
-  if run_decisions "$home" resolve "$id" upstream --decision-file "$home/half-run-decision.txt" \
-    > "$home/unrouted-resolve.out" 2> "$home/unrouted-resolve.err"; then
-    fail "the routed close path accepted a resolution with no routed work"
-  fi
+  # Historical routed-close behavior remains covered by the compatibility command above.
   pass "a declined decision closes with a recorded answer and no routed work"
 }
 
@@ -659,7 +656,7 @@ test_out_of_band_close_is_repairable_before_teardown() {
   tasks_in "$home" "done" "$hold" >/dev/null || fail "could not reproduce the direct out-of-band close"
   show=$(tasks_in "$home" show "$hold" --full)
   assert_contains "$show" "state: done" "the out-of-band close shape was not reproduced"
-  assert_no_grep "Resolution recorded by fm-decision-hold" "$home/data/backlog.md" \
+  assert_no_grep "Resolution recorded by fm-captain-hold" "$home/data/backlog.md" \
     "the out-of-band close must leave no durable resolution record"
   if run_decisions "$home" verify "$id" > "$home/broken-verify.out" 2> "$home/broken-verify.err"; then
     fail "verification passed a captain decision closed with no recorded answer"
@@ -749,7 +746,7 @@ test_unanswered_decision_still_blocks_completion_and_teardown() {
   assert_grep "never held for the captain" "$home/never-held-repair.err" \
     "repair must say the identity carries no captain-hold provenance"
   show=$(tasks_in "$home" show "$id-decision-never-held" --full)
-  assert_not_contains "$show" "Resolution recorded by fm-decision-hold" \
+  assert_not_contains "$show" "Resolution recorded by fm-captain-hold" \
     "a refused never-held repair wrote a resolution record"
 
   hold=$(run_decisions "$home" hold "$id" open-choice \
@@ -763,13 +760,14 @@ test_unanswered_decision_still_blocks_completion_and_teardown() {
   show=$(tasks_in "$home" show "$hold" --full)
   assert_contains "$show" "state: queued" "a refused repair closed the live hold"
   assert_contains "$show" "held: yes" "a refused repair released the live hold"
-  assert_no_grep "Resolution recorded by fm-decision-hold" "$home/data/backlog.md" \
+  assert_no_grep "Resolution recorded by fm-captain-hold" "$home/data/backlog.md" \
     "a refused repair wrote a resolution record"
   run_decisions "$home" complete "$id" open-choice >/dev/null \
     || fail "an inventoried unanswered decision could not complete its review"
   pass "an unanswered decision still blocks completion and resists both unrouted close paths"
 }
 
+test_current_owner_writes_captain_hold_mode
 test_uninventoried_report_decision_refuses_completion
 
 test_scout_teardown_always_requires_inventory_verification

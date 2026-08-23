@@ -36,12 +36,54 @@ render_run_name() {
   printf 'PR #418 body compliance - %s - event %s (run %s)\n' "$action" "$run_number" "$run_id"
 }
 
+attested_body() {
+  local review_status=$1 test_status=$2 document_status=$3
+  printf 'Synthetic body\n%s\n<!-- no-mistakes-pipeline-attestation:v1 {"steps":[{"step":"review","status":"%s"},{"step":"test","status":"%s"},{"step":"document","status":"%s"}]} -->\n' \
+    "$MARKER" "$review_status" "$test_status" "$document_status"
+}
+
+test_attestation_contract() {
+  local body required review_status test_status document_status
+
+  body=$(attested_body completed completed completed)
+  signature_result "$body" || fail "fully attested signed body must succeed"
+
+  body=$(printf 'Synthetic body\n%s\n' "$MARKER")
+  if signature_result "$body"; then
+    fail "signature without attestation must fail"
+  fi
+
+  body=$(printf 'Synthetic body\n%s\n%s\n' "$MARKER" '<!-- no-mistakes-pipeline-attestation:v1 {not-json} -->')
+  if signature_result "$body"; then
+    fail "unparseable attestation JSON must fail"
+  fi
+
+  for required in review test document; do
+    review_status=completed
+    test_status=completed
+    document_status=completed
+    case "$required" in
+      review) review_status=pending ;;
+      test) test_status=pending ;;
+      document) document_status=pending ;;
+    esac
+    body=$(attested_body "$review_status" "$test_status" "$document_status")
+    if signature_result "$body"; then
+      fail "attestation with $required not completed must fail"
+    fi
+  done
+  pass "attestation requires parseable JSON and completed review, test, and document steps"
+}
+
 test_signature_sequence_at_fixed_head() {
-  signature_result "Synthetic body\n$MARKER" || fail "signed opened event must succeed"
+  local body
+  body=$(attested_body completed completed completed)
+  signature_result "$body" || fail "signed opened event must succeed"
   if signature_result 'Synthetic unsigned edit'; then
     fail "unsigned edited event must fail"
   fi
-  signature_result "Synthetic signed edit\n$MARKER" || fail "signed edited event must succeed"
+  body=$(attested_body completed completed completed)
+  signature_result "$body" || fail "signed edited event must succeed"
   pass "fixed-head signed opened, unsigned edited, signed edited yields 0/1/0"
 }
 
@@ -90,6 +132,7 @@ test_security_and_signature_contract_is_preserved() {
   pass "fork, permission, check-name, marker, and bot-exemption contracts are preserved"
 }
 
+test_attestation_contract
 test_signature_sequence_at_fixed_head
 test_event_identity_contract
 test_run_names_are_ordered_and_unique
