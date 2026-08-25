@@ -1,0 +1,37 @@
+fm/fm-upstream-sync merge f205be6 (parents 712ec3d fork, 6a2cd6c upstream)
+Mechanical checks (both required by intent + AGENTS.md section 12 / refit gate):
+
+1. git diff-tree --check -m -r --no-commit-id f205be6
+   EXIT 0 (no whitespace errors)
+
+2. bin/fm-merge-content-check.sh f205be6 with the 20 captain-approved
+   --allow <path> --reason <rationale> records (exact set below)
+   EXIT 0 (no un-allowanced named-content loss)
+
+Allowance paths (20):
+  .agents/skills/project-management/SKILL.md
+  .agents/skills/quota-array-dispatch/SKILL.md
+  AGENTS.md
+  bin/backends/herdr.sh
+  bin/fm-backend.sh
+  bin/fm-decision-hold.sh
+  bin/fm-remote-job-lib.sh
+  bin/fm-session-start.sh
+  bin/fm-spawn.sh
+  tests/fm-backend-herdr.test.sh
+  tests/fm-fleet-sync.test.sh
+  tests/fm-gitignore-config.test.sh
+  tests/fm-remote-job-orphan-reap.test.sh
+  tests/fm-review-diff.test.sh
+  tests/fm-send-remote-delivery.test.sh
+  tests/fm-send-resolve-key.test.sh
+  tests/fm-session-start.test.sh
+  tests/fm-spawn-pool-base-freshen.test.sh
+  tests/fm-spawn-worktree-settle.test.sh
+  tests/fm-teardown.test.sh
+Reasons for each are recorded in data/fm-upstream-sync/report.md (local-only
+PR body material; data/ is gitignored and nothing under data/ is committed).
+
+Counterfactual: without allowances the check exits 1 with 42 CONTENT-LOSS
+findings, proving the allowance set is genuine and complete (every detected
+named-content loss is individually allowanced with a path-specific reason).

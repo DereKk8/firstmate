@@ -1,0 +1,46 @@
+Targeted test runs on HEAD a158314 (fm/fm-upstream-sync), worktree clean before/after:
+
+PASS  tests/fm-merge-content-check.test.sh           (check tool itself, 15 cases)
+PASS  tests/fm-fleet-sync.test.sh                    (F2: upstream dirty check adopted)
+PASS  tests/fm-instruction-owners.test.sh            (T4 fix)
+PASS  tests/fm-documentation-audiences.test.sh       (T3 fix)
+PASS  tests/fm-backend-orca.test.sh                  (T1 fix)
+PASS  tests/fm-teardown.test.sh
+PASS  tests/fm-session-start.test.sh
+PASS  tests/fm-gitignore-config.test.sh
+PASS  tests/fm-spawn-pool-base-freshen.test.sh
+PASS  tests/fm-spawn-worktree-settle.test.sh
+PASS  tests/fm-send-resolve-key.test.sh
+PASS  tests/fm-backend-herdr.test.sh
+PASS  tests/fm-review-diff.test.sh
+PASS  tests/fm-send-remote-delivery.test.sh
+PASS  tests/fm-bootstrap.test.sh
+PASS  tests/fm-gotmp.test.sh
+PASS  tests/fm-test-fixture-cleanup.test.sh
+PASS  tests/fm-pr-merge.test.sh
+PASS  tests/fm-secondmate-safety.test.sh
+PASS  tests/fm-spawn-batch.test.sh
+PASS  tests/fm-project-base.test.sh
+PASS  tests/fm-merge-local.test.sh
+PASS  tests/fm-secondmate-sync.test.sh
+PASS  tests/fm-update.test.sh
+
+FAIL  tests/fm-remote-job-orphan-reap.test.sh
+      Deterministic (3/3 runs) at the upstream-adopted pre-condition
+      [ "$(ppid_of "$WORKER")" = 1 ]. This gate environment runs commands
+      inside a user systemd slice (/user.slice/.../no-mistakes-daemon-*.service);
+      orphaned children reparent to `systemd --user` at pid 434, never pid 1,
+      so the fixture worker (which IS orphaned) fails the strict ppid==1 check
+      and the suite aborts before its leak-reproduction cases.
+      - Not a product defect: bin/fm-remote-job-lib.sh is upstream's, adopted
+        wholesale; the worker starts correctly, gets its own process group, and
+        is orphaned (reparented to the slice reaper). Fork's pre-merge assertion
+        (! is_descendant_of "$WORKER" "$$") passed in this environment.
+      - Tolerant run (one-line pre-condition relaxation, file restored
+        byte-identical afterwards): full suite passes 7/7, so every other
+        case (leak reproduction, reaper sweep, dry run, idempotency) is green.
+      - Remote CI (container/VM with pid-1 init) is expected to pass since
+        upstream runs this same test green in its own CI.
+      - Safe in-worktree fix (relax the adopted assertion) would diverge the
+        upstream test at a shared seam, which the merge intent forbids; the
+        captain/executor must decide (record as open question).

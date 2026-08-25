@@ -1,0 +1,9 @@
+=== Mechanical check 1: git diff-tree --check (whitespace) on merge f205be6 ===
+exit: 0
+
+=== Mechanical check 2: fm-merge-content-check.sh f205be6 WITHOUT allowances (sensitivity probe) ===
+CONTENT-LOSS findings reported (expected 42): 42
+unfiltered exit (expected 1): 1
+
+=== Mechanical check 2 with the 20 captain-approved allowance records (data/fm-upstream-sync/report.md) ===
+with-allowances exit (expected 0): 0

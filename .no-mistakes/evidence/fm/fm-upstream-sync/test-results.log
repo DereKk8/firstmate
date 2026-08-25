@@ -1,0 +1,27 @@
+Targeted test-phase results on branch fm/fm-upstream-sync @ c67fa31 + phase fixes
+=================================================================================
+ETC: git diff-tree --check -m -r -r --no-commit-id f205be6 -> exit 0
+ETC: fm-merge-content-check.sh f205be6 (20 allowances) -> exit 0
+ETC: fm-merge-content-check.sh f205be6 (no allowances) -> exit 1, exactly 42 CONTENT-LOSS lines (sensitivity)
+fm-fleet-sync                  25 ok assertions, last: ok - the clone-root guard accepts a symlinked clone directory
+fm-merge-content-check         15 ok assertions, last: ok - non-commit object ref exits 2 with a controlled error
+fm-backend-orca                51 ok assertions, last: ok - fm-teardown.sh --force: refuses partial Orca secondmate children before runtime dispatch
+fm-session-start               49 ok assertions, last: ok - --reemit re-verifies lock ownership and keeps repair ownership with whoever holds it
+fm-teardown                    58 ok assertions, last: ok - the run abort and the leaked-process reap both complete before the destructive worktree return
+fm-instruction-owners          12 ok assertions, last: ok - compressed AGENTS.md retains authority, supervision, AFK, and X safety
+fm-documentation-audiences     4  ok assertions, last: ok - local links resolve while dates, versions, commands, and incident prose remain semantically reviewed
+fm-end-session                 8  ok assertions, last: ok - preflight exposes no shutdown mutation subcommands
+fm-stow-contract               3  ok assertions, last: ok - AGENTS.md keeps task-note hygiene inline and points exact mechanics to their owner
+
+Seam parity after F2/F3/T1 fixes (HEAD vs upstream 6a2cd6c):
+  bin/fm-fleet-sync.sh ........ 0 diff lines (upstream dirty-check semantics)
+  bin/fm-session-start.sh ..... 0 diff lines (upstream session start; no reset-window surfacing)
+  tests/fm-backend-orca.test.sh 0 diff lines (upstream test set)
+  .gitignore .agent/ entry .... absent
+
+Phase fixes applied in this run (uncommitted; executor must commit with the branch):
+ README.md                           |  1 +
+ bin/fm-bootstrap.sh                 |  4 +---
+ docs/documentation-audiences.json   | 36 ++++++++++++++++++++++++++++++++++++
+ tests/fm-instruction-owners.test.sh | 14 +++++++-------
+ 4 files changed, 45 insertions(+), 10 deletions(-)

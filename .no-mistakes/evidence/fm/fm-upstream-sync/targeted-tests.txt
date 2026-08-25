@@ -1,0 +1,23 @@
+# Targeted test evidence (merge-integration validation)
+
+Shared-seam parity checks (all pass):
+- bin/fm-fleet-sync.sh, bin/fm-session-start.sh, bin/fm-teardown.sh, bin/fm-project-mode.sh, .github/workflows/*, .tasks.toml, README.md, CONTRIBUTING.md: byte-identical to upstream 6a2cd6c
+- 161 shared test files adopted upstream's version at the merge
+- No fork skill wired into merged bin/ internals; AGENTS.md heading set identical to upstream except captain-approved allowance #3
+- Fork prompt-layer skills retained (cardio, end-session, explain, refactor-review, refit, reset-window) plus fork-only isolated helpers (fm-archive-task, fm-project-base, fm-upstream-check, fm-merge-content-check, fm-end-session, fm-external-tooling-check, ...) with their test suites
+
+Test runs (ok counts, all exit 0):
+- tests/fm-backend-orca.test.sh (fork-retained shared test, after fix): 51 ok
+- tests/fm-pr-merge.test.sh (fork-retained shared test): 25 ok
+- tests/fm-secondmate-safety.test.sh (fork-retained shared test): 77 ok
+- tests/fm-spawn-batch.test.sh (fork-retained shared test): 5 ok
+- tests/fm-fleet-sync.test.sh (upstream dirty-check semantics after F2): 25 ok
+- tests/fm-session-start.test.sh (upstream session start after reset-window un-wire): 49 ok
+- tests/fm-merge-content-check.test.sh (mechanical-check tool, allowance mechanics): 15 ok
+- tests/fm-project-base.test.sh (fork isolated helper): 16 ok
+- tests/fm-merge-local.test.sh (fork isolated helper): 1 ok
+- tests/fm-pr-check.test.sh (fork test of shared PR check script): 2 ok
+- tests/fm-archive-task.test.sh (fork isolated helper, .agent archive behavior still its own): 7 ok
+
+Regression fixed during this phase:
+- tests/fm-backend-orca.test.sh carried fork-only .agent/tasks + FM_AGENT_ARCHIVES_ROOT fixtures that the merge retained while the shared file adopted upstream's version elsewhere. The merged upstream fm-teardown.sh landed-work guard (never discard uncommitted work) correctly REFUSED the fixture's uncommitted .agent/plan.md - the fork's .agent/ archive-on-teardown behavior was dropped with the merge (allowance #5/#20 scope, same family as recorded decision F2). Adopted upstream's version of the failing test file; suite now passes 51/51.
