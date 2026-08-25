@@ -53,6 +53,20 @@ SH
   chmod +x "$fakebin/tmux"
 }
 
+make_herdr() {
+  local fakebin=$1
+  cat > "$fakebin/herdr" <<'SH'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  "pane get") printf '%s\n' '{"result":{"pane":{"pane_id":"p1"}}}' ;;
+  "agent get") printf '%s\n' '{"result":{"agent":{"agent":"pi","agent_status":"working"}}}' ;;
+  "pane process-info") printf '%s\n' '{"result":{"type":"pane_process_info","process_info":{"pane_id":"p1","foreground_processes":[{"name":"pi"}]}}}' ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$fakebin/herdr"
+}
+
 test_lock_refusal() {
   local home fakebin out rc
   home=$(make_home no-lock)
@@ -127,6 +141,21 @@ test_live_helper_is_reported_for_skill() {
   pass "preflight reports a live helper without mutating state"
 }
 
+test_herdr_endpoint_is_classified() {
+  local home fakebin out
+  home=$(make_home herdr-endpoint)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock "$home"
+  make_herdr "$fakebin"
+  fm_write_meta "$home/state/task-x1.meta" \
+    "kind=ship" "backend=herdr" "window=session:p1"
+  out=$(run_es "$home" "$fakebin" preflight) \
+    || fail "herdr endpoint preflight refused: $out"
+  assert_contains "$out" "LIVE_HELPER task-x1 herdr session:p1" \
+    "preflight did not classify the herdr endpoint as live"
+  pass "preflight classifies a live herdr endpoint"
+}
+
 test_active_validation_refuses() {
   local home fakebin out rc worktree head
   home=$(make_home active-validation)
@@ -177,5 +206,6 @@ test_empty_home_succeeds
 test_unclassified_endpoint_refuses
 test_unreadable_meta_refuses
 test_live_helper_is_reported_for_skill
+test_herdr_endpoint_is_classified
 test_active_validation_refuses
 test_only_preflight_is_exposed

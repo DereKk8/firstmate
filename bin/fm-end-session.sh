@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Read-only shutdown preflight; it never changes state.
 set -u
-FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}}"
+FM_ROOT="${FM_ROOT_OVERRIDE:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 STATE="${FM_STATE_OVERRIDE:-$FM_HOME/state}"
+# shellcheck source=bin/fm-backend.sh
+. "$FM_ROOT/bin/fm-backend.sh"
 usage() { printf '%s\n' 'usage: end-session preflight' >&2; }
 meta_value() { awk -F= -v key="$2" '$1 == key { value = substr($0, index($0, "=") + 1) } END { print value }' "$1"; }
 lock_owned() {
@@ -42,28 +45,8 @@ validation_active() {
   '
 }
 endpoint_state() {
-  local backend=$1 target=$2 session window windows command
-  case "$backend" in
-    '') backend=tmux ;;
-    tmux)
-      case "$target" in *:*:*|'':*|*:'') printf 'unreadable'; return ;; esac
-      session=${target%%:*}
-      window=${target#*:}
-      if ! windows=$(tmux list-windows -t "$session" -F '#{window_name}' 2>&1); then
-        case "$windows" in *"can't find session:"*|*"no server running"*) printf 'missing' ;; *) printf 'unreadable' ;; esac
-        return
-      fi
-      printf '%s\n' "$windows" | grep -Fqx "$window" || { printf 'missing'; return; }
-      command=$(tmux display-message -p -t "$target" '#{pane_current_command}' 2>/dev/null) || { printf 'unreadable'; return; }
-      case "$command" in
-        claude*|codex*|opencode*|grok*|kimi*|pi*|cursor*|muse*) printf 'alive' ;;
-        bash|sh|zsh|fish|dash|ksh|tcsh|pwsh|powershell) printf 'dead' ;;
-        '') printf 'unreadable' ;;
-        *) printf 'ambiguous' ;;
-      esac
-      ;;
-    *) printf 'unverified' ;;
-  esac
+  local backend=$1 target=$2
+  fm_backend_agent_state "${backend:-tmux}" "$target"
 }
 preflight() {
   local refused=0 meta id kind backend target state worktree
