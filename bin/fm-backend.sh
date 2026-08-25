@@ -360,62 +360,6 @@ fm_backend_target_of_meta() {  # <meta-file>
   [ -n "$window" ] && printf '%s' "$window"
 }
 
-# fm_backend_worktree_owner_status: verify that a recorded worktree still
-# belongs to <task-id>. A worktree-local identity written by fm-spawn is the
-# strongest proof; legacy records fall back to exact git-worktree registration.
-# Returns 0 for owned, 1 for a different recorded owner, and 2 when ownership
-# cannot be verified. Sets FM_BACKEND_WORKTREE_OWNER_ID when an identity exists.
-fm_backend_worktree_owner_status() {  # <meta-file> <task-id>
-  local meta=$1 id=$2 wt project top real marker listed line listed_real common git_dir
-  FM_BACKEND_WORKTREE_OWNER_ID=
-  wt=$(fm_meta_get "$meta" worktree)
-  [ -n "$wt" ] && [ -d "$wt" ] || return 2
-  real=$(cd -- "$wt" 2>/dev/null && pwd -P) || return 2
-  top=$(git -C "$wt" rev-parse --show-toplevel 2>/dev/null) || return 2
-  top=$(cd -- "$top" 2>/dev/null && pwd -P) || return 2
-  [ "$top" = "$real" ] || return 2
-
-  marker=$(git -C "$wt" config --worktree --get fm.firstmate-task 2>/dev/null || true)
-  if [ -n "$marker" ]; then
-    # shellcheck disable=SC2034 # Output global is consumed by sourcing callers.
-    FM_BACKEND_WORKTREE_OWNER_ID=$marker
-    [ "$marker" = "$id" ] && return 0
-    return 1
-  fi
-
-  project=$(fm_meta_get "$meta" project)
-  [ -n "$project" ] && [ -d "$project" ] || return 2
-  git -C "$project" rev-parse --git-dir >/dev/null 2>&1 || return 2
-  listed=$(git -C "$project" -c core.quotePath=false worktree list --porcelain 2>/dev/null) || return 2
-  while IFS= read -r line; do
-    case "$line" in
-      worktree\ *)
-        listed_real=$(cd -- "${line#worktree }" 2>/dev/null && pwd -P) || continue
-        [ "$listed_real" = "$real" ] && return 0
-        ;;
-    esac
-  done <<EOF
-$listed
-EOF
-  # Pre-marker task records also used ordinary cloned worktrees. Preserve that
-  # compatibility only for a real standalone repository; new spawns always
-  # write the stronger worktree-local identity above.
-  common=$(git -C "$wt" rev-parse --git-common-dir 2>/dev/null || true)
-  git_dir=$(git -C "$wt" rev-parse --git-dir 2>/dev/null || true)
-  case "$common" in
-    /*) ;;
-    *) common="$real/$common" ;;
-  esac
-  case "$git_dir" in
-    /*) ;;
-    *) git_dir="$real/$git_dir" ;;
-  esac
-  case "$common:$git_dir" in
-    "$real/.git:$real/.git") return 0 ;;
-  esac
-  return 2
-}
-
 # fm_backend_validate_task_endpoint: validate a task cleanup record entirely
 # from its durable metadata before any runtime command or cleanup mutation.
 # The validation binds the exact task id, selected backend, target, project,
@@ -439,11 +383,9 @@ fm_backend_endpoint_atom_valid() {  # <value>
   esac
 }
 
-# fm_backend_validate_task_cleanup_metadata: validate the cleanup-critical
-# metadata that remains meaningful after an endpoint has already disappeared.
-# On success, sets FM_BACKEND_VALIDATED_BACKEND and leaves its target empty.
-fm_backend_validate_task_cleanup_metadata() {  # <meta-file> <task-id>
-  local meta=$1 id=$2 backend_count backend worktree project
+fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
+  local meta=$1 id=$2 backend_count backend window worktree project binding_count binding
+  local session pane recorded_session workspace tab terminal worktree_id surface
   FM_BACKEND_VALIDATED_BACKEND=
   FM_BACKEND_VALIDATED_TARGET=
   [ -f "$meta" ] && [ ! -L "$meta" ] || {
@@ -454,6 +396,10 @@ fm_backend_validate_task_cleanup_metadata() {  # <meta-file> <task-id>
     echo "REFUSED: task endpoint identity has an invalid task id; preserving task state." >&2
     return 1
   esac
+  window=$(fm_backend_meta_exact_value "$meta" window) || {
+    echo "REFUSED: task $id has a missing, empty, or ambiguous window endpoint; preserving task state." >&2
+    return 1
+  }
   worktree=$(fm_backend_meta_exact_value "$meta" worktree) || {
     echo "REFUSED: task $id has a missing, empty, or ambiguous worktree identity; preserving task state." >&2
     return 1
@@ -462,7 +408,7 @@ fm_backend_validate_task_cleanup_metadata() {  # <meta-file> <task-id>
     echo "REFUSED: task $id has a missing, empty, or ambiguous project identity; preserving task state." >&2
     return 1
   }
-  case "$worktree$project" in *$'\n'*|*$'\r'*|*$'\t'*)
+  case "$worktree$project$window" in *$'\n'*|*$'\r'*|*$'\t'*)
     echo "REFUSED: task $id has malformed endpoint metadata; preserving task state." >&2
     return 1
   esac
@@ -476,32 +422,6 @@ fm_backend_validate_task_cleanup_metadata() {  # <meta-file> <task-id>
     echo "REFUSED: task $id has a missing, ambiguous, or unknown backend identity; preserving task state." >&2
     return 1
   fi
-  FM_BACKEND_VALIDATED_BACKEND=$backend
-}
-
-# fm_backend_task_endpoint_is_absent: true only for an unambiguous empty
-# window= record, which means there is no target to close. Missing, duplicate,
-# and malformed endpoint records remain invalid cleanup identities.
-fm_backend_task_endpoint_is_absent() {  # <meta-file>
-  local meta=$1 count
-  [ -f "$meta" ] && [ ! -L "$meta" ] || return 1
-  count=$(grep -c '^window=' "$meta" 2>/dev/null || true)
-  [ "$count" -eq 1 ] && grep -qx 'window=' "$meta"
-}
-
-fm_backend_validate_task_endpoint() {  # <meta-file> <task-id>
-  local meta=$1 id=$2 window binding_count binding
-  local session pane recorded_session workspace tab terminal worktree_id surface backend
-  fm_backend_validate_task_cleanup_metadata "$meta" "$id" || return 1
-  backend=$FM_BACKEND_VALIDATED_BACKEND
-  window=$(fm_backend_meta_exact_value "$meta" window) || {
-    echo "REFUSED: task $id has a missing, empty, or ambiguous window endpoint; preserving task state." >&2
-    return 1
-  }
-  case "$window" in *$'\n'*|*$'\r'*|*$'\t'*)
-    echo "REFUSED: task $id has malformed endpoint metadata; preserving task state." >&2
-    return 1
-  esac
   binding_count=$(grep -c '^endpoint_task_id=' "$meta" 2>/dev/null || true)
   case "$binding_count" in
     0) binding= ;;

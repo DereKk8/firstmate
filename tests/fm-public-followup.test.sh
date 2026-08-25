@@ -822,23 +822,16 @@ test_secondmate_teardown_durable_record_with_unknown_field_succeeds() {
   ln -s "$parent" "$parent_alias"
   fm_write_meta "$parent/state/mate.meta" "kind=secondmate" "home=$child"
   fm_git_init_commit "$child/projects/worktree"
-  # The finished ship worker runs in a disposable worktree distinct from the
-  # product clone and carries its task artifacts; teardown's archive step
-  # copies them before the worktree is returned.
-  git -C "$child/projects/worktree" worktree add -q -b fm/work-clean "$child/projects/wt-work-clean"
-  mkdir -p "$child/projects/wt-work-clean/.agent/tasks/work-clean"
-  printf '%s\n' fixture > "$child/projects/wt-work-clean/.agent/tasks/work-clean/plan.md"
   printf 'manual\n' > "$child/config/backlog-backend"
   fm_write_meta "$child/state/work-clean.meta" \
     "window=firstmate:fm-work-clean" "endpoint_task_id=work-clean" \
-    "worktree=$child/projects/wt-work-clean" "project=$child/projects/worktree" \
+    "worktree=$child/projects/worktree" "project=$child/projects/worktree" \
     "kind=ship" "mode=local-only"
 
   rc=0
   out=$(PATH="$child/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$child" \
     FM_STATE_OVERRIDE="$child/state" FM_DATA_OVERRIDE="$child/data" \
-    FM_CONFIG_OVERRIDE="$child/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/durable-clean-archives" \
-    FM_PUBLIC_FOLLOWUP_PRIMARY_HOME="$parent_alias" \
+    FM_CONFIG_OVERRIDE="$child/config" FM_PUBLIC_FOLLOWUP_PRIMARY_HOME="$parent_alias" \
     "$TEARDOWN" work-clean 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "a resolved parent with no owed commitment must allow cleanup (rc=$rc): $out"
   assert_not_contains "$out" "cannot resolve the primary home" \
@@ -986,12 +979,6 @@ test_relay_disabled_unmarked_teardown_skips_public_path() {
   local home tasks_log out rc
   home=$(make_home teardown-disabled-unmarked relay-off)
   fm_git_init_commit "$home/projects/worktree"
-  # The finished ship worker runs in a disposable worktree distinct from the
-  # product clone and carries its task artifacts; teardown's archive step
-  # copies them before the worktree is returned.
-  git -C "$home/projects/worktree" worktree add -q -b fm/work-disabled "$home/projects/wt-work-disabled"
-  mkdir -p "$home/projects/wt-work-disabled/.agent/tasks/work-disabled"
-  printf '%s\n' fixture > "$home/projects/wt-work-disabled/.agent/tasks/work-disabled/plan.md"
   tasks_log="$home/tasks-axi.log"; : > "$tasks_log"
   printf 'manual\n' > "$home/config/backlog-backend"
   cat > "$home/fakebin/tasks-axi" <<'SH'
@@ -1002,14 +989,13 @@ SH
   chmod +x "$home/fakebin/tasks-axi"
   fm_write_meta "$home/state/work-disabled.meta" \
     "window=firstmate:fm-work-disabled" "endpoint_task_id=work-disabled" \
-    "worktree=$home/projects/wt-work-disabled" "project=$home/projects/worktree" \
+    "worktree=$home/projects/worktree" "project=$home/projects/worktree" \
     "kind=ship" "mode=local-only"
 
   rc=0
   out=$(PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/disabled-unmarked-archives" \
-    FAKE_TASKS_AXI_LOG="$tasks_log" \
+    FM_CONFIG_OVERRIDE="$home/config" FAKE_TASKS_AXI_LOG="$tasks_log" \
     "$TEARDOWN" work-disabled 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "relay-disabled unmarked teardown must not refuse public-followup cleanup (rc=$rc): $out"
   [ ! -s "$tasks_log" ] || fail "relay-disabled unmarked teardown must not invoke tasks-axi: $(tr '\n' ';' < "$tasks_log")"
@@ -1025,12 +1011,6 @@ test_relay_disabled_parent_allows_marked_child_teardown() {
   parent=$(make_home teardown-disabled-parent relay-off)
   child=$(make_home teardown-disabled-child relay-off)
   fm_git_init_commit "$child/projects/worktree"
-  # The finished ship worker runs in a disposable worktree distinct from the
-  # product clone and carries its task artifacts; teardown's archive step
-  # copies them before the worktree is returned.
-  git -C "$child/projects/worktree" worktree add -q -b fm/work-disabled "$child/projects/wt-work-disabled"
-  mkdir -p "$child/projects/wt-work-disabled/.agent/tasks/work-disabled"
-  printf '%s\n' fixture > "$child/projects/wt-work-disabled/.agent/tasks/work-disabled/plan.md"
   printf '%s\n' disabled-mate > "$child/.fm-secondmate-home"
   printf -- '- disabled-mate - synthetic (home: %s; scope: synthetic; projects: ; added 2026-07-30)\n' \
     "$child" > "$parent/data/secondmates.md"
@@ -1045,13 +1025,13 @@ SH
   chmod +x "$child/fakebin/tasks-axi"
   fm_write_meta "$child/state/work-disabled.meta" \
     "window=firstmate:fm-work-disabled" "endpoint_task_id=work-disabled" \
-    "worktree=$child/projects/wt-work-disabled" "project=$child/projects/worktree" \
+    "worktree=$child/projects/worktree" "project=$child/projects/worktree" \
     "kind=ship" "mode=local-only"
 
   rc=0
   out=$(PATH="$child/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$child" \
     FM_STATE_OVERRIDE="$child/state" FM_DATA_OVERRIDE="$child/data" \
-    FM_CONFIG_OVERRIDE="$child/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/disabled-marked-archives" \
+    FM_CONFIG_OVERRIDE="$child/config" \
     FM_PUBLIC_FOLLOWUP_PRIMARY_HOME="$parent" FAKE_TASKS_AXI_LOG="$tasks_log" \
     "$TEARDOWN" work-disabled 2>&1) || rc=$?
   [ "$rc" -eq 0 ] || fail "relay-disabled parent must allow marked-child teardown (rc=$rc): $out"
@@ -1159,10 +1139,6 @@ test_cleanup_refuses_while_a_public_reply_is_owed() {
   local home rc
   home=$(make_home cleanup-guard)
   seed_commitment "$home" pf-guard req-guard discord main ship-task
-  # The finished ship worker's worktree is already gone, so the archive step
-  # succeeds idempotently only once a product-local archive exists for the task.
-  mkdir -p "$home/projects/sample/.agent/archive/ship-task"
-  printf '%s\n' archived > "$home/projects/sample/.agent/archive/ship-task/plan.md"
   fm_write_meta "$home/state/ship-task.meta" \
     "window=firstmate:fm-ship-task" \
     "worktree=$home/projects/gone" \
@@ -1174,7 +1150,7 @@ test_cleanup_refuses_while_a_public_reply_is_owed() {
   rc=0
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/cleanup-guard-archives" "$TEARDOWN" ship-task \
+    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" ship-task \
     > "$home/teardown.out" 2> "$home/teardown.err" || rc=$?
   [ "$rc" -ne 0 ] || fail "cleanup must refuse while a public reply is still owed"
   assert_grep "still owes a public reply" "$home/teardown.err" "the refusal must be explicit"
@@ -1187,7 +1163,7 @@ test_cleanup_refuses_while_a_public_reply_is_owed() {
   rc=0
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/cleanup-guard-archives" "$TEARDOWN" ship-task >/dev/null 2>&1 || rc=$?
+    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" ship-task >/dev/null 2>&1 || rc=$?
   [ "$rc" -eq 0 ] || fail "cleanup must proceed once the public reply has landed (rc=$rc)"
   pass "cleanup refuses while a public reply is owed and proceeds once it has landed"
 }
@@ -1938,8 +1914,8 @@ test_retire_reason_closes_the_open_loop() {
   emit_terminal "$home" "$home" pf-retire main work-retire >/dev/null || fail "emit failed"
   FAKE_CURL_LOG="$log" run_pf "$home" consume >/dev/null || fail "consume failed"
   FAKE_CURL_LOG="$log" run_pf "$home" deliver pf-retire >/dev/null || fail "deliver failed"
-  out=$(run_pf "$home" pending) || fail "pending must show the delivered open loop"
-  assert_contains "$out" "open-loop pf-retire " "pending must show the delivered open loop"
+  run_pf "$home" pending | grep -q '^open-loop pf-retire ' \
+    || fail "pending must show the delivered open loop"
   expect_failure "retire without --reason must refuse" run_pf "$home" retire pf-retire
   assert_contains "$EXPECT_OUT" "--reason" "the refusal must name the required reason"
   assert_present "$home/state/public-followup/registry/pf-retire" \
@@ -1988,10 +1964,6 @@ test_retention_creates_no_false_teardown_refusal() {
   local home home2 rc out registry tmp
   home=$(make_home retain-teardown)
   seed_commitment "$home" pf-retain req-retain discord main ship-retain
-  # The recorded worktree is already gone, so seed the product-local archive
-  # that proves the landed task's artifacts were preserved before teardown.
-  mkdir -p "$home/projects/sample/.agent/archive/ship-retain"
-  printf '%s\n' archived > "$home/projects/sample/.agent/archive/ship-retain/plan.md"
   fm_write_meta "$home/state/ship-retain.meta" \
     "window=firstmate:fm-ship-retain" \
     "worktree=$home/projects/gone" \
@@ -2009,8 +1981,7 @@ test_retention_creates_no_false_teardown_refusal() {
   rc=0
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/retain-teardown-archives" \
-    "$TEARDOWN" ship-retain \
+    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" ship-retain \
     > "$home/td.out" 2> "$home/td.err" || rc=$?
   [ "$rc" -eq 0 ] || fail "teardown must proceed with a retained delivered registration (rc=$rc)"
   case "$(cat "$home/td.err")" in
@@ -2148,10 +2119,6 @@ test_prechange_registration_is_open_and_unrechainable() {
 test_x_request_teardown_warns_when_final_unposted() {
   local home rc
   home=$(make_home xreq-warn)
-  # The recorded worktree is already gone, so seed the product-local archive
-  # that proves the landed task's artifacts were preserved before teardown.
-  mkdir -p "$home/projects/sample/.agent/archive/linked-task"
-  printf '%s\n' archived > "$home/projects/sample/.agent/archive/linked-task/plan.md"
   fm_write_meta "$home/state/linked-task.meta" \
     "window=firstmate:fm-linked-task" \
     "worktree=$home/projects/gone" \
@@ -2162,8 +2129,7 @@ test_x_request_teardown_warns_when_final_unposted() {
   rc=0
   PATH="$home/fakebin:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$home" \
     FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" \
-    FM_CONFIG_OVERRIDE="$home/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/xreq-warn-archives" \
-    "$TEARDOWN" linked-task \
+    FM_CONFIG_OVERRIDE="$home/config" "$TEARDOWN" linked-task \
     > "$home/td.out" 2> "$home/td.err" || rc=$?
   [ "$rc" -eq 0 ] || fail "legacy-link warning must not block teardown (rc=$rc)"
   assert_grep "still carries an unreconciled Relay request link (req-legacy-final) on its task record" "$home/td.err" \

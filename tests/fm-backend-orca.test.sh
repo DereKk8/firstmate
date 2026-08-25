@@ -7,7 +7,6 @@ set -u
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 TMP_ROOT=$(fm_test_tmproot fm-backend-orca-tests)
-mkdir -p "$TMP_ROOT/archives"
 
 make_orca_fakebin() {  # <dir> -> echoes fakebin dir
   local fb="$1/fakebin"
@@ -505,7 +504,6 @@ test_spawn_writes_orca_metadata_and_launches_harness() {
   printf '1\n' > "$RESP/1.exit"
   printf '{"ok":true,"result":{"repo":{"id":"repo-spawn"}}}\n' > "$RESP/2.out"
   printf '{"ok":true,"result":{"worktree":{"id":"wt-spawn","path":"%s"},"terminal":{"handle":"term-spawn"}}}\n' "$wt" > "$RESP/3.out"
-  printf '{"ok":true,"result":{"terminal":{"tail":["spawned\\n"]}}}\n' > "$RESP/7.out"
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
     FM_PROJECTS_OVERRIDE="$TMP_ROOT/unused-projects" FM_SPAWN_NO_GUARD=1 \
@@ -716,7 +714,7 @@ test_spawn_releases_orca_resources_when_metadata_write_fails() {
 }
 
 test_peek_send_and_crew_state_route_through_orca_meta() {
-  local wt state id out neutral
+  local wt state id out neutral record body
   id="orcaiopathz2"
   wt="$TMP_ROOT/io-wt"
   fm_git_init_commit "$wt"
@@ -745,11 +743,17 @@ test_peek_send_and_crew_state_route_through_orca_meta() {
     "peek/crew-state did not read the recorded Orca terminal"
   assert_not_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''read'$'\x1f''--terminal'$'\x1f'"fm-$id" \
     "crew-state should not read the stable Orca alias as a terminal handle"
-  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''send'$'\x1f''--terminal'$'\x1f''term-io'$'\x1f''--text'$'\x1f''hello orca'$'\x1f''--json' \
-    "send did not type through the recorded Orca terminal"
+  record="$state/$id.inbox/001.msg"
+  [ -f "$record" ] || fail "send did not enqueue through the task inbox"
+  body=$(bash -c '. "$1"; fm_task_inbox_body "$2"' _ "$ROOT/bin/fm-task-inbox-lib.sh" "$record")
+  [ "$body" = "hello orca" ] || fail "Orca task inbox did not preserve the send body, got '$body'"
+  assert_not_contains "$(cat "$LOG")" $'--text\x1fhello orca\x1f' \
+    "send typed the payload instead of recording it"
+  assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''send'$'\x1f''--terminal'$'\x1f''term-io'$'\x1f''--text'$'\x1f''Firstmate instruction waiting:' \
+    "send did not ring the inbox doorbell through the recorded Orca terminal"
   assert_contains "$(cat "$LOG")" $'orca\x1f''terminal'$'\x1f''send'$'\x1f''--terminal'$'\x1f''term-io'$'\x1f''--text'$'\x1f\x1f''--enter'$'\x1f''--json' \
-    "send did not submit Enter through the recorded Orca terminal"
-  pass "fm-peek/fm-send/fm-crew-state route through backend=orca metadata"
+    "send did not submit the doorbell through the recorded Orca terminal"
+  pass "fm-peek/fm-send/fm-crew-state route through backend=orca metadata and its durable inbox"
 }
 
 test_peek_and_crew_state_fail_closed_on_orca_error_json() {
@@ -1000,10 +1004,6 @@ test_ship_teardown_removes_orca_worktree_when_id_path_matches() {
   state="$TMP_ROOT/ship-match-state"
   config="$TMP_ROOT/ship-match-config"
   fm_git_worktree "$proj" "$wt" "fm/$id"
-  # Normal ship teardown archives the named task artifacts before cleanup, so
-  # the fixture starts with the required directory.
-  mkdir -p "$wt/.agent/tasks/$id"
-  printf '%s\n' fixture > "$wt/.agent/tasks/$id/plan.md"
   mkdir -p "$data/$id" "$state" "$config"
   touch "$state/.last-watcher-beat"
   fm_write_meta "$state/$id.meta" \
@@ -1016,7 +1016,6 @@ test_ship_teardown_removes_orca_worktree_when_id_path_matches() {
   set +e
   out=$( PATH="$FB:$PATH" FM_ORCA_LOG="$LOG" FM_ORCA_RESPONSES="$RESP" \
     FM_ROOT_OVERRIDE="$neutral" FM_STATE_OVERRIDE="$state" FM_DATA_OVERRIDE="$data" FM_CONFIG_OVERRIDE="$config" \
-    FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives" \
     "$ROOT/bin/fm-teardown.sh" "$id" 2>&1 )
   rc=$?
   set -e

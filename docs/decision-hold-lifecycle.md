@@ -72,7 +72,7 @@ An unanswered decision still blocks completion and teardown, and neither `declin
 The final verification commands and their exact summarized outputs follow.
 
 ```text
-$ bash tests/fm-decision-hold-lifecycle.test.sh
+$ bash tests/fm-captain-hold-lifecycle.test.sh
 ok - report-only unresolved decision is reproduced and completion refuses before loss
 ok - non-forced scout teardown always requires durable inventory verification
 ok - a declined decision closes with a recorded answer and no routed work

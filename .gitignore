@@ -1,10 +1,9 @@
 projects/
 state/
 data/
-scratchpad/
+scratchpad*
 .no-mistakes/
 .lavish/
-.agent/
 .fm-secondmate-home
 .fm-secondmate-parent
 .DS_Store

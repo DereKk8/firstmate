@@ -11,11 +11,13 @@
 # is left untouched and reported as a quantified, loud "STUCK: ... N commits behind
 # ... - needs attention" warning rather than a quiet drift. Nothing is ever forced,
 # stashed, or discarded.
-# The dirty check excludes local agent scratch under .agent/ (directory match, not
-# substring): entries whose path is under .agent/ are ignored so that agent archive
-# artifacts do not pin a clone as permanently dirty and block refresh forever.
 # Still skips (benignly) local-only/no-origin projects, missing remotes/branches,
 # and fetch failures.
+# A candidate under projects/ must be the root of its own work tree: git discovery
+# walks up, so a plain nested directory would otherwise resolve to the enclosing
+# repository (the firstmate checkout) and be synced under that directory's label.
+# Anything else is reported as "skipped: not a clone root" naming the repository
+# that would have been touched.
 # Pruning never deletes the checked-out branch or a branch that still has a
 # worktree, so it cannot discard unlanded work; set FM_FLEET_PRUNE=0 to disable it.
 # When the fetch fails on an orphaned .git/packed-refs.lock (left by a ref rewrite
@@ -303,8 +305,23 @@ sync_project() {
     echo "$label: skipped: not a directory"
     return 0
   fi
-  if ! git -C "$PROJ" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  # Git repository discovery walks UP from $PROJ, so a plain directory merely
+  # nested inside a repository - a worktree container left under projects/, say -
+  # resolves to the ENCLOSING repository, which in a firstmate home is the
+  # firstmate checkout itself. Every later `git -C "$PROJ"` would then read, prune
+  # and fast-forward that repository under this project's label, turning a routine
+  # refresh into an unrequested self-update reported as a project sync. Require
+  # $PROJ to be the root of its own work tree before any other git command runs.
+  proj_top=$(git -C "$PROJ" rev-parse --show-toplevel 2>/dev/null) || proj_top=""
+  if [ -z "$proj_top" ]; then
     echo "$label: skipped: not a git repo"
+    return 0
+  fi
+  # Both sides are physical paths (git resolves --show-toplevel through symlinks),
+  # so a symlinked clone dir still compares equal to its own root.
+  proj_abs=$(cd "$PROJ" && pwd -P) || proj_abs=""
+  if [ "$proj_top" != "$proj_abs" ]; then
+    echo "$label: skipped: not a clone root (git would act on $proj_top)"
     return 0
   fi
   mode_line=$("$FM_ROOT/bin/fm-project-mode.sh" "$label" 2>/dev/null || echo "no-mistakes off")
@@ -341,15 +358,7 @@ sync_project() {
 
   cur=$(git -C "$PROJ" symbolic-ref --short HEAD 2>/dev/null || echo "")
   dirty=no
-  dirty_entry=$(git -C "$PROJ" status --porcelain=v1 2>/dev/null | awk '
-    {
-      path = substr($0, 4)
-      arrow = index(path, " -> ")
-      if (substr($0, 1, 1) == "R" && arrow) path = substr(path, arrow + 4)
-      if (path !~ /^\.agent(\/|$)/) { print; exit }
-    }
-  ')
-  [ -z "$dirty_entry" ] || dirty=yes
+  [ -z "$(git -C "$PROJ" status --porcelain 2>/dev/null | head -1)" ] || dirty=yes
   recovered=no
 
   if [ "$cur" != "$DEFAULT" ]; then
@@ -358,9 +367,9 @@ sync_project() {
     # origin/<default>) and whose <default> branch is free to check out here.
     # Re-attaching to an already-published commit strands nothing, and the
     # fast-forward path below then catches the clone up. Anything else - a
-    # non-default named branch, a detached HEAD with unique commits, a dirty tree
-    # (excluding .agent/ agent scratch), or <default> already checked out elsewhere
-    # - may hold real work, so it is reported loudly and left untouched.
+    # non-default named branch, a detached HEAD with unique commits, a dirty tree,
+    # or <default> already checked out elsewhere - may hold real work, so it is
+    # reported loudly and left untouched.
     if [ -z "$cur" ] && [ "$dirty" = no ] \
         && git -C "$PROJ" merge-base --is-ancestor HEAD "$BASE" 2>/dev/null \
         && ! default_checked_out_elsewhere \

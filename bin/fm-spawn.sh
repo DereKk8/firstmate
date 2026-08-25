@@ -136,8 +136,6 @@
 #   git worktree root distinct from the primary project checkout.
 #   Before a fresh ship or scout worker starts, its clean task worktree fetches
 #   origin, resolves the current remote default branch, and resets to its tip.
-#   A repository with no origin launches from its local HEAD without an upstream
-#   comparison.
 #   An unreachable origin, unresolved default branch, or non-clean worktree
 #   refuses the spawn rather than risking a PR based on stale history.
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
@@ -889,11 +887,26 @@ if [ "${#POS[@]}" -gt 0 ] && [ "${POS[0]}" != "$idpart" ] && case "$idpart" in *
 fi
 ID=${POS[0]}
 fm_task_id_creation_valid "$ID" || { echo "error: invalid task id" >&2; exit 2; }
+# Role partition: spawning NEW work is MAIN-owned. A relaunch of an existing
+# task is legitimate branch recovery (fm-control drives it through this same
+# entrypoint), so only a fresh spawn refuses the branch actor (contract:
+# bin/fm-lease-lib.sh; no-op in homes without a branch actor).
+# shellcheck source=bin/fm-lease-lib.sh
+. "$SCRIPT_DIR/fm-lease-lib.sh"
+if [ "$RELAUNCH" -ne 1 ]; then
+  fm_lease_forbid_branch "new-task spawn (fm-spawn)"
+fi
 if [ "$RELAUNCH" -eq 1 ]; then
   SPAWN_CONTROL_LOCK="$STATE/.control-$ID.lock"
   control_owner=$(cat "$SPAWN_CONTROL_LOCK/pid" 2>/dev/null || true)
   if [ "$control_owner" = "$PPID" ] && fm_pid_alive "$control_owner"; then
     SPAWN_CONTROL_PARENT=1
+  elif [ "$(fm_lease_actor)" = branch ]; then
+    # Role partition refinement: branch recovery relaunches only through the
+    # fm-control transaction that owns the control lock, never by invoking
+    # this entrypoint directly (contract: bin/fm-lease-lib.sh).
+    echo "error: relaunch (fm-spawn) refused - the supervision branch must relaunch through fm-control" >&2
+    exit "$FM_LEASE_REFUSE_EXIT"
   elif fm_lock_try_acquire "$SPAWN_CONTROL_LOCK"; then
     SPAWN_CONTROL_LOCK_HELD=1
   else
@@ -1711,7 +1724,6 @@ real_path_or_raw() {  # <path>
 # herdr-sm-spaces-k4). Both branches converge on the same $T ("target") string
 # that every downstream operation (send/capture/kill) already treats as opaque
 # per-backend routing (fm_backend_resolve_selector).
-SPAWN_ISOLATED_WORKTREE=0
 validate_spawn_worktree() {  # <source> <inspect-target>
   local source=$1 inspect_target=$2 wt_real proj_real wt_top wt_top_real
   wt_real=
@@ -1728,22 +1740,10 @@ validate_spawn_worktree() {  # <source> <inspect-target>
     echo "error: $source did not yield an isolated worktree (resolved '$WT'; worktree root '${wt_top:-none}'; primary '$PROJ_ABS'); refusing to launch to avoid tangling the primary checkout. Inspect target $inspect_target" >&2
     exit 1
   fi
-  SPAWN_ISOLATED_WORKTREE=1
 }
 
 freshen_spawn_worktree_base() {  # <worktree>
-  local worktree=$1 default target expected actual status remotes
-  if ! remotes=$(git -C "$worktree" remote); then
-    echo "error: could not inspect remotes for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
-    return 1
-  fi
-  case $'\n'"$remotes"$'\n' in
-    *$'\norigin\n'*) ;;
-    *)
-      echo "notice: repository for pooled worktree '$worktree' has no origin remote; no upstream comparison was performed; launching from local HEAD" >&2
-      return 0
-      ;;
-  esac
+  local worktree=$1 default target expected actual status
   if ! git -C "$worktree" fetch --quiet origin; then
     echo "error: could not fetch origin for pooled worktree '$worktree'; refusing to launch from a potentially stale base" >&2
     return 1
@@ -2151,50 +2151,6 @@ spawn_send_key() {  # <target> <key>
   esac
 }
 
-spawn_readiness_fail() {  # <reason>
-  local reason=$1
-  printf 'blocked: spawn readiness failed: %s\n' "$reason" >> "$STATE/$ID.status"
-  echo "error: spawn readiness failed for $ID: $reason; metadata retained at $STATE/$ID.meta" >&2
-  return 1
-}
-
-spawn_wait_ready() {  # <target>
-  local target=$1 attempts=${FM_SPAWN_READY_ATTEMPTS:-20} delay=${FM_SPAWN_READY_SLEEP:-0.25}
-  local i capture trust_seen=0 target_seen=0
-  case "$attempts" in ''|*[!0-9]*|0) attempts=20 ;; esac
-  for i in $(seq 1 "$attempts"); do
-    if ! fm_backend_target_exists "$BACKEND" "$target" "$W"; then
-      sleep "$delay"
-      continue
-    fi
-    target_seen=1
-    if [ "$HARNESS" != codex ] || [ "$SPAWN_ISOLATED_WORKTREE" -ne 1 ]; then
-      return 0
-    fi
-    capture=$(fm_backend_capture "$BACKEND" "$target" 80 "$W" 2>/dev/null || true)
-    case "$capture" in
-      *'Do you trust the contents of this directory?'*)
-        trust_seen=1
-        if ! spawn_send_key "$target" Enter; then
-          sleep "$delay"
-          continue
-        fi
-        ;;
-      *)
-        [ "$trust_seen" -eq 1 ] && return 0
-        [ -n "$capture" ] && return 0
-        [ "$target_seen" -eq 1 ] && return 0
-        ;;
-    esac
-    sleep "$delay"
-  done
-  if [ "$trust_seen" -eq 1 ]; then
-    spawn_readiness_fail "Codex directory-trust prompt did not clear within ${attempts} checks at endpoint $target"
-  else
-    spawn_readiness_fail "backend endpoint $target was unreachable within ${attempts} checks (backend=$BACKEND)"
-  fi
-}
-
 kimi_capture() {
   fm_backend_capture "$BACKEND" "$T" 120 "$W" 2>/dev/null || true
 }
@@ -2323,39 +2279,6 @@ if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
 fi
 
-# Treehouse pools can inherit an upstream push policy and branch tracking for
-# the project's base branch. Each provisioned task worktree pushes its own
-# checked-out branch, regardless of those shared-pool defaults.
-if [ "$KIND" != secondmate ]; then
-  if ! git -C "$WT" config extensions.worktreeConfig true; then
-    echo "error: could not enable worktree-local git config for $WT" >&2
-    exit 1
-  fi
-  if ! git -C "$WT" config --worktree push.default current; then
-    echo "error: could not set worktree-local push.default=current for $WT" >&2
-    exit 1
-  fi
-  if ! git -C "$WT" config --worktree fm.firstmate-task "$ID"; then
-    echo "error: could not record task ownership for $WT" >&2
-    exit 1
-  fi
-fi
-
-
-# Treehouse pools can inherit an upstream push policy and branch tracking for
-# the project's base branch. Make each provisioned task worktree push its own
-# checked-out branch, regardless of those shared-pool defaults.
-if [ "$KIND" != secondmate ]; then
-  if ! git -C "$WT" config extensions.worktreeConfig true; then
-    echo "error: could not enable worktree-local git config for $WT" >&2
-    exit 1
-  fi
-  if ! git -C "$WT" config --worktree push.default current; then
-    echo "error: could not set worktree-local push.default=current for $WT" >&2
-    exit 1
-  fi
-fi
-
 # Per-task temp root: /tmp/fm-<id>/ with Go's build temp nested at gotmp/. Go won't
 # create GOTMPDIR, so mkdir before it is used; fm-teardown removes the whole root.
 # Nested (not a bare /tmp/fm-<id>/gotmp) so other per-task temp can live alongside
@@ -2394,7 +2317,6 @@ if [ "$RELAUNCH" -eq 1 ]; then
   RELAUNCH_REPLACEMENT_WT=$WT
 fi
 if [ "$KIND" != secondmate ]; then
-  exclude_path '.agent/'
   # Arm the semantic busy-state contract (bin/fm-busy-lib.sh) for every
   # adapter with a verified semantic source. The launch brief sent below IS a
   # submitted turn, so the seed record is busy/fm-spawn. The minted gen is
@@ -2906,9 +2828,6 @@ if [ "${HERDR_PROJECTED:-0}" -eq 1 ]; then
   spawn_herdr_presentation_order_lock_release
 fi
 spawn_send_key "$T" Enter
-if ! spawn_wait_ready "$T"; then
-  exit 1
-fi
 if [ "$HARNESS" = kimi ]; then
   if ! kimi_wait_for_ready; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"

@@ -16,7 +16,7 @@ Exact commands for the instruction and ownership checks:
 ```sh
 bash tests/fm-instruction-owners.test.sh
 bash tests/fm-brief.test.sh
-bash tests/fm-decision-hold-lifecycle.test.sh
+bash tests/fm-captain-hold-lifecycle.test.sh
 bin/fm-doc-audience-check.sh
 bin/fm-lint.sh
 git diff --check

@@ -76,14 +76,7 @@ make_case() {
   local name=$1 case_dir fakebin
   case_dir="$TMP_ROOT/$name"
   fakebin="$case_dir/fakebin"
-  mkdir -p "$case_dir/state" "$case_dir/config" "$case_dir/data" "$fakebin"
-  printf '%s\n' "- project [no-mistakes] base=main path=$case_dir/project - fixture project" > "$case_dir/data/projects.md"
-  fm_git_init_commit "$case_dir/archives"
-  git init -q --bare "$case_dir/archives-origin.git"
-  git -C "$case_dir/archives-origin.git" symbolic-ref HEAD refs/heads/main
-  git -C "$case_dir/archives" branch -M main
-  git -C "$case_dir/archives" remote add origin "file://$case_dir/archives-origin.git"
-  git -C "$case_dir/archives" push -q -u origin main
+  mkdir -p "$case_dir/state" "$case_dir/config" "$fakebin"
 
   # Mocks for the post-check teardown steps. Refuse logic exits before these
   # run; the ALLOW cases need them so the script can complete cleanly.
@@ -175,10 +168,6 @@ SH
   git -C "$case_dir/project" remote set-head origin main 2>/dev/null || true
   # Add a worktree on a fresh task branch; that branch is where the crewmate commits.
   git -C "$case_dir/project" worktree add -q -b fm/task-x1 "$case_dir/wt" main
-  # Normal ship teardown now archives the named task artifacts before returning
-  # this worktree, so every ordinary fixture starts with the required directory.
-  mkdir -p "$case_dir/wt/.agent/tasks/task-x1"
-  printf '%s\n' fixture > "$case_dir/wt/.agent/tasks/task-x1/workflow.md"
 
   # Fresh watcher beacon so fm-guard stays quiet.
   touch "$case_dir/state/.last-watcher-beat"
@@ -286,9 +275,6 @@ case "\${1:-} \${2:-}" in
     case " \$* " in
       *"state,headRefOid"*) printf '%s\t%s\n' 'MERGED' '$head' ; exit 0 ;;
       *"headRefOid"*) printf '%s\n' '$head' ; exit 0 ;;
-      *"mergeStateStatus"*) printf '%s\n' 'CLEAN' ; exit 0 ;;
-      *"baseRefName"*) printf '%s\n' 'main' ; exit 0 ;;
-      *"body"*) printf '%s\n' '## What Changed' '- Test fixture change' ; exit 0 ;;
     esac
     ;;
 esac
@@ -558,9 +544,7 @@ run_teardown() {
   local case_dir=$1; shift
   FM_ROOT_OVERRIDE="$ROOT" \
   FM_STATE_OVERRIDE="$case_dir/state" \
-  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_CONFIG_OVERRIDE="$case_dir/config" \
-  FM_AGENT_ARCHIVES_ROOT="$case_dir/archives" \
   PATH="$case_dir/fakebin:${FM_TEARDOWN_TEST_PATH:-$PATH}" \
     "$TEARDOWN" task-x1 "$@"
 }
@@ -690,40 +674,6 @@ test_no_mistakes_origin_remote_allows() {
   pass "no-mistakes worktree with HEAD on origin is torn down (no regression)"
 }
 
-test_landed_work_with_absent_endpoint_cleans_state() {
-  local case_dir rc gen artifact
-  case_dir=$(make_case landed-no-endpoint)
-  write_meta "$case_dir" no-mistakes ship
-  wt_commit "$case_dir" "landed work"
-  git -C "$case_dir/wt" push -q origin fm/task-x1
-  git -C "$case_dir/project" fetch -q origin
-  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
-  rm -f "$case_dir/state/task-x1.meta.bak"
-  gen=$("$ROOT/bin/fm-busy-event.sh" arm "$case_dir/state" task-x1)
-  printf 'busy_gen=%s\n' "$gen" >> "$case_dir/state/task-x1.meta"
-  for artifact in status pi-ext.ts turn-ended; do
-    : > "$case_dir/state/task-x1.$artifact"
-  done
-  : > "$case_dir/state/.hb-surfaced-task-x1"
-  : > "$case_dir/state/.seen-task-x1"
-
-  set +e
-  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-
-  expect_code 0 "$rc" "landed-no-endpoint: teardown should succeed"
-  for artifact in meta status busy-gen busy-state pi-ext.ts turn-ended; do
-    assert_absent "$case_dir/state/task-x1.$artifact" \
-      "landed-no-endpoint: teardown left $artifact behind"
-  done
-  assert_present "$case_dir/state/.hb-surfaced-task-x1" \
-    "landed-no-endpoint: teardown removed heartbeat history"
-  assert_present "$case_dir/state/.seen-task-x1" \
-    "landed-no-endpoint: teardown removed seen history"
-  pass "landed work with an absent endpoint clears task state and preserves watcher history"
-}
-
 test_no_mistakes_truly_unpushed_refuses() {
   local case_dir rc
   case_dir=$(make_case nm-unpushed)
@@ -740,27 +690,6 @@ test_no_mistakes_truly_unpushed_refuses() {
   expect_code 1 "$rc" "nm-unpushed: teardown should refuse"
   grep -q REFUSED "$case_dir/stderr" || fail "nm-unpushed: no REFUSED line in stderr"
   pass "no-mistakes worktree with genuinely unlanded work is refused (safety preserved)"
-}
-
-test_unlanded_work_with_absent_endpoint_refuses() {
-  local case_dir rc
-  case_dir=$(make_case unlanded-no-endpoint)
-  write_meta "$case_dir" no-mistakes ship
-  wt_commit_file "$case_dir" feature.txt hello "unpushed work"
-  sed -i.bak 's/^window=.*/window=/' "$case_dir/state/task-x1.meta"
-  rm -f "$case_dir/state/task-x1.meta.bak"
-
-  set +e
-  run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-
-  expect_code 1 "$rc" "unlanded-no-endpoint: teardown should refuse"
-  assert_present "$case_dir/state/task-x1.meta" \
-    "unlanded-no-endpoint: teardown erased metadata"
-  grep -q 'not landed' "$case_dir/stderr" \
-    || fail "unlanded-no-endpoint: landed-work refusal was not preserved"
-  pass "unlanded work with an absent endpoint still refuses"
 }
 
 test_squash_merged_branch_deleted_allows() {
@@ -890,8 +819,6 @@ test_pr_check_does_not_refresh_stale_pr_head() {
   add_gh_pr_merged_for_head "$case_dir" "$pr_head"
 
   FM_ROOT_OVERRIDE="$ROOT" \
-  FM_HOME="$case_dir/home" \
-  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
     "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
@@ -900,8 +827,6 @@ test_pr_check_does_not_refresh_stale_pr_head() {
   new_head=$(git -C "$case_dir/wt" rev-parse HEAD)
 
   FM_ROOT_OVERRIDE="$ROOT" \
-  FM_HOME="$case_dir/home" \
-  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
     "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
@@ -931,8 +856,6 @@ test_pr_check_records_remote_head_when_local_lags() {
   add_gh_pr_merged_for_head "$case_dir" "$pr_head"
 
   FM_ROOT_OVERRIDE="$ROOT" \
-  FM_HOME="$case_dir/home" \
-  FM_DATA_OVERRIDE="$case_dir/data" \
   FM_STATE_OVERRIDE="$case_dir/state" \
   PATH="$case_dir/fakebin:$PATH" \
     "$PR_CHECK" task-x1 https://github.com/example/repo/pull/7 >/dev/null
@@ -1160,8 +1083,6 @@ test_non_linked_index_lock_path_is_checked_from_worktree() {
   git -C "$case_dir/project" worktree remove --force "$case_dir/wt"
   git clone -q "$case_dir/origin.git" "$case_dir/wt"
   git -C "$case_dir/wt" checkout -q -b fm/task-x1
-  mkdir -p "$case_dir/wt/.agent/tasks/task-x1"
-  printf '%s\n' fixture > "$case_dir/wt/.agent/tasks/task-x1/workflow.md"
   write_meta "$case_dir" no-mistakes ship
   wt_commit "$case_dir" "shippable normal clone work"
   git -C "$case_dir/wt" push -q origin fm/task-x1
@@ -2676,9 +2597,7 @@ test_teardown_manual_backend_prompts_hand_edit_even_when_tasks_axi_present
 test_local_only_truly_unpushed_refuses
 test_local_only_merged_to_local_main_allows
 test_no_mistakes_origin_remote_allows
-test_landed_work_with_absent_endpoint_cleans_state
 test_no_mistakes_truly_unpushed_refuses
-test_unlanded_work_with_absent_endpoint_refuses
 test_local_only_force_overrides_unpushed
 test_teardown_missing_busy_sidecar_completes
 test_herdr_teardown_clears_escalation_marker

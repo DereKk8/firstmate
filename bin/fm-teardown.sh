@@ -50,8 +50,12 @@
 # is the approved discard path that prevalidates child removal targets, locks each
 # descendant home's task set before enumeration, and holds those locks through
 # child cleanup. Contention refuses the complete forced teardown before child
-# mutation. It then discards child work, kills child runtime endpoints, and removes
-# the retired home. Removing a leased home releases its durable treehouse lease so the pool slot is freed,
+# mutation. Local and remote retirement serialize their destructive phase with
+# that mate's backlog-handoff lock under the registry lock. Pending handoff wake
+# state is retired with the home, and local removal failure restores that state
+# before preserving the route for retry. Teardown then discards child work, kills
+# child runtime endpoints, and removes the retired home. Removing a leased home
+# releases its durable treehouse lease so the pool slot is freed,
 # never left leased forever. If the treehouse return fails, teardown leaves the
 # leased home and state in place instead of hiding a still-held lease.
 # Usage: fm-teardown.sh <task-id> [--force]
@@ -166,6 +170,8 @@ SUB_HOME_PARENT_MARKER=".fm-secondmate-parent"
 . "$SCRIPT_DIR/fm-secondmate-parent-lib.sh"
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# shellcheck source=bin/fm-pending-reply-lib.sh
+. "$SCRIPT_DIR/fm-pending-reply-lib.sh"
 # shellcheck source=bin/fm-nm-run-lib.sh
 . "$SCRIPT_DIR/fm-nm-run-lib.sh"
 if [ "$#" -lt 1 ] || ! fm_task_id_path_safe "$1"; then
@@ -176,6 +182,20 @@ ID=$1
 FORCE=${2:-}
 # shellcheck source=bin/fm-wake-lib.sh
 . "$SCRIPT_DIR/fm-wake-lib.sh"
+# Supervision lease guard: post-landing cleanup is overlap territory between
+# the two Pi supervision actors; refuse while the OTHER actor holds this
+# task's live lease (contract: bin/fm-lease-lib.sh; no-op in homes without
+# leases).
+# shellcheck source=bin/fm-lease-lib.sh
+. "$SCRIPT_DIR/fm-lease-lib.sh"
+# Role partition: forced teardown discards work, and the supervision branch
+# never discards anything - only an ordinary landed-work teardown is branch
+# territory (contract: bin/fm-lease-lib.sh).
+if [ "$FORCE" = --force ] && [ "$(fm_lease_actor)" = branch ]; then
+  echo "error: forced teardown refused - the supervision branch cannot discard work" >&2
+  exit "$FM_LEASE_REFUSE_EXIT"
+fi
+fm_lease_guard "$ID" "teardown (fm-teardown)"
 CONTROL_LOCK="$STATE/.control-$ID.lock"
 CONTROL_LOCK_HELD=0
 META_LOCK=
@@ -194,6 +214,18 @@ teardown_release_locks() {
     fm_lock_release "${DESCENDANT_LOCK_PATHS[$i]}" || true
   done
   DESCENDANT_LOCK_PATHS=()
+  if [ -n "${HANDOFF_WAKE_RETIRE_LOCK:-}" ]; then
+    fm_lock_release "$HANDOFF_WAKE_RETIRE_LOCK" || true
+    HANDOFF_WAKE_RETIRE_LOCK=
+  fi
+  if [ -n "${LOCAL_HANDOFF_LOCK:-}" ]; then
+    fm_lock_release "$LOCAL_HANDOFF_LOCK" || true
+    LOCAL_HANDOFF_LOCK=
+  fi
+  if [ -n "${LOCAL_REGISTRY_LOCK:-}" ]; then
+    fm_lock_release "$LOCAL_REGISTRY_LOCK" || true
+    LOCAL_REGISTRY_LOCK=
+  fi
   if [ "$META_LOCK_HELD" = 1 ]; then
     fm_lock_release "$META_LOCK" || true
     META_LOCK_HELD=0
@@ -202,6 +234,7 @@ teardown_release_locks() {
     fm_lock_release "$CONTROL_LOCK" || true
     CONTROL_LOCK_HELD=0
   fi
+  fm_lease_guard_release || true
   return "$status"
 }
 trap teardown_release_locks EXIT
@@ -230,6 +263,208 @@ REMOTE_PENDING_DIR_REAL=
 REMOTE_HANDOFF_LOCK=
 REMOTE_REGISTRY_LOCK=
 REMOTE_REPLY_LIFECYCLE_LOCK=
+LOCAL_HANDOFF_LOCK=
+LOCAL_REGISTRY_LOCK=
+HANDOFF_WAKE_RETIRE_MARKER=
+HANDOFF_WAKE_RETIRE_VALUE=
+HANDOFF_WAKE_RETIRE_CORR=
+HANDOFF_WAKE_RETIRE_LOCK=
+HANDOFF_WAKE_RETIRE_STAGE=
+
+handoff_wake_retire_validate() {
+  local marker="$STATE/.backlog-handoff-$ID.wake-pending" value corr rec confirmation
+  HANDOFF_WAKE_RETIRE_MARKER=
+  HANDOFF_WAKE_RETIRE_VALUE=
+  HANDOFF_WAKE_RETIRE_CORR=
+  [ -e "$marker" ] || [ -L "$marker" ] || return 0
+  [ -f "$marker" ] && [ ! -L "$marker" ] || {
+    echo "REFUSED: receiver wake state for secondmate $ID is unsafe" >&2
+    return 1
+  }
+  value=$(cat "$marker" 2>/dev/null || true)
+  case "$value" in
+    pending|confirmed) ;;
+    prepared:*)
+      corr=${value#prepared:}
+      corr=${corr%%:*}
+      printf '%s' "$value" | grep -Eq '^prepared:[a-f0-9]{16}:[a-f0-9]{16}$' || {
+        echo "REFUSED: receiver wake state for secondmate $ID is invalid" >&2
+        return 1
+      }
+      ;;
+    pending:*|confirmed:*)
+      corr=${value#*:}
+      printf '%s' "$corr" | grep -Eq '^[a-f0-9]{16}$' || {
+        echo "REFUSED: receiver wake state for secondmate $ID is invalid" >&2
+        return 1
+      }
+      ;;
+    *)
+      echo "REFUSED: receiver wake state for secondmate $ID is invalid" >&2
+      return 1
+      ;;
+  esac
+  if [ -n "$corr" ]; then
+    rec=$(fm_pending_reply_path "$STATE" "$corr")
+    if [ -e "$rec" ] || [ -L "$rec" ]; then
+      [ -f "$rec" ] && [ ! -L "$rec" ] \
+        && [ "$(fm_pending_reply_get "$rec" task_id)" = "$ID" ] || {
+        echo "REFUSED: receiver wake correlation for secondmate $ID is unsafe or belongs to another task" >&2
+        return 1
+      }
+    fi
+    confirmation=$(fm_pending_reply_delivery_confirmation_path "$STATE" "$corr")
+    if [ -e "$confirmation" ] || [ -L "$confirmation" ]; then
+      [ -f "$confirmation" ] && [ ! -L "$confirmation" ] || {
+        echo "REFUSED: receiver wake delivery state for secondmate $ID is unsafe" >&2
+        return 1
+      }
+    fi
+    HANDOFF_WAKE_RETIRE_CORR=$corr
+  fi
+  HANDOFF_WAKE_RETIRE_MARKER=$marker
+  HANDOFF_WAKE_RETIRE_VALUE=$value
+}
+
+handoff_wake_retire() {
+  local marker=$HANDOFF_WAKE_RETIRE_MARKER corr=$HANDOFF_WAKE_RETIRE_CORR lock rec confirmation rc=0
+  [ -n "$marker" ] || return 0
+  [ -f "$marker" ] && [ ! -L "$marker" ] \
+    && [ "$(cat "$marker" 2>/dev/null || true)" = "$HANDOFF_WAKE_RETIRE_VALUE" ] || return 1
+  if [ -n "$corr" ]; then
+    lock="$STATE/.pending-reply-$corr.lock"
+    fm_lock_acquire_wait "$lock" || return 1
+    rec=$(fm_pending_reply_path "$STATE" "$corr")
+    confirmation=$(fm_pending_reply_delivery_confirmation_path "$STATE" "$corr")
+    if { [ ! -e "$rec" ] && [ ! -L "$rec" ]; } \
+      || { [ -f "$rec" ] && [ ! -L "$rec" ] \
+        && [ "$(fm_pending_reply_get "$rec" task_id)" = "$ID" ]; }; then
+      rm -f -- "$confirmation" "$rec" "$marker" || rc=$?
+    else
+      rc=1
+    fi
+    fm_lock_release "$lock"
+    return "$rc"
+  fi
+  rm -f -- "$marker"
+}
+
+handoff_wake_retire_stage_restore() {
+  local stage=$HANDOFF_WAKE_RETIRE_STAGE marker rec confirmation name destination
+  [ -n "$stage" ] || return 0
+  marker="$STATE/.backlog-handoff-$ID.wake-pending"
+  rec=
+  confirmation=
+  if [ -n "$HANDOFF_WAKE_RETIRE_CORR" ]; then
+    rec=$(fm_pending_reply_path "$STATE" "$HANDOFF_WAKE_RETIRE_CORR")
+    confirmation=$(fm_pending_reply_delivery_confirmation_path "$STATE" "$HANDOFF_WAKE_RETIRE_CORR")
+  fi
+  for name in record confirmation marker; do
+    [ -e "$stage/$name" ] || continue
+    case "$name" in
+      record) destination=$rec ;;
+      confirmation) destination=$confirmation ;;
+      marker) destination=$marker ;;
+    esac
+    [ -n "$destination" ] && [ ! -e "$destination" ] && [ ! -L "$destination" ] \
+      && mv -- "$stage/$name" "$destination" || return 1
+  done
+  rm -f -- "$stage/corr" || return 1
+  rmdir -- "$stage" || return 1
+  if [ -n "$HANDOFF_WAKE_RETIRE_LOCK" ]; then
+    fm_lock_release "$HANDOFF_WAKE_RETIRE_LOCK" || return 1
+    HANDOFF_WAKE_RETIRE_LOCK=
+  fi
+  HANDOFF_WAKE_RETIRE_STAGE=
+}
+
+handoff_wake_retire_stage_commit() {
+  local stage=$HANDOFF_WAKE_RETIRE_STAGE retired
+  [ -n "$stage" ] || return 0
+  retired="$stage.retired.$$"
+  [ ! -e "$retired" ] && [ ! -L "$retired" ] || return 1
+  mv -- "$stage" "$retired" || return 1
+  HANDOFF_WAKE_RETIRE_STAGE=
+  if [ -n "$HANDOFF_WAKE_RETIRE_LOCK" ]; then
+    fm_lock_release "$HANDOFF_WAKE_RETIRE_LOCK" || return 1
+    HANDOFF_WAKE_RETIRE_LOCK=
+  fi
+  rm -rf -- "$retired" || echo "warning: retired receiver wake state remains at $retired" >&2
+}
+
+handoff_wake_retire_stage_recover() {
+  local home=$1 stage="$STATE/.backlog-handoff-$ID.wake-retiring" corr
+  [ -e "$stage" ] || [ -L "$stage" ] || return 0
+  [ -d "$stage" ] && [ ! -L "$stage" ] || {
+    echo "REFUSED: receiver wake retirement state for secondmate $ID is unsafe" >&2
+    return 1
+  }
+  if [ ! -e "$stage/corr" ] && [ ! -L "$stage/corr" ]; then
+    rmdir -- "$stage" 2>/dev/null && return 0
+    echo "REFUSED: receiver wake retirement state for secondmate $ID is incomplete" >&2
+    return 1
+  fi
+  [ -f "$stage/corr" ] && [ ! -L "$stage/corr" ] || {
+    echo "REFUSED: receiver wake retirement state for secondmate $ID is unsafe" >&2
+    return 1
+  }
+  corr=$(cat "$stage/corr" 2>/dev/null || true)
+  [ -z "$corr" ] || printf '%s' "$corr" | grep -Eq '^[a-f0-9]{16}$' || {
+    echo "REFUSED: receiver wake retirement correlation for secondmate $ID is invalid" >&2
+    return 1
+  }
+  local staged
+  for staged in "$stage/marker" "$stage/record" "$stage/confirmation"; do
+    [ ! -e "$staged" ] && [ ! -L "$staged" ] && continue
+    [ -f "$staged" ] && [ ! -L "$staged" ] || {
+      echo "REFUSED: receiver wake retirement state for secondmate $ID is unsafe" >&2
+      return 1
+    }
+  done
+  HANDOFF_WAKE_RETIRE_CORR=$corr
+  HANDOFF_WAKE_RETIRE_STAGE=$stage
+  if [ -n "$corr" ]; then
+    HANDOFF_WAKE_RETIRE_LOCK="$STATE/.pending-reply-$corr.lock"
+    fm_lock_acquire_wait "$HANDOFF_WAKE_RETIRE_LOCK" || return 1
+  fi
+  if [ -e "$home" ] || [ -L "$home" ]; then
+    handoff_wake_retire_stage_restore
+  else
+    handoff_wake_retire_stage_commit
+  fi
+}
+
+handoff_wake_retire_stage() {
+  local stage="$STATE/.backlog-handoff-$ID.wake-retiring" marker=$HANDOFF_WAKE_RETIRE_MARKER
+  local corr=$HANDOFF_WAKE_RETIRE_CORR rec confirmation
+  [ -n "$marker" ] || return 0
+  [ ! -e "$stage" ] && [ ! -L "$stage" ] || return 1
+  (umask 077; mkdir -- "$stage") || return 1
+  HANDOFF_WAKE_RETIRE_STAGE=$stage
+  printf '%s\n' "$corr" > "$stage/corr" || { handoff_wake_retire_stage_restore || true; return 1; }
+  if [ -n "$corr" ]; then
+    HANDOFF_WAKE_RETIRE_LOCK="$STATE/.pending-reply-$corr.lock"
+    fm_lock_acquire_wait "$HANDOFF_WAKE_RETIRE_LOCK" || {
+      HANDOFF_WAKE_RETIRE_LOCK=
+      handoff_wake_retire_stage_restore || true
+      return 1
+    }
+    rec=$(fm_pending_reply_path "$STATE" "$corr")
+    confirmation=$(fm_pending_reply_delivery_confirmation_path "$STATE" "$corr")
+    if [ -e "$rec" ] && ! mv -- "$rec" "$stage/record"; then
+      handoff_wake_retire_stage_restore || true
+      return 1
+    fi
+    if [ -e "$confirmation" ] && ! mv -- "$confirmation" "$stage/confirmation"; then
+      handoff_wake_retire_stage_restore || true
+      return 1
+    fi
+  fi
+  if ! mv -- "$marker" "$stage/marker"; then
+    handoff_wake_retire_stage_restore || true
+    return 1
+  fi
+}
 
 remote_teardown_locks_release() {
   if [ -n "$REMOTE_REPLY_LIFECYCLE_LOCK" ]; then
@@ -342,6 +577,7 @@ remote_secondmate_teardown() {
   [ "$route_host" = "$remote_host" ] && [ "$route_root" = "$remote_root" ] && [ "$route_home" = "$remote_home" ] \
     || { echo "REFUSED: remote secondmate metadata does not match its registry route" >&2; return 1; }
   [ -z "$FORCE" ] || [ "$FORCE" = --force ] || { echo "error: invalid teardown option: $FORCE" >&2; return 2; }
+  handoff_wake_retire_validate || return 1
   remote_recovery_paths_validate initial || return 1
   if [ "$FORCE" != --force ] && [ "$REMOTE_OUTBOX_PRESENT" -eq 1 ]; then
     echo "REFUSED: remote secondmate $ID still has a pending backlog outbox; deliver it or explicitly discard with --force" >&2
@@ -391,6 +627,8 @@ remote_secondmate_teardown() {
   fi
   remote_pending_replies_cleanup \
     || { echo "error: remote pending-reply cleanup failed; preserving the local route for retry" >&2; return 1; }
+  handoff_wake_retire \
+    || { echo "error: remote receiver wake cleanup failed; preserving the local route for retry" >&2; return 1; }
   tmp="$SECONDMATE_REG.tmp.$$"
   grep -vE "^- $ID( |$)" "$SECONDMATE_REG" > "$tmp" || true
   mv -f -- "$tmp" "$SECONDMATE_REG"
@@ -427,23 +665,10 @@ else
 fi
 [ "$remote_teardown_rc" -eq 3 ] || exit "$remote_teardown_rc"
 
-KIND=$(grep '^kind=' "$META" | cut -d= -f2- || true)
-[ -n "$KIND" ] || KIND=ship
-
 # This is the first cleanup authorization check. It is metadata-only and must
 # complete before fm-guard, a backend command, file removal, branch deletion,
-# worktree return, registry change, or process termination can run. An exactly
-# empty window= records a normal task endpoint that has already disappeared, so
-# there is no target to close. It still requires every cleanup-critical identity
-# and the ordinary landed-work safety proof below.
-ENDPOINT_PRESENT=1
-if [ "$KIND" != scout ] && [ "$KIND" != secondmate ] \
-  && fm_backend_task_endpoint_is_absent "$META"; then
-  fm_backend_validate_task_cleanup_metadata "$META" "$ID" || exit 1
-  ENDPOINT_PRESENT=0
-else
-  fm_backend_validate_task_endpoint "$META" "$ID" || exit 1
-fi
+# worktree return, registry change, or process termination can run.
+fm_backend_validate_task_endpoint "$META" "$ID" || exit 1
 BACKEND=$FM_BACKEND_VALIDATED_BACKEND
 T=$FM_BACKEND_VALIDATED_TARGET
 WT=$(fm_meta_get "$META" worktree)
@@ -465,6 +690,8 @@ fi
 ORCA_WORKTREE_ID=$(fm_meta_get "$META" orca_worktree_id)
 ORCA_PATH_MATCH_VERIFIED=0
 
+KIND=$(grep '^kind=' "$META" | cut -d= -f2- || true)
+[ -n "$KIND" ] || KIND=ship
 MODE=$(grep '^mode=' "$META" | cut -d= -f2- || true)
 [ -n "$MODE" ] || MODE=no-mistakes
 PUBLIC_FOLLOWUP_HOME=$FM_HOME
@@ -754,6 +981,7 @@ remove_pr_poll_artifacts() {
   local state_dir=$1 id=$2 quarantine artifact
   validate_pr_poll_cleanup "$state_dir" "$id" || return 1
   fm_pr_poll_retirement_recover_one "$state_dir" "$id" "$SCRIPT_DIR/fm-pr-poll.sh" || return 1
+  fm_pr_poll_merge_notified_remove "$state_dir" "$id" || return 1
   rm -f "$state_dir/$id.check.sh" "$state_dir/$id.pr-poll" \
     "$state_dir/$id.pr-poll-registration" "$state_dir/$id.pr-poll-retirement" \
     "$state_dir/$id.check-trust" || return 1
@@ -1161,7 +1389,7 @@ validate_worktree_teardown_safety() {
     echo "Restore the git index state, or get the captain's explicit OK to discard, then --force." >&2
     return 1
   fi
-  dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.agent/|\.fm-(grok|kimi)-turnend$)' | head -1 || true)
+  dirty=$(printf '%s\n' "$dirty_raw" | grep -vE '^\?\? (\.claude/|\.fm-(grok|kimi)-turnend$)' | head -1 || true)
 
   if ! unpushed_raw=$(git -C "$WT" log --oneline HEAD --not --remotes -- 2>/dev/null); then
     if worktree_safety_blocked_by_lock "commits not on a remote"; then
@@ -2278,25 +2506,31 @@ cleanup_firstmate_home_children() {
 }
 
 remove_secondmate_registry_entry() {
-  local id=$1 tmp lock rc=0
+  local id=$1 tmp lock rc=0 acquired=0
   [ -f "$SECONDMATE_REG" ] || return 0
   lock=$(secondmate_registry_lock_path "$STATE")
-  fm_lock_acquire_wait "$lock" || return 1
+  if [ "$LOCAL_REGISTRY_LOCK" != "$lock" ]; then
+    fm_lock_acquire_wait "$lock" || return 1
+    acquired=1
+  fi
   tmp="$SECONDMATE_REG.tmp.$$"
   grep -vE "^- $id( |$)" "$SECONDMATE_REG" > "$tmp" || true
   mv "$tmp" "$SECONDMATE_REG" || rc=$?
-  fm_lock_release "$lock"
+  [ "$acquired" -eq 0 ] || fm_lock_release "$lock"
   return "$rc"
 }
 
 validate_pr_poll_cleanup "$STATE" "$ID" || exit 1
 
 if [ "$KIND" = secondmate ]; then
+  LOCAL_REGISTRY_LOCK=$(secondmate_registry_lock_path "$STATE")
+  fm_lock_acquire_wait "$LOCAL_REGISTRY_LOCK" || exit 1
+  LOCAL_HANDOFF_LOCK="$STATE/.backlog-handoff-$ID.lock"
+  fm_lock_acquire_wait "$LOCAL_HANDOFF_LOCK" || exit 1
   [ -n "$HOME_PATH" ] || HOME_PATH=$WT
-  if ! validate_firstmate_home_for_removal "$HOME_PATH" "secondmate home" "$ID" >/dev/null; then
-    echo "error: secondmate home preflight failed for $ID; nothing was changed - repair the home and rerun teardown" >&2
-    exit 1
-  fi
+  handoff_wake_retire_stage_recover "$HOME_PATH" || exit 1
+  handoff_wake_retire_validate || exit 1
+  validate_firstmate_home_for_removal "$HOME_PATH" "secondmate home" "$ID" >/dev/null || exit 1
   if [ "$FORCE" = "--force" ]; then
     validate_firstmate_home_children_removal "$HOME_PATH" || exit 1
     preflight_descendant_task_locks "$HOME_PATH" || exit 1
@@ -2430,7 +2664,7 @@ fi
 # refuses before any destructive step.
 TEARDOWN_HERDR_SESSION=
 TEARDOWN_HERDR_PANE=
-if [ "$BACKEND" = herdr ] && [ "$ENDPOINT_PRESENT" = 1 ]; then
+if [ "$BACKEND" = herdr ]; then
   teardown_herdr_preflight_target "$T" "$ID" || exit 1
   fm_backend_herdr_parse_target "$T" || exit 1
   TEARDOWN_HERDR_SESSION=$FM_BACKEND_HERDR_SESSION
@@ -2524,7 +2758,7 @@ elif [ "$BACKEND" = herdr ]; then
   else
     echo "warning: herdr session presentation lock path is unavailable; skipping the pane close rather than closing unlocked" >&2
   fi
-elif [ "$BACKEND" != orca ] && [ "$ENDPOINT_PRESENT" = 1 ]; then
+elif [ "$BACKEND" != orca ]; then
   fm_backend_kill "$BACKEND" "$T" "$(meta_value "$META" zellij_tab_id)" "fm-$ID" 2>/dev/null || true
 fi
 if [ "$HERDR_PRESENTATION_RETIRE_CANDIDATE" = 1 ]; then
@@ -2543,7 +2777,7 @@ fi
 # the locked close. Only a structured not-found proves the pane gone; unknown
 # presence, missing or malformed endpoint identity, and missing confirmation
 # machinery all refuse.
-if [ "$BACKEND" = herdr ] && [ "$ENDPOINT_PRESENT" = 1 ]; then
+if [ "$BACKEND" = herdr ]; then
   fm_backend_source herdr || true
   if ! declare -F fm_backend_herdr_endpoint_confirmed_gone >/dev/null 2>&1; then
     echo "error: herdr endpoint confirmation is unavailable for $ID; retaining every durable task record" >&2
@@ -2556,14 +2790,23 @@ if [ "$BACKEND" = herdr ] && [ "$ENDPOINT_PRESENT" = 1 ]; then
 fi
 if [ "$KIND" = secondmate ]; then
   [ -n "$HOME_PATH" ] || HOME_PATH=$WT
-  remove_firstmate_home "$HOME_PATH" "secondmate home" "$ID" || exit $?
+  handoff_wake_retire_stage \
+    || { echo "error: receiver wake cleanup could not be staged; preserving the secondmate home and route" >&2; exit 1; }
+  if remove_firstmate_home "$HOME_PATH" "secondmate home" "$ID"; then
+    :
+  else
+    rc=$?
+    handoff_wake_retire_stage_restore \
+      || echo "error: receiver wake restoration failed; recovery state remains at $HANDOFF_WAKE_RETIRE_STAGE" >&2
+    exit "$rc"
+  fi
+  handoff_wake_retire_stage_commit \
+    || { echo "error: receiver wake cleanup failed; preserving the secondmate route for retry" >&2; exit 1; }
   remove_secondmate_registry_entry "$ID"
 fi
 remove_grok_turnend_auth "$STATE" "$ID" || exit 1
 remove_kimi_turnend_auth "$STATE" "$ID" || exit 1
-if [ "$ENDPOINT_PRESENT" = 1 ]; then
-  fm_backend_clear_transition "$BACKEND" "$STATE" "$T" || true
-fi
+fm_backend_clear_transition "$BACKEND" "$STATE" "$T" || true
 # Remove the per-task temp root (/tmp/fm-<id>/, incl. its gotmp/) recorded by spawn.
 # Read before the state-file rm below; empty (pre-fix tasks without tasktmp=) is a no-op.
 [ -n "$TASK_TMP" ] && rm -rf "$TASK_TMP"
@@ -2576,14 +2819,14 @@ rm -f "$STATE/$ID.turn-ended" "$STATE/$ID.meta" \
   "$STATE/$ID.muse-session-current" "$STATE/$ID.cursor-session" \
   "$STATE/$ID.control-relaunch" "$STATE/$ID.control-relaunch.meta-prior" \
   "$STATE/$ID.control-relaunch.brief-prior" "$STATE/$ID.control-relaunch.note"
+# The steering inbox (bin/fm-task-inbox-lib.sh) is runtime state for the
+# retired endpoint; teardown only runs after landing is confirmed, so any
+# leftover unhandled steer here is moot rather than unlanded work.
+rm -rf "$STATE/$ID.inbox"
 fm_lock_release "$META_LOCK"
 META_LOCK_HELD=0
 if [ "$KIND" != scout ] && [ "$KIND" != secondmate ] && [ "$MODE" != local-only ]; then
   "$FM_ROOT/bin/fm-fleet-sync.sh" "$PROJ" || true
 fi
-if [ "$ENDPOINT_PRESENT" = 1 ]; then
-  echo "teardown $ID complete (window $T, worktree $WT)"
-else
-  echo "teardown $ID complete (no endpoint, worktree $WT)"
-fi
+echo "teardown $ID complete (window $T, worktree $WT)"
 backlog_refresh_reminder
