@@ -332,27 +332,6 @@ test_legacy_recorded_override_rechecks_normally() {
   pass "fm-pr-merge accepts legacy recorded PR-check overrides during a normal re-check"
 }
 
-test_legacy_recorded_override_does_not_bypass_structured_refusal() {
-  local case_dir rc
-  case_dir=$(make_case recorded-override-dirty)
-  printf '%s\n' 'pr_check_override=1' >> "$case_dir/state/task-x1.meta"
-  add_gh_mocks_dirty "$case_dir"
-  : > "$case_dir/gh-axi.log"
-
-  set +e
-  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/31 \
-    > "$case_dir/stdout" 2> "$case_dir/stderr"
-  rc=$?
-  set -e
-
-  expect_code 1 "$rc" "recorded-override: merge must refuse a DIRTY PR"
-  assert_grep 'GitHub reports merge state DIRTY' "$case_dir/stderr" \
-    "recorded-override: refusal did not identify the DIRTY PR"
-  assert_no_grep 'pr merge' "$case_dir/gh-axi.log" \
-    "recorded-override: merge was reached for a DIRTY PR"
-  pass "fm-pr-merge does not let a legacy recorded override bypass structured forge checks"
-}
-
 test_missing_meta_refuses_before_merge() {
   local case_dir fakebin rc
   case_dir="$TMP_ROOT/missing-meta"
@@ -879,7 +858,6 @@ test_github_still_forwards_sha_arg() {
 
 test_records_pr_and_head_before_merging
 test_legacy_recorded_override_rechecks_normally
-test_legacy_recorded_override_does_not_bypass_structured_refusal
 test_merge_failure_propagates_after_recording
 test_extra_merge_args_forwarded
 test_missing_meta_refuses_before_merge

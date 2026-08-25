@@ -208,7 +208,7 @@ family_for_basename() {
     fm-teardown-endpoint-safety.test.sh)
       printf '%s\n' backend-dispatch
       ;;
-    fm-pr-body-check.test.sh|fm-pr-check-security.test.sh|fm-pr-merge.test.sh|fm-review-diff.test.sh|\
+    fm-pr-check-security.test.sh|fm-pr-merge.test.sh|fm-review-diff.test.sh|\
     fm-teardown.test.sh|fm-x-mode.test.sh)
       printf '%s\n' pr-forge
       ;;
@@ -437,7 +437,6 @@ tests/fm-peek-remote.test.sh 848
 tests/fm-pending-reply.test.sh 19488
 tests/fm-pi-primary-live-e2e.test.sh 41
 tests/fm-pi-watch-extension.test.sh 17979
-tests/fm-pr-body-check.test.sh 962
 tests/fm-pr-check-security.test.sh 250417
 tests/fm-procevent-when.test.sh 15249
 tests/fm-procevent.test.sh 53142

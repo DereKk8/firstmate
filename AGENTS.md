@@ -291,6 +291,7 @@ Load `diagnostic-reasoning` before scoping a reported bug and before acting on a
 
 Resolve every ship task's concrete delivery mode and `yolo` merge posture at intake.
 Pass the mode explicitly to the brief, and pass both values explicitly to the spawn and any scout promotion; each command refuses to guess the values it consumes.
+Firstmate resolves the project's base branch with `bin/fm-project-base.sh` and states that resolved base explicitly in the brief and the PR instruction.
 A current explicit captain instruction wins; otherwise the project's registry entry is the captain's standing posture, and dropping below its rigor needs a reason you can state.
 On a `no-mistakes-prod-only` project, classify the task's surface: internal-only tooling, automation, contributor or operator process, and release or submission work ships `direct-PR`, while product-facing, mixed, and uncertain work ships `no-mistakes`; never infer internal-only from file location or project name.
 An unregistered project or absent registry resolves to `no-mistakes` with yolo off, and the registration gap goes to the captain.
@@ -369,8 +370,8 @@ Tell the captain the PR's full URL, always the complete `https://...` link rathe
 A captain instruction to merge is explicit authority; `yolo` is the only standing routine merge authority.
 For any custom `state/<id>.check.sh` you write yourself, keep it an ordinary single-link mode-`0700` file, print one line only when firstmate should wake, print nothing otherwise, finish before `FM_CHECK_TIMEOUT`, then bind its current bytes with `bin/fm-check-register.sh <id>` before the watcher may execute it.
 
+Before ordering cleanup for a task whose artifacts matter, firstmate runs `bin/fm-archive-task.sh` while the local copy still exists.
 Tear down a ship task only after landing is confirmed with `bin/fm-teardown.sh <id>`.
-Teardown archives a ship task's agent artifacts before removing the worktree; a local archive failure refuses teardown and preserves the task, while `--force` skips archiving.
 A teardown refusal for uncommitted or unlanded work is a stop-and-investigate result, never an obstacle to bypass.
 Never force teardown without explicit discard authority.
 After successful teardown, record completion, retain only the configured recent Done history, and re-evaluate queued work whose blockers and time gates have cleared.
@@ -441,8 +442,9 @@ The skill owns the daemon procedure; these safety facts remain inline:
 - Bias ambiguous input toward exit because a present captain takes precedence.
 
 When the captain invokes `/cardio`, load the `cardio` skill: it authorizes a batch of dispatchable queued work, dispatches what the captain picks, then hands off to `/afk` unchanged.
+When the captain invokes `/reset-window`, load the `reset-window` skill to flush context and continue in a fresh session.
 
-**End session**: invoke `/end-session` when the captain invokes `/end-session`, says they are done for the day, or asks to shut firstmate down completely.
+**End session**: invoke `/end-session` and load the `end-session` skill when the captain invokes it, says they are done for the day, or asks to shut firstmate down completely.
 Unlike `/reset-window`, which flushes context and immediately launches a fresh-context successor that keeps supervising, and unlike `/afk`, which keeps supervising more quietly, `/end-session` is the one that actually stops: it proves the fleet is durably preserved, stops helpers and monitoring only through their verified graceful paths, releases the session lock last, and launches no successor at all.
 
 ### Stuck-worker trigger
@@ -574,8 +576,6 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `fmx-respond` - load on an `x-mention <request_id>` `check:` wake to handle the mention, on an `x-mode-error ...` `check:` wake to report the Relay configuration blocker, on a `public-followup ...` `check:` wake or a startup-surfaced public commitment, and on any milestone or terminal wake for a Relay-linked task before posting its completion follow-up; relevant only when Relay is on.
 - `firstmate-codexapp` - load before coordinating a visible Codex Desktop thread, evaluating a Codex App backend request, or reconciling Codex Desktop host-tool smoke evidence for Firstmate work.
 - `firstmate-coding-guidelines` - load before changing firstmate's shared, tracked material, as defined by section 1's list, whether editing directly or briefing a crewmate for a firstmate-repo task.
-- `reset-window` - load when the captain invokes `/reset-window` or asks to reset context and continue in a fresh session.
-- `pr-merge-board` - load when the captain asks to regenerate the Notion PR merge board, or when a session that touches tracked PRs starts or ends per the captain's standing instruction.
 
 ## 14. Relay
 

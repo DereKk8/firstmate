@@ -89,11 +89,6 @@
 # checks before any destructive return. Teardown output notes every wait, retry, and
 # removal so the operator can see what happened.
 #
-# After a normal ship task passes the landed-work and dirty-worktree checks,
-# fm-archive-task.sh copies its task-scoped artifacts while the worktree still
-# exists. A local archive failure refuses teardown and preserves the worktree;
-# the backup mirror is best effort and reports its own failures without blocking.
-#
 # Pre-teardown cleanup sequence (runs once every landed/discard-work safety
 # refusal above has already passed, and BEFORE any worktree return, branch
 # delete, or backend kill below - a still-active run or a leaked process may
@@ -2440,14 +2435,6 @@ if [ "$BACKEND" = herdr ] && [ "$ENDPOINT_PRESENT" = 1 ]; then
   fm_backend_herdr_parse_target "$T" || exit 1
   TEARDOWN_HERDR_SESSION=$FM_BACKEND_HERDR_SESSION
   TEARDOWN_HERDR_PANE=$FM_BACKEND_HERDR_PANE
-fi
-
-if [ "$KIND" = ship ] && [ "$FORCE" != "--force" ]; then
-  if ! FM_ROOT_OVERRIDE="$FM_ROOT" FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
-      "$SCRIPT_DIR/fm-archive-task.sh" "$ID" --force; then
-    echo "REFUSED: task $ID artifacts were not archived; preserving the worktree and task state, so teardown is blocked." >&2
-    exit 1
-  fi
 fi
 
 # Best-effort: drop the local task branch so the shared repo does not accumulate refs.
