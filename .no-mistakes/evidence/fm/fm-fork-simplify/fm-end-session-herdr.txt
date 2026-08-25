@@ -1,0 +1,26 @@
+Correction validation: commit 958b44d "Fix herdr end-session endpoint classification"
+
+1) Full fm-end-session.test.sh suite (target script): 8/8 pass
+   ok - preflight refuses without session-lock ownership
+   ok - preflight accepts a lock-owned empty home
+   ok - preflight refuses an endpoint it cannot classify
+   ok - preflight refuses an unsafe task record
+   ok - preflight reports a live helper without mutating state
+   ok - preflight classifies a live herdr endpoint   <-- NEW regression coverage
+   ok - preflight preserves branch custody during active validation
+   ok - preflight exposes no shutdown mutation subcommands
+   EXIT=0
+
+2) Regression nature confirmed: swap in PRE-FIX script (parent 235b129) -> herdr test FAILS
+   REFUSED: live ship task task-x1 endpoint state cannot be confidently classified (herdr, session:p1).
+   not ok - herdr endpoint preflight refused:
+   PRE-FIX TEST EXIT=1
+   Worktree restored to target; suite passes again (EXIT=0), git clean.
+
+3) Ambiguous herdr result still refuses (per intent "preserving refusal for ambiguous results"):
+   fake herdr 'agent get' returns {"unexpected":"shape"} (unparseable)
+   REFUSED: live ship task task-x1 endpoint state cannot be confidently classified (herdr, session:p1).
+   EXIT=1
+
+4) Missing herdr pane (pane_not_found -> fm_backend_agent_state 'missing') does NOT refuse:
+   EXIT=0  (missing/dead are licensed; only ambiguous/unverified refuse)
