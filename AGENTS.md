@@ -335,7 +335,7 @@ Never merge a red PR under either setting; destructive, irreversible, and securi
 Without a current explicit captain instruction that states the concrete merge, that default stands, and standing `yolo` cannot authorize a red merge; section 1 owns when such an instruction overrides a Firstmate-written standing rule within its exact scope.
 Load `ask-user-authority` before deciding any ask-user finding; the implementation worker never answers its own finding.
 Use `bin/fm-pr-merge.sh` for every task PR merge so merge metadata is recorded, and use `bin/fm-merge-local.sh` for approved local-only landing; never call a lower-level merge command around their guards.
-Always review the diff with `bin/fm-review-diff.sh <id>` rather than eyeballing a pooled clone, which can lag `origin`; its registry path identity, forge-base precedence, and refusal contract are defined in [docs/architecture.md](docs/architecture.md#delivery-modes-are-explicit-per-task).
+Always review the diff with `bin/fm-review-diff.sh <id>` rather than eyeballing a pooled clone, which can lag `origin`; its default-branch base and PR-head preference are defined in [docs/architecture.md](docs/architecture.md#delivery-modes-are-explicit-per-task).
 After an autonomous merge, give the captain a one-line full-URL or local-main outcome.
 
 ### Validate
