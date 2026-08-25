@@ -91,10 +91,11 @@ default). The successor launches at the firstmate repo root, on the requested
 harness/model/effort, with a catch-up prompt so it runs session-start itself.
 
 The launch prompt must name the exact `data/reset-window/<YYYY-MM-DD-HHMM>.md`
-path written in step 1, not a bare "catch up" — session-start surfaces that note
-only once, so a successor that never reads its instructions can still find it
-named explicitly in its very first prompt. Substitute `<note-path>` below with
-that literal path, exactly as `<model>` and `<effort>` are already substituted.
+path written in step 1, not a bare "catch up". Session start does not surface this
+note; the launch prompt is the successor's only guaranteed pointer to it, so a
+successor that never reads its instructions can still find it named explicitly
+in its very first prompt. Substitute `<note-path>` below with that literal path,
+exactly as `<model>` and `<effort>` are already substituted.
 
 **herdr backend:**
 ```sh
