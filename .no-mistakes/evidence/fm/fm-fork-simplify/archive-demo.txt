@@ -1,0 +1,21 @@
+$ bin/fm-archive-task.sh demo1
+archived task demo1 from /tmp/tmp.nTPWZAPnYG/wt/.agent/tasks/demo1 into /tmp/tmp.nTPWZAPnYG/project/.agent/archive/demo1
+exit=0
+
+$ find project/.agent/archive -type f
+/tmp/tmp.nTPWZAPnYG/project/.agent/archive/demo1/plan.md
+
+$ second invocation (destination exists, no --force)
+REFUSED: archive destination already exists: /tmp/tmp.nTPWZAPnYG/project/.agent/archive/demo1 (rerun with --force to overwrite)
+exit=1
+
+$ with --force overwrites
+archived task demo1 from /tmp/tmp.nTPWZAPnYG/wt/.agent/tasks/demo1 into /tmp/tmp.nTPWZAPnYG/project/.agent/archive/demo1
+exit=0
+
+$ missing worktree refuses and reports
+shell-init: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+chdir: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+chdir: error retrieving current directory: getcwd: cannot access parent directories: No such file or directory
+archived task demo1 already present at /tmp/tmp.nTPWZAPnYG/project/.agent/archive/demo1; recorded worktree is gone
+exit=0

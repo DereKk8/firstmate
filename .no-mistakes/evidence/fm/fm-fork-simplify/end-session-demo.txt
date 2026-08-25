@@ -1,0 +1,24 @@
+--- case 1: no session lock ownership -> REFUSED, keeps read-only
+REFUSED: this process does not hold the session lock.
+exit=1
+
+--- case 2: lock owned; ship/scout endpoints missing -> quiet pass, exit 0
+exit=0
+
+--- case 3: lock owned; unsafe symlinked task record -> REFUSED naming it
+REFUSED: state/*.meta cannot be read: /tmp/tmp.NiFBhGslOo/state/fm-x4.meta
+exit=1
+
+--- case 4: lock owned; live helper -> LIVE_HELPER line, nothing mutated
+LIVE_HELPER fm-x5 tmux fmtestdemo:fm-x5
+exit=0
+
+--- case 5: lock owned; unclassifiable endpoint -> REFUSED classification
+REFUSED: live ship task fm-x6 endpoint state cannot be confidently classified (tmux, fmtestdemo:fm-x6).
+exit=1
+
+--- case 6: no shutdown machinery; only the preflight surface exists
+usage: end-session preflight
+exit=2
+usage: end-session preflight
+exit=2
