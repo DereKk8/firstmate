@@ -134,15 +134,15 @@ test_agent_owned_quota_array_dispatch_contract() {
   local phrase
   for phrase in \
     'Firstmate alone resolves a matched profile array' \
-    'run `quota-axi --json` at that intake' \
+    'TOON-then-`--json` fallback only for genuine ambiguity' \
     'evaluate every configured candidate against that current output' \
-    'choose with inspectable effective headroom and usable runway' \
+    'choose with inspectable `spendPriority` as the one quota-perspective ranker' \
     'never omit a candidate, guess, fall back silently, or call the result quota-informed' \
     'Preserve malformed profile configuration as an actionable error' \
     "preserve the captain's strongest-reasoning class rather than silently downgrading it" \
-    'Break genuine headroom ties without array-order or harness bias' \
+    'Break genuine evidence ties without array-order or harness bias' \
     '`quota-axi` owns how model or product windows relate to bounding account windows' \
-    'explicitly interim rule until successor `quota-axi-interpretation-hints-h3` lands'; do
+    'that skill is the single owner of the TOON-first spendPriority selection procedure'; do
     assert_grep "$phrase" "$AGENTS" "array-dispatch contract lost '$phrase'"
   done
 
@@ -150,10 +150,10 @@ test_agent_owned_quota_array_dispatch_contract() {
     '| claude | Open the current interactive session' \
     '| codex | Open the current interactive session' \
     '| opencode | Run `opencode models [provider]`' \
-    '| pi | Run `pi --list-models [search]`' \
+    '| pi / pi-signed | Run the selected executable as `<executable> --list-models [search]`' \
     '| grok | Run `grok models`' \
     "For an unfamiliar harness or model namespace, establish support and provider identity from that harness's authoritative CLI help, model listing, or current documentation rather than guessing" \
-    'If those sources do not establish the relationship needed for dispatch, fail loudly and report the unresolved candidate.'; do
+    'report that as uncertainty rather than turning it into a supported or unsupported verdict'; do
     assert_grep "$phrase" "$HARNESS" "model discovery guidance lost '$phrase'"
   done
   assert_grep 'not as a permanent namespace or provider mapping' "$HARNESS" \
@@ -162,7 +162,7 @@ test_agent_owned_quota_array_dispatch_contract() {
     "configuration docs do not point to the agent-owned array procedure"
   assert_grep 'quota-axi is required for the' "$BOOTSTRAP" \
     "bootstrap docs lost the quota-axi dependency pointer"
-  assert_grep 'agent-owned dispatch-profile array procedure in AGENTS.md section 4.' "$BOOTSTRAP" \
+  assert_grep 'agent-owned dispatch-profile array procedure in AGENTS.md section 4 and .agents/skills/quota-array-dispatch/SKILL.md.' "$BOOTSTRAP" \
     "bootstrap docs do not point to the agent-owned array procedure"
   pass "firstmate directly compares every quota candidate with authoritative model discovery"
 }

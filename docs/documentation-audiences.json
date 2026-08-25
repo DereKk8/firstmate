@@ -133,11 +133,27 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/cardio/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/decision-hold-lifecycle/SKILL.md",
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/end-session/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/diagnostic-reasoning/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/explain/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/explain/explainer-brief.md",
       "audience": "agent-runtime"
     },
     {
@@ -169,6 +185,14 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/refactor-review/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/reset-window/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/quota-array-dispatch/SKILL.md",
       "audience": "agent-runtime"
     },
@@ -182,6 +206,10 @@
     },
     {
       "path": ".agents/skills/stuck-crewmate-recovery/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/refit/SKILL.md",
       "audience": "agent-runtime"
     },
     {
@@ -251,6 +279,10 @@
     {
       "path": "docs/configuration.md",
       "audience": "operator-current"
+    },
+    {
+      "path": "docs/decision-hold-lifecycle.md",
+      "audience": "maintainer-architecture"
     },
     {
       "path": "docs/captain-hold-lifecycle.md",
@@ -362,6 +394,10 @@
     },
     {
       "path": "docs/verification/process-event-sources.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/verification/refactor-review.md",
       "audience": "maintainer-verification"
     },
     {
