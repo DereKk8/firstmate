@@ -148,15 +148,13 @@ Use the discovery surface in the current authenticated environment because suppo
 | claude | Open the current interactive session's `/model` picker; `claude --help` documents the accepted alias or full-model-name input shape. |
 | codex | Open the current interactive session's `/model` picker. |
 | opencode | Run `opencode models [provider]`, which lists available provider/model identifiers. |
-| pi | Run `pi --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
-| pi-signed | Run `pi-signed --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
+| pi / pi-signed | Run the selected executable as `<executable> --list-models [search]`; Pi's installed `docs/models.md` owns how built-in, extension-registered, and custom provider/model entries reach that list. |
 | grok | Run `grok models`, which lists the models available to the current Grok installation and account. |
 | kimi | Run `kimi provider list --json`, which lists the current provider and model configuration. |
 | cursor | Run `cursor-agent --list-models` (or the legacy `agent --list-models`), which lists the ids available to the current Cursor account. `cursor` is not the CLI name. |
 
 For an unfamiliar harness or model namespace, establish support and provider identity from that harness's authoritative CLI help, model listing, or current documentation rather than guessing from a name or prefix.
 A listing that reaches the account and does not contain the model is concrete evidence the model is unsupported: block that candidate and quote the result.
-If those sources do not establish the relationship needed for dispatch, fail loudly and report the unresolved candidate.
 A discovery surface you could not reach establishes nothing; report that as uncertainty rather than turning it into a supported or unsupported verdict.
 
 When a requested effort value is outside the harness-specific accepted set, `fm-spawn` records the requested `effort=` in meta but emits no effort flag for that harness.
@@ -260,9 +258,7 @@ If a pane shows the exit banner, relaunch with `--continue` to resume the sessio
 While opencode is mid-turn, the composer accepts Enter as a "send when the turn
 ends" keystroke but does not clear the typed text from the composer until the
 turn actually finishes.
-Without a conversion, every `fm-send` to a busy opencode pane exits non-zero on a
-false "Enter swallowed", and every daemon escalation that lands while the
-primary is mid-turn is treated as wedged.
+Without a conversion, every typed-plane `fm-send` to a busy opencode pane exits non-zero on a false "Enter swallowed", and every daemon escalation that lands while the primary is mid-turn is treated as wedged.
 Both tmux and herdr delegate this exception to the one policy in `fm_composer_queued_enter_verdict` (`bin/fm-composer-lib.sh`), with backend-specific signals documented in `docs/tmux-backend.md` and `docs/herdr-backend.md`.
 Regression coverage is `tests/fm-tmux-submit-busy.test.sh`, `tests/fm-composer-lib.test.sh`, and `tests/fm-backend-herdr.test.sh`; the live Herdr Claude guard is `FM_HERDR_SUBMIT_CONFIRM_LIVE=1 tests/fm-herdr-submit-confirm-live-e2e.test.sh`.
 
@@ -409,8 +405,8 @@ Match that TOKEN and never the spinner verb: the same version rendered `Working`
 **Delivery confirmation is verified on tmux and Herdr only.**
 Herdr reports a Cursor pane `blocked` in EVERY state - idle, mid-turn, and after - so its native idle-baseline submit path is unreachable for Cursor and the composer branch runs instead; that branch reads a mid-turn row carrying the placeholder beside `ctrl+c to stop`, which is `pending`.
 `bin/backends/herdr.sh` therefore confirms a Cursor submit from a rendered-footer idle-to-busy transition, taking the baseline before the first Enter so an already-busy pane never confirms.
-Zellij, cmux, and Orca share a submit core that never consults that footer, so a Cursor steer there LANDS but `bin/fm-send.sh` reports delivery unconfirmed and exits non-zero.
-Treat that as a known limitation of those three backends rather than a lost message: the steer is in the pane and the worker's own recorded state still comes from its transcript fold.
+Zellij, cmux, and Orca share a submit core that never consults that footer, so a typed-plane Cursor send there (a harness-native invocation or an explicit backend target; ordinary text steers ride the durable inbox and exit 0 at enqueue) LANDS but `bin/fm-send.sh` reports delivery unconfirmed and exits non-zero.
+Treat that as a known limitation of those three backends rather than a lost message: the text is in the pane and the worker's own recorded state still comes from its transcript fold.
 Teaching the shared core the same transition is deliberately separate work, because it changes the submit path for every harness on those three backends and needs its own live validation on each.
 
 The composer's reverse-video placeholder remnant is taught to the ONE fleet-wide screen classifier in `bin/fm-composer-lib.sh`, not to any adapter.

@@ -39,10 +39,6 @@ cleanup() {
 trap cleanup EXIT
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/fm-gotmp-tests.XXXXXX")
-# Hermetic archive mirror so the teardown archive step never touches a real
-# captain-side archive repository when this suite runs on a developer host.
-mkdir -p "$TMP_ROOT/archives"
-export FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives"
 
 # Build a fake FM_HOME/FM_ROOT so the real fm-teardown.sh (symlinked in) resolves
 # state and helper scripts inside it. Stub the helper scripts fm-teardown calls so no
@@ -61,10 +57,13 @@ make_fake_root() {
   ln -s "$ROOT/bin/fm-backend.sh" "$fake/bin/fm-backend.sh"
   ln -s "$ROOT/bin/backends/tmux.sh" "$fake/bin/backends/tmux.sh"
   ln -s "$ROOT/bin/fm-tmux-lib.sh" "$fake/bin/fm-tmux-lib.sh"
+  ln -s "$ROOT/bin/fm-cursor-lib.sh" "$fake/bin/fm-cursor-lib.sh"
   ln -s "$ROOT/bin/fm-composer-lib.sh" "$fake/bin/fm-composer-lib.sh"
   ln -s "$ROOT/bin/fm-nm-run-lib.sh" "$fake/bin/fm-nm-run-lib.sh"
   # fm-lock-lib.sh: teardown sources it for the shared lock-staleness proof.
   ln -s "$ROOT/bin/fm-lock-lib.sh" "$fake/bin/fm-lock-lib.sh"
+  # fm-lease-lib.sh: teardown sources it for the supervision lease guard.
+  ln -s "$ROOT/bin/fm-lease-lib.sh" "$fake/bin/fm-lease-lib.sh"
   # Lifecycle serialization, status presentation retirement, and shared adapter
   # ownership are sourced by teardown.
   ln -s "$ROOT/bin/fm-control-lib.sh" "$fake/bin/fm-control-lib.sh"
@@ -77,8 +76,6 @@ make_fake_root() {
   ln -s "$ROOT/bin/fm-gate-refuse-lib.sh" "$fake/bin/fm-gate-refuse-lib.sh"
   # fm-pr-lib.sh: teardown uses its canonical task-ID validator for poll cleanup.
   ln -s "$ROOT/bin/fm-pr-lib.sh" "$fake/bin/fm-pr-lib.sh"
-  # fm-archive-task.sh: teardown invokes it for the ship archive step.
-  ln -s "$ROOT/bin/fm-archive-task.sh" "$fake/bin/fm-archive-task.sh"
   # fm-public-followup-lib.sh (and the fm-x-lib.sh it sources): teardown sources
   # it for the relay-activation gate on the promised-public-reply check. Neither
   # does anything in this fixture, which has no .env, but both are real siblings
@@ -87,6 +84,11 @@ make_fake_root() {
   ln -s "$ROOT/bin/fm-x-lib.sh" "$fake/bin/fm-x-lib.sh"
   ln -s "$ROOT/bin/fm-secondmate-registry-lib.sh" "$fake/bin/fm-secondmate-registry-lib.sh"
   ln -s "$ROOT/bin/fm-secondmate-parent-lib.sh" "$fake/bin/fm-secondmate-parent-lib.sh"
+  # Receiver-wake retirement sources the pending-reply library, which in turn
+  # requires the marker helper even for this ordinary-task teardown fixture.
+  ln -s "$ROOT/bin/fm-pending-reply-lib.sh" "$fake/bin/fm-pending-reply-lib.sh"
+  ln -s "$ROOT/bin/fm-marker-lib.sh" "$fake/bin/fm-marker-lib.sh"
+  ln -s "$ROOT/bin/fm-operational-input.sh" "$fake/bin/fm-operational-input.sh"
   # fm-guard.sh: stub (teardown calls it with `|| true`).
   cat > "$fake/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
@@ -104,15 +106,11 @@ SH
   cat > "$fake/bin/fm-tasks-axi-lib.sh" <<'SH'
 fm_tasks_axi_backend_available() { return 1; }
 SH
-  # Meta with a nonexistent worktree so the dirty/treehouse blocks skip, and a
-  # real product repo whose local archive already holds this task's artifacts
-  # (the ship teardown archive step succeeds idempotently on that).
-  mkdir -p "$TMP_ROOT/project-$id/.agent/archive/$id"
-  printf '%s\n' archived > "$TMP_ROOT/project-$id/.agent/archive/$id/plan.md"
+  # Meta with a nonexistent worktree so the dirty/treehouse blocks skip.
   cat > "$fake/state/$id.meta" <<META
 window=fakeses:fm-$id
 worktree=$TMP_ROOT/nonexistent-worktree-$id
-project=$TMP_ROOT/project-$id
+project=$TMP_ROOT/nonexistent-project-$id
 harness=claude
 kind=ship
 mode=no-mistakes
@@ -151,9 +149,12 @@ test_teardown_skips_gracefully_without_tasktmp() {
   ln -s "$ROOT/bin/fm-backend.sh" "$fake/bin/fm-backend.sh"
   ln -s "$ROOT/bin/backends/tmux.sh" "$fake/bin/backends/tmux.sh"
   ln -s "$ROOT/bin/fm-tmux-lib.sh" "$fake/bin/fm-tmux-lib.sh"
+  ln -s "$ROOT/bin/fm-cursor-lib.sh" "$fake/bin/fm-cursor-lib.sh"
   ln -s "$ROOT/bin/fm-composer-lib.sh" "$fake/bin/fm-composer-lib.sh"
   ln -s "$ROOT/bin/fm-nm-run-lib.sh" "$fake/bin/fm-nm-run-lib.sh"
   ln -s "$ROOT/bin/fm-lock-lib.sh" "$fake/bin/fm-lock-lib.sh"
+  # fm-lease-lib.sh: teardown sources it for the supervision lease guard.
+  ln -s "$ROOT/bin/fm-lease-lib.sh" "$fake/bin/fm-lease-lib.sh"
   ln -s "$ROOT/bin/fm-control-lib.sh" "$fake/bin/fm-control-lib.sh"
   ln -s "$ROOT/bin/fm-classify-lib.sh" "$fake/bin/fm-classify-lib.sh"
   # fm-timeout-lib.sh: the shared hard bound fm-classify-lib.sh sources for the
@@ -164,8 +165,6 @@ test_teardown_skips_gracefully_without_tasktmp() {
   ln -s "$ROOT/bin/fm-gate-refuse-lib.sh" "$fake/bin/fm-gate-refuse-lib.sh"
   # fm-pr-lib.sh: teardown uses its canonical task-ID validator for poll cleanup.
   ln -s "$ROOT/bin/fm-pr-lib.sh" "$fake/bin/fm-pr-lib.sh"
-  # fm-archive-task.sh: teardown invokes it for the ship archive step.
-  ln -s "$ROOT/bin/fm-archive-task.sh" "$fake/bin/fm-archive-task.sh"
   # fm-public-followup-lib.sh (and the fm-x-lib.sh it sources): teardown sources
   # it for the relay-activation gate on the promised-public-reply check. Neither
   # does anything in this fixture, which has no .env, but both are real siblings
@@ -174,6 +173,9 @@ test_teardown_skips_gracefully_without_tasktmp() {
   ln -s "$ROOT/bin/fm-x-lib.sh" "$fake/bin/fm-x-lib.sh"
   ln -s "$ROOT/bin/fm-secondmate-registry-lib.sh" "$fake/bin/fm-secondmate-registry-lib.sh"
   ln -s "$ROOT/bin/fm-secondmate-parent-lib.sh" "$fake/bin/fm-secondmate-parent-lib.sh"
+  ln -s "$ROOT/bin/fm-pending-reply-lib.sh" "$fake/bin/fm-pending-reply-lib.sh"
+  ln -s "$ROOT/bin/fm-marker-lib.sh" "$fake/bin/fm-marker-lib.sh"
+  ln -s "$ROOT/bin/fm-operational-input.sh" "$fake/bin/fm-operational-input.sh"
   cat > "$fake/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 exit 0
@@ -188,12 +190,10 @@ SH
 fm_tasks_axi_backend_available() { return 1; }
 SH
   # No tasktmp= line at all.
-  mkdir -p "$TMP_ROOT/project-$id/.agent/archive/$id"
-  printf '%s\n' archived > "$TMP_ROOT/project-$id/.agent/archive/$id/plan.md"
   cat > "$fake/state/$id.meta" <<META
 window=fakeses:fm-$id
 worktree=$TMP_ROOT/nonexistent-wt-$id
-project=$TMP_ROOT/project-$id
+project=$TMP_ROOT/nonexistent-proj-$id
 harness=claude
 kind=ship
 mode=no-mistakes

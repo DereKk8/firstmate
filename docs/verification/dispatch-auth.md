@@ -13,8 +13,8 @@ Credential paths below are shown with the home directory replaced by `<home>`.
 ## Quota granularity the judgment depends on
 
 Verified 2026-07-30 against quota-axi 0.1.16 for the provider and model-scope relationships below.
-That release's captured default output included `quotaSemantics.description`; the current JSON field placement are verified against 0.1.29 in the next section.
-Current dispatch reads the JSON scope and `limitedBy` fields; the JSON snapshot's corresponding `scope` and `boundedBy` fields preserve the same provider/model applicability without relying on the `--full`-only description.
+That release's captured default output included `quotaSemantics.description`; the current default TOON and JSON fallback field placement are verified against 0.1.29 in the next section.
+Current dispatch reads the TOON scope and `limitedBy` fields; the JSON fallback's corresponding `scope` and `boundedBy` fields preserve the same provider/model applicability without relying on the `--full`-only description.
 
 ```json
 {
@@ -43,7 +43,7 @@ Three properties follow and are load-bearing for dispatch:
 ## Completion-runway and selection shape the judgment depends on
 
 Verified 2026-08-18 against quota-axi 0.1.29 schema 5, captured from an isolated `quota-axi@0.1.29` install.
-The default JSON exposed these fields, with row counts normalized to `N`:
+The default TOON exposed these table headers, with row counts normalized to `N`:
 
 ```text
 quota[N]{provider,scope,effectivePercentRemaining,spendPriority,runway,confidence,limitedBy,resetsAt}:
@@ -52,7 +52,7 @@ attention[N]{provider,scope,kind,detail,remedy}:
 ```
 
 `exhaustion[]` and `attention[]` are sparse, so an empty table is rendered with count zero and no row fields.
-The command below records the JSON snapshot shape without persisting account-specific quota values:
+The command below records the JSON fallback shape without persisting account-specific quota values:
 
 ```sh
 quota-axi --json | jq '{schemaVersion, effectiveAvailabilityFields: ([.providers[]?.quotaSemantics.effectiveAvailability[]? | keys] | unique), runwayFields: ([.providers[]?.quotaSemantics.effectiveAvailability[]?.runway? | select(type == "object") | keys] | unique), selectionFields: ([.providers[]?.quotaSemantics.effectiveAvailability[]?.selection? | select(type == "object") | keys] | unique), paceFields: ([.providers[]?.quotaSemantics.effectiveAvailability[]?.pace? | select(type == "object") | keys] | unique), windowPaceFields: ([.providers[]?.windows[]?.pace? | select(type == "object") | keys] | unique)}'
@@ -109,7 +109,7 @@ This live snapshot was all `through_reset`, so finite-runway fields were omitted
 There is no `projectionBasis` field; its absence means `cycle_average`.
 `runway` and `selection` are nested under each effective-availability scope, so the same provider/model applicability rules govern headroom, runway, and `spendPriority`.
 Projection confidence is not present on every known runway, so selection must preserve that absence as uncertainty rather than fabricate it.
-The older-schema compatibility contract is owned by `quota-array-dispatch`; this evidence does not reinterpret an absent runway, pace, or selection field.
+The older-schema fallback contract is owned by `quota-array-dispatch`; this evidence does not reinterpret an absent runway, pace, or selection field.
 
 ## Provider-family counterfactual that this producer schema supports
 
@@ -199,6 +199,6 @@ Re-run the two commands above and update this section and the pinned version tog
 It asserts that the script accepts no harness, model, or provider input, never calls `quota-axi`, exits alike for every probe result because it renders no verdict, invokes only the two fixed non-destructive argv forms with stdin closed, holds a real bound even when the configured bound is zero or malformed, and never echoes raw vendor output.
 `tests/fm-spawn-dispatch-profile.test.sh` owns spawn's deterministic profile and harness refusals.
 `tests/fm-bootstrap.test.sh` owns the quota-axi version-floor diagnostic.
-`tests/fm-quota-array-dispatch-live-e2e.test.sh` drives the public Pi skill-loading interface against one fake schema-5 snapshot per case, served as quota-axi's JSON output.
-It covers JSON `spendPriority` ranking among candidates that pass eligibility, reasoning-class, and runway-feasibility gates, explicit accounting for unmeasurable runway, the strongest-reasoning constraint, and the runway feasibility floor over a higher `spendPriority`.
-The skill's primary path is `--json`; no TOON fallback is used, and this section records the producer `--json` shape it consumes.
+`tests/fm-quota-array-dispatch-live-e2e.test.sh` drives the public Pi skill-loading interface against one fake schema-5 snapshot per case, served as quota-axi's default TOON.
+It covers TOON-first `spendPriority` ranking among candidates that pass eligibility, reasoning-class, and runway-feasibility gates, explicit accounting for unmeasurable runway, the strongest-reasoning constraint, and the runway feasibility floor over a higher `spendPriority`.
+The skill's primary path is that default TOON; `--json` is the documented defensive fallback, and this section records the producer `--json` shape that fallback consumes.

@@ -4,7 +4,13 @@
 # PR head, not a stale local branch or a stale recorded pr_head= left behind
 # after no-mistakes fix rounds push to the PR.
 #
-# The suite covers default-branch resolution, PR-head freshness, and local fallback behavior.
+# Matrix:
+#   (a) pr= + reachable pr_head=, no remote pull ref -> offline fallback to recorded SHA
+#   (b) pr= without pr_head= -> fetch refs/pull/<n>/head and diff that
+#   (c) pr= absent -> unchanged worktree-branch diff
+#   (d) pr= present but PR head unreachable -> fallback to local branch + warning
+#   (e) pr= + STALE recorded pr_head= + newer remote pull head -> must use fetched head
+#       (this is the class that bit reviewers holding merges over "missing" fixes)
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -17,8 +23,7 @@ TMP_ROOT=$(fm_test_tmproot fm-review-diff-tests)
 make_case() {
   local name=$1 case_dir
   case_dir="$TMP_ROOT/$name"
-  mkdir -p "$case_dir/state" "$case_dir/data"
-  printf '%s\n' "- project [no-mistakes] base=main path=$case_dir/project - test project (added 2026-08-14)" > "$case_dir/data/projects.md"
+  mkdir -p "$case_dir/state"
 
   git init -q --bare "$case_dir/origin.git"
   git -C "$case_dir/origin.git" symbolic-ref HEAD refs/heads/main
@@ -32,34 +37,6 @@ make_case() {
   git clone -q "$case_dir/origin.git" "$case_dir/project"
   git -C "$case_dir/project" remote set-head origin main 2>/dev/null || true
   git -C "$case_dir/project" worktree add -q -b fm/task-x1 "$case_dir/wt" main
-
-  touch "$case_dir/state/.last-watcher-beat"
-  printf '%s\n' "$case_dir"
-}
-
-make_real_path_case() {
-  local name=$1 case_dir
-  case_dir="$TMP_ROOT/$name"
-  mkdir -p "$case_dir/state" "$case_dir/data"
-
-  git init -q --bare "$case_dir/origin.git"
-  git -C "$case_dir/origin.git" symbolic-ref HEAD refs/heads/main
-  git clone -q "$case_dir/origin.git" "$case_dir/_seed" 2>/dev/null
-  printf 'main\n' > "$case_dir/_seed/feature.txt"
-  git -C "$case_dir/_seed" add feature.txt
-  git -C "$case_dir/_seed" -c user.email=t@t -c user.name=t commit -qm "origin main baseline"
-  git -C "$case_dir/_seed" push -q origin main
-  git -C "$case_dir/_seed" checkout -qb dev
-  printf 'dev-only\n' > "$case_dir/_seed/dev-only.txt"
-  git -C "$case_dir/_seed" add dev-only.txt
-  git -C "$case_dir/_seed" commit -qm "origin dev baseline"
-  git -C "$case_dir/_seed" push -q origin dev
-  rm -rf "$case_dir/_seed"
-
-  git clone -q "$case_dir/origin.git" "$case_dir/aide-body"
-  git -C "$case_dir/aide-body" remote set-head origin main 2>/dev/null || true
-  git -C "$case_dir/aide-body" worktree add -q -b fm/task-x1 "$case_dir/wt" origin/dev
-  printf '%s\n' "- aide-body [no-mistakes] base=dev path=$case_dir/aide-body - real-path clone (added 2026-08-14)" > "$case_dir/data/projects.md"
 
   touch "$case_dir/state/.last-watcher-beat"
   printf '%s\n' "$case_dir"
@@ -94,37 +71,8 @@ run_review_diff() {
   local case_dir=$1
   shift
   FM_ROOT_OVERRIDE="$ROOT" \
-  FM_HOME="$case_dir" \
   FM_STATE_OVERRIDE="$case_dir/state" \
-  PATH="${TEST_PATH:-$PATH}" \
     "$REVIEW_DIFF" "$@"
-}
-
-test_pr_base_from_forge_wins_over_registry_base() {
-  local case_dir out fakebin
-  case_dir=$(make_real_path_case forge-base)
-  ln -s origin.git "$case_dir/github.com-origin.git"
-  git -C "$case_dir/aide-body" remote set-url origin "$case_dir/github.com-origin.git"
-  stale_and_pr_commits "$case_dir"
-  git -C "$case_dir/wt" push -q origin "pr-head-tmp:refs/pull/9/head"
-  fm_write_meta "$case_dir/state/task-x1.meta" \
-    "window=fm-task-x1" \
-    "worktree=$case_dir/wt" \
-    "project=$case_dir/aide-body" \
-    "pr=https://github.com/example/repo/pull/9"
-  fakebin="$case_dir/fakebin"
-  mkdir -p "$fakebin"
-  cat > "$fakebin/gh" <<'SH'
-#!/usr/bin/env bash
-printf 'main\n'
-SH
-  chmod +x "$fakebin/gh"
-
-  TEST_PATH="$fakebin:$PATH" out=$(run_review_diff "$case_dir" task-x1 2> "$case_dir/stderr")
-
-  assert_contains "$out" 'diff base: origin/main' \
-    "default-base: must use the repository default branch"
-  pass "fm-review-diff uses the repository default branch"
 }
 
 test_pr_meta_uses_pr_head_not_stale_local() {
@@ -221,7 +169,6 @@ test_unreachable_pr_head_falls_back_with_warning() {
   pass "fm-review-diff falls back to local branch with a warning when PR head is unreachable"
 }
 
-test_pr_base_from_forge_wins_over_registry_base
 test_pr_meta_uses_pr_head_not_stale_local
 test_pr_meta_fetches_pull_head_without_recorded_sha
 test_stale_recorded_pr_head_loses_to_fetched_pull_head

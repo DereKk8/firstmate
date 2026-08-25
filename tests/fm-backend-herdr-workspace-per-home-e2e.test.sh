@@ -66,7 +66,6 @@ herdr_forget_inherited_pane
 # canonicalized project and backend cwd comparisons in the worktree-discovery
 # poll.
 TMP_ROOT=$(mktemp -d "$(cd "${TMPDIR:-/tmp}" && pwd -P)/fm-herdr-e2e.XXXXXX")
-mkdir -p "$TMP_ROOT/archives"
 SESSION="fm-lab-herdr-e2e-$$"
 export HERDR_SESSION="$SESSION"
 WT1=; WT2=
@@ -211,14 +210,9 @@ pass "real herdr E2E: list_live from the secondmate's own context sees only task
 
 # --- 5. teardown closes the RIGHT tab, and no other ------------------------
 
-# The finished worker's disposable worktree carries its task artifacts; the
-# ship teardown archive step copies them before the worktree is returned.
-mkdir -p "$WT1/.agent/tasks/cm1"
-printf '%s\n' fixture > "$WT1/.agent/tasks/cm1/plan.md"
-
 TD1_OUT="$TMP_ROOT/td1.out"
 FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$PRIMARY_HOME/state" FM_DATA_OVERRIDE="$PRIMARY_HOME/data" \
-  FM_CONFIG_OVERRIDE="$PRIMARY_HOME/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives" \
+  FM_CONFIG_OVERRIDE="$PRIMARY_HOME/config" \
   "$ROOT/bin/fm-teardown.sh" cm1 >"$TD1_OUT" 2>&1
 rc=$?
 [ "$rc" -eq 0 ] || fail "fm-teardown.sh failed for the primary-shaped crewmate cm1"$'\n'"$(cat "$TD1_OUT")"
@@ -236,12 +230,8 @@ WT1=
 pass "real herdr E2E: tearing down cm1 closes only its own tab - the secondmate's and cm2's tabs survive untouched"
 
 TD2_OUT="$TMP_ROOT/td2.out"
-# cm2's disposable worktree also carries its task artifacts for the ship
-# teardown archive step.
-mkdir -p "$WT2/.agent/tasks/cm2"
-printf '%s\n' fixture > "$WT2/.agent/tasks/cm2/plan.md"
 FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$SM_HOME/state" FM_DATA_OVERRIDE="$SM_HOME/data" \
-  FM_CONFIG_OVERRIDE="$SM_HOME/config" FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives" \
+  FM_CONFIG_OVERRIDE="$SM_HOME/config" \
   "$ROOT/bin/fm-teardown.sh" cm2 >"$TD2_OUT" 2>&1
 rc=$?
 [ "$rc" -eq 0 ] || fail "fm-teardown.sh failed for the secondmate-owned crewmate cm2"$'\n'"$(cat "$TD2_OUT")"

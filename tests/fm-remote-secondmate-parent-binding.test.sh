@@ -37,7 +37,6 @@ command -v jq >/dev/null 2>&1 || { echo "skip: jq not found"; exit 0; }
 TMP_ROOT=$(fm_test_tmproot fm-remote-parent-binding)
 mkdir -p "$TMP_ROOT"
 TMP_ROOT=$(cd "$TMP_ROOT" && pwd -P)
-mkdir -p "$TMP_ROOT/archives"
 PARENT="$TMP_ROOT/parent"
 REMOTE_ROOT="$TMP_ROOT/remote-root"
 REMOTE_HOME="$TMP_ROOT/remote-home"
@@ -220,19 +219,12 @@ case "$DELIVERED" in
 esac
 
 # --- a finished child worker inside the remote secondmate home --------------
-CHILD_PROJ="$REMOTE_HOME/projects/alpha"
-# The finished ship worker runs in a disposable worktree distinct from the
-# product clone and carries its task artifacts; teardown's archive step copies
-# them before the worktree is returned.
-CHILD_WT="$REMOTE_HOME/projects/alpha-wt"
+CHILD_WT="$REMOTE_HOME/projects/alpha"
 mkdir -p "$REMOTE_HOME/state"
-git -C "$CHILD_PROJ" worktree add -q -b fm/work-child "$CHILD_WT"
-mkdir -p "$CHILD_WT/.agent/tasks/work-child"
-printf '%s\n' fixture > "$CHILD_WT/.agent/tasks/work-child/plan.md"
 write_child_meta() {
   fm_write_meta "$REMOTE_HOME/state/work-child.meta" \
     "window=firstmate:fm-work-child" "endpoint_task_id=work-child" \
-    "worktree=$CHILD_WT" "project=$CHILD_PROJ" "harness=codex" "kind=ship" \
+    "worktree=$CHILD_WT" "project=$CHILD_WT" "harness=codex" "kind=ship" \
     "mode=local-only" "yolo=off"
 }
 mkdir -p "$TMP_ROOT/childfake"
@@ -247,7 +239,6 @@ run_child_teardown() { # <extra env assignments...>
   out=$(env "$@" PATH="$TMP_ROOT/childfake:$PATH" \
     FM_HOME="$REMOTE_HOME" FM_STATE_OVERRIDE="$REMOTE_HOME/state" \
     FM_DATA_OVERRIDE="$REMOTE_HOME/data" FM_CONFIG_OVERRIDE="$REMOTE_HOME/config" \
-    FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives" \
     "$REMOTE_ROOT/bin/fm-teardown.sh" work-child 2>&1) || rc=$?
   CHILD_TEARDOWN_OUT=$out
   CHILD_TEARDOWN_RC=$rc

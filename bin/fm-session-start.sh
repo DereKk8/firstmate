@@ -377,25 +377,6 @@ print_file_or_absent() {
   fi
 }
 
-print_reset_handoff_note() {
-  local dir=$1 marker=$2 read_only=$3 latest=""
-  subsection "data/reset-window (handoff note from the session this one replaced)"
-  if [ -d "$dir" ]; then
-    if [ -f "$marker" ]; then
-      latest=$(find "$dir" -maxdepth 1 -type f -name '*.md' -newer "$marker" 2>/dev/null | sort | tail -n1)
-    else
-      latest=$(find "$dir" -maxdepth 1 -type f -name '*.md' 2>/dev/null | sort | tail -n1)
-    fi
-  fi
-  if [ -n "$latest" ]; then
-    printf '%s\n' "$latest"
-    cat "$latest"
-  else
-    printf 'none (no reset note newer than the previous session start)\n'
-  fi
-  [ "$read_only" -eq 1 ] || touch "$marker"
-}
-
 print_backlog_pointer() {
   printf 'Full task bodies remain available on demand: tasks-axi show <id> --full when compatible tasks-axi is available, or data/backlog.md.\n'
 }
@@ -732,6 +713,19 @@ else
   if [ -n "$INACTIVE_OUT" ]; then
     printf 'inactive outcome reconciliation: %s\n' "$INACTIVE_OUT"
   fi
+  # Pi supervision-branch recovery, locked path only: clear leases whose
+  # supervising session died, and surface outcomes the branch stored durably
+  # that never reached main (docs/pi-supervision-branch.md). Gated to the
+  # pi/pi-signed primary so a non-Pi home runs neither step - homes on any
+  # other harness stay entirely untouched (captain-decided criterion).
+  if [ "$PRIMARY_HARNESS" = pi ] || [ "$PRIMARY_HARNESS" = pi-signed ]; then
+    FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" "$SCRIPT_DIR/fm-lease.sh" sweep 2>/dev/null || true
+    BRANCH_REPLAY_OUT=$(FM_HOME="$FM_HOME" FM_STATE_OVERRIDE="$STATE" \
+      "$SCRIPT_DIR/fm-branch-outcome.sh" startup-replay 2>&1) || BRANCH_REPLAY_OUT=
+    if [ -n "$BRANCH_REPLAY_OUT" ]; then
+      printf '%s\n' "$BRANCH_REPLAY_OUT"
+    fi
+  fi
   DRAIN_OUT=$("$SCRIPT_DIR/fm-wake-drain.sh" 2>&1)
   if [ -n "$DRAIN_OUT" ]; then
     printf '%s\n' "$DRAIN_OUT"
@@ -905,7 +899,6 @@ print_file_or_absent "$DATA/secondmates.md" "data/secondmates.md"
 print_file_or_absent "$DATA/captain.md" "data/captain.md"
 print_file_or_absent "$DATA/captain-shared.md" "data/captain-shared.md (shared, main-authoritative, read-only in secondmate homes)"
 print_file_or_absent "$DATA/learnings.md" "data/learnings.md"
-print_reset_handoff_note "$DATA/reset-window" "$STATE/.last-session-start" "$READ_ONLY"
 
 # --- 9. closing reminder -----------------------------------------------
 stage next-step

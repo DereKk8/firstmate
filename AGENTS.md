@@ -75,6 +75,7 @@ config/backlog-backend  backlog backend override; LOCAL, gitignored; absent or "
 config/backend  runtime session-provider backend override for new tasks; LOCAL, gitignored; absent = falls through to runtime auto-detection (the runtime firstmate itself is executing inside), then tmux; tmux is the verified reference backend (docs/tmux-backend.md), while herdr, zellij, orca, and cmux are experimental spawn backends (docs/herdr-backend.md, docs/zellij-backend.md, docs/orca-backend.md, docs/cmux-backend.md) - herdr and cmux can also be selected by runtime auto-detection, zellij and orca never are (always explicit), and codex-app is not accepted; see docs/codex-app-backend.md; inherited by secondmate homes under the primary-authoritative contract in secondmate-provisioning
 config/calm     Pi Calm presentation preference; LOCAL, gitignored, and not inherited; see docs/configuration.md "Pi Calm preference"
 config/startup-memory-budget     primary-authoritative per-home startup-memory budget; LOCAL, gitignored, materialized as 7,500 estimated tokens by locked primary bootstrap and inherited into secondmate homes; see docs/configuration.md "Startup memory budget"
+config/stow-pass-horizon  optional presence flag opting this home in to /stow's default-off pass-count decay horizon; LOCAL, gitignored, and not inherited; see docs/configuration.md "Stow pass horizon"
 config/herdr-presentation-spaces  optional "off" opt-out from, or "on" opt-in to, Herdr's default-on disposable single-task visual projection, which is unconfigured-default-on only at or above a Herdr version floor; LOCAL, gitignored; inherited by secondmate homes; see docs/herdr-backend.md "Presentation spaces"
 config/trace-context  optional presence flag enabling default-off native W3C trace-context propagation to spawned agents; LOCAL, gitignored; inherited by secondmate homes; see docs/configuration.md "Trace context propagation" and docs/trace-context.md
 config/cmux-socket-password  optional cmux control-socket password; LOCAL, gitignored; read fresh on every cmux CLI call and passed through without ever overriding an operator's own ambient CMUX_SOCKET_PASSWORD when absent (docs/cmux-backend.md "Setup")
@@ -98,6 +99,7 @@ state/               runtime records and signals; gitignored
   <id>.kimi-turnend-token   firstmate-owned Kimi hook registry token for the task; removed by teardown
   <id>.muse-session  muse busy-source binding (sessions root plus task worktree) written by fm-spawn; removed by teardown
   <id>.cursor-session  cursor busy-source binding (projects root, task worktree, prior conversations) written by fm-spawn; removed by teardown
+  <id>.inbox/          durable steering inbox: sequenced firstmate instruction records the worker acknowledges by moving them into its handled/ subdirectory; written by fm-send, re-rung and escalated by the watcher, removed by teardown (bin/fm-task-inbox-lib.sh)
   <id>.meta          task metadata; each producer script's header owns its exact fields and mutation contract, with docs/configuration.md routing operator-facing backend and trace-context details
   <id>.herdr-presentation  quarantinable attempt and restart-binding journal for Herdr's optional visual projection; never task or endpoint authority; see docs/herdr-backend.md "Presentation spaces"
   <id>.check.sh      authenticated slow poll; the watcher dispatches validated PR data and the byte-identified Relay shim through trusted repository scripts, runs registered custom checks from hash-validated private snapshots, and rejects every other state check without execution
@@ -105,6 +107,11 @@ state/               runtime records and signals; gitignored
   <id>.pr-poll       private validated data sidecar for the byte-static PR merge poll
   <id>.pr-poll-registration  private transactional provenance record binding the task, canonical metadata identity, sidecar, and static poll publication
   <id>.pr-poll-retirement  private identity-bound crash-recovery receipt for one exact validated merged result; removed after its poll artifacts retire
+  <id>.pr-poll-merge-notified  canonical PR identity of the last merge notification delivered for this task; bin/fm-pr-lib.sh owns duplicate suppression and replacement
+  branch-outcomes.jsonl .branch-outcomes-cursor  Pi supervision-branch durable outcome store and its read cursor; bin/fm-branch-outcome.sh owns the format
+  branch-session/ .branch-session .branch-mirror-cursor  the branch's persistent conversation, its pointer, and the dialog-mirror cursor; extension-owned (docs/pi-supervision-branch.md)
+  .branch-eligible-rows .branch-eligible-owner .main-eligible-rows  per-actor wake-row claims and branch-owner evidence; docs/watcher-continuity.md owns the acknowledgement contract
+  .lease-<task>        per-task supervision lease naming which actor (main or branch) may change that task; bin/fm-lease-lib.sh owns the contract the guarded scripts enforce
   .pr-check-quarantine/  private non-runnable storage for checks neutralized by the non-executing migration
   .pr-check-migration.log  private per-task outcomes distinguishing rebuilt or canonically registered replacement polls, quarantined unarmed polls, and incomplete migrations
   .pr-check-migration-scan-v1  private marker proving the non-executing scan disabled every unsafe legacy check; .pr-check-migration-v1 separately records completed private repairs
@@ -157,8 +164,8 @@ If the session lock cannot be acquired and verified, report its exact diagnostic
 A lock-refused session must not spawn, steer, merge, drain the wake queue, repair supervision, repair a checkout, or perform any other fleet mutation.
 
 The digest itself makes no external-network call and never waits for one.
-Every network check a session start owes - GitHub auth, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, and project clone refresh - runs concurrently in a bounded worker owned by `bin/fm-startup-network.sh` and is reported in the digest's own `NETWORK CHECKS` section.
-When that section reports its checks still in progress it names exactly what is unconfirmed; treat none of those as passed until the result lands, either from `bin/fm-startup-network.sh report` or as a `check: startup-network` wake.
+Every network check a session start owes - GitHub auth, dead-secondmate relaunch, secondmate convergence, pending handoff delivery, and project clone refresh - runs off the digest's blocking path in a bounded worker owned by `bin/fm-startup-network.sh` and is reported in the digest's own `NETWORK CHECKS` section.
+When that section reports its checks still in progress it names exactly what is unconfirmed; treat none of those as passed until `bin/fm-startup-network.sh report` returns the finished result, while a failed or otherwise actionable result also arrives as a `check: startup-network` wake.
 
 1. **Lock** - acquires the per-home session lock first, before anything mutates shared state, then starts the deferred network stage above.
 2. **Bootstrap** - detect-only checks (tool/version problems, the worktree-tangle check, harness override, dispatch-profile validation, backlog-backend status) always run, but routine confirmations stay silent by default.
@@ -197,16 +204,16 @@ If static `config/crew-harness` or `config/secondmate-harness` names an unverifi
 `docs/configuration.md` owns dispatch-profile and runtime-backend schemas, `bin/fm-harness.sh` owns static resolution, and `bin/fm-spawn.sh` owns launch flags and fail-closed validation.
 When dispatch profiles exist, consult them at every crewmate or scout intake and pass the resolved concrete profile required by `fm-spawn`.
 Routing precedence is an explicit per-task captain override, then the best-fit configured rule, then the configured default, then the static crewmate harness.
-Firstmate alone resolves a matched profile array: run `quota-axi --json` at that intake, evaluate every configured candidate against that current output, and choose with inspectable effective headroom and usable runway, using pace and reserve only later when needed.
+Firstmate alone resolves a matched profile array: begin with `quota-axi`'s default TOON at that intake, using the skill's narrow TOON-then-`--json` fallback only for genuine ambiguity, evaluate every configured candidate against that current output, and choose with inspectable `spendPriority` as the one quota-perspective ranker after the skill's eligibility, reasoning-class, and runway-feasibility gates.
 Account for every candidate with the catalog evidence, provider relationship, applicable quota and authentication facts, remaining uncertainty, fit and reasoning class, and the spendPriority and runway evidence used in selection; never omit a candidate, guess, fall back silently, or call the result quota-informed without them.
 Establish model support and provider family from that harness's own authoritative catalog, then read `quota-axi` at the granularity the vendor actually supplies: provider-level or all-model evidence applies to every model established in that family, and a named-model window bounds only that model.
 Missing model-level quota, a missing authentication source, unmeasurable headroom, or unmodeled authentication is disclosed uncertainty that keeps a candidate eligible, never a credential or login escalation.
 Only concrete contradictory evidence blocks a candidate, such as an authoritative catalog proving the model unsupported or proof that the credential selected for that surface is unusable; never infer a credential store, provider family, or quota mapping from a harness, model, or source name, and never launch another harness's CLI to judge a candidate.
 Preserve malformed profile configuration as an actionable error rather than selecting around it.
 When every candidate is tight, preserve the captain's strongest-reasoning class rather than silently downgrading it solely to conserve quota; stop and report the tight choice if that class cannot proceed.
-Break genuine headroom ties without array-order or harness bias; if inspectable evidence remains tied, escalate rather than selecting arbitrarily.
-`quota-axi` owns how model or product windows relate to bounding account windows and remains data-only; this is an explicitly interim rule until successor `quota-axi-interpretation-hints-h3` lands.
-Load `quota-array-dispatch` before choosing among a matched profile array; that skill is the single owner of the completion-aware selection procedure.
+Break genuine evidence ties without array-order or harness bias.
+`quota-axi` owns how model or product windows relate to bounding account windows and remains data-only.
+Load `quota-array-dispatch` before choosing among a matched profile array; that skill is the single owner of the TOON-first spendPriority selection procedure.
 The generic effort fallback and its precedence are owned by `harness-adapters`: explicit captain and standing configured effort win; otherwise use low for well-understood explicit work, xhigh for ambiguous investigation or design, intermediate levels proportionally, and never max without explicit captain preference.
 Do not add model-specific versions of that policy.
 
@@ -308,7 +315,8 @@ The spawn must resolve a genuine isolated task worktree distinct from the primar
 After spawning, confirm the worker is processing the brief, handle any trust dialog through `harness-adapters`, and record ship or scout work as under way.
 A persistent secondmate is recorded in the secondmate registry and runtime state, never as a backlog work item.
 
-Steer a worker with short single-line messages through fail-closed `fm-send`; put long instructions in a file.
+Steer a worker with ordinary text through fail-closed `fm-send`: the message becomes a durable record in the task's steering inbox (multi-line text is legal, local and remote alike) and the worker's terminal receives only a constant doorbell line, with the watcher re-ringing an unacknowledged local message and escalating a stuck one (`bin/fm-task-inbox-lib.sh`; `bin/fm-send.sh` owns the typed-plane carve-outs).
+A remote secondmate steer rides the same durable-inbox model through the remote transport; after an unconfirmed delivery, only the exact `FM_PENDING_REPLY_EXISTING_CORR=<id>` resend command printed by `fm-send` is safe because it preserves the request body for remote enqueue deduplication (`bin/fm-send.sh` header).
 When a steer answers an open keyed decision or blocker, pass `fm-send`'s `--resolve-key` so the answer itself closes that decision record at answer time, identically for local and remote workers (contract: `bin/fm-send.sh` header).
 `fm-send` is the data plane for text the worker should read; never use its key or text paths for interrupt, exit, or other lifecycle control, because routing-marked lifecycle text becomes chat the worker reasons about instead of executing.
 Drive a worker's lifecycle through `bin/fm-control.sh <task-id> interrupt|exit|relaunch`, which owns the per-runtime mechanics, verifies each action, and never tears down or discards anything ([`docs/agent-control.md`](docs/agent-control.md)).
@@ -554,7 +562,6 @@ Mental model: `upstream (canonical) -> [/refit: currency and, when explicitly ap
 `/updatefirstmate` remains the separate faster operation that propagates this fork's main branch into running instances and is never absorbed by `/refit`.
 A full sync is complete only after the real merge commit passes `bin/fm-merge-content-check.sh`; every intentional named-content removal is recorded with its path-specific justification in the sync report.
 
-
 ## 13. Agent-only reference skills
 
 These skills are not captain-invocable; load them only at their precise triggers.
@@ -563,7 +570,7 @@ These skills are not captain-invocable; load them only at their precise triggers
 - `diagnostic-reasoning` - load before scoping a reported bug and before acting on a diagnostic report.
 - `refactor-review` - load when the captain invokes `/refactor-review`, requests an architecture-refactoring review of a drafted change, or a preordered task reports `refactor-review-ready`; it is one-shot and never automatic.
 - `ask-user-authority` - load before deciding any ask-user finding.
-- `quota-array-dispatch` - load before choosing among a matched crew-dispatch profile array from the current `quota-axi --json` snapshot.
+- `quota-array-dispatch` - load before choosing among a matched crew-dispatch profile array from current quota-axi default TOON.
 - `harness-adapters` - load before spawning or recovering a crewmate or secondmate, handling a trust dialog, sending a harness-specific skill invocation, interrupting or exiting an agent, resuming an exited agent, or verifying a new harness adapter.
 - `firstmate-orca` - load before switching to Orca, spawning or supervising Orca-backed work, smoke-testing Orca backend behavior, debugging Orca task state, or reconciling Orca-backed task metadata.
 - `project-management` - load before adding, creating, removing, or initializing a project.

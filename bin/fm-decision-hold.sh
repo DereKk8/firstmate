@@ -14,9 +14,9 @@
 #   complete <origin> (--none | <key>...)  -> complete <origin> (--none | <origin>-decision-<key>...)
 #   verify <origin>                        -> verify <origin>
 #   resolve <origin> <key> --decision-file <f> --routed-to <id>...
-#                                          -> record the routed decision while retaining the hold,
-#                                             clear the recorded blocked-by edges through tasks-axi,
-#                                             then close the hold; an
+#                                          -> answer <origin>-decision-<key> with the routed ids
+#                                             appended to the decision text, then clear the
+#                                             recorded blocked-by edges through tasks-axi; an
 #                                             exact replay of a pre-collapse routed record reuses
 #                                             its historical digest and text before clearing edges
 #   answer|decline|repair <origin> <key> --decision-file <f>
@@ -161,27 +161,18 @@ command_resolve() {
   fi
   answer_file=$tmp
   [ "$legacy_replay" = 0 ] || answer_file=$decision_file
-  if ! "$CAPTAIN_HOLD" answer "$id" --decision-file "$answer_file" --keep-open; then
-    rm -f -- "$tmp"
-    exit 1
-  fi
-  for dep in $routed; do
-    show=$(task_show "$dep") || {
-      rm -f -- "$tmp"
-      fail "routed task $dep disappeared before routing"
-    }
-    if list_has_key "$(normalized_blocked_by "$show")" "$id"; then
-      if ! (cd "$FM_HOME" && tasks-axi unblock "$dep" --by "$id" >/dev/null); then
-        rm -f -- "$tmp"
-        fail "could not route the recorded decision to $dep"
-      fi
-    fi
-  done
   if ! "$CAPTAIN_HOLD" answer "$id" --decision-file "$answer_file"; then
     rm -f -- "$tmp"
     exit 1
   fi
   rm -f -- "$tmp"
+  for dep in $routed; do
+    show=$(task_show "$dep") || fail "routed task $dep disappeared before routing"
+    if list_has_key "$(normalized_blocked_by "$show")" "$id"; then
+      (cd "$FM_HOME" && tasks-axi unblock "$dep" --by "$id" >/dev/null) \
+        || fail "could not route the recorded decision to $dep"
+    fi
+  done
   printf 'resolved: %s -> %s\n' "$id" "$routed"
 }
 
@@ -199,25 +190,6 @@ command_complete() {
   done
   # shellcheck disable=SC2086  # mapped is a validated space-separated slug list.
   exec "$CAPTAIN_HOLD" complete "$origin" $mapped
-}
-
-command_repair() {
-  local origin=${1:-} key=${2:-} decision_file='' id show state
-  [ "$#" -ge 2 ] || { usage >&2; exit 2; }
-  id=$(compose "$origin" "$key")
-  shift 2
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --decision-file) shift; decision_file=${1:-} ;;
-      *) usage >&2; exit 2 ;;
-    esac
-    shift
-  done
-  [ -n "$decision_file" ] || fail "--decision-file is required"
-  show=$(task_show "$id") || fail "captain decision $id does not exist in the active home"
-  state=$(show_field "$show" state)
-  [ "$state" = "done" ] || fail "captain hold $id is still open (state=$state); use answer to close it with the captain's decision"
-  exec "$CAPTAIN_HOLD" answer "$id" --decision-file "$decision_file"
 }
 
 command_close() {  # <origin> <key> <flag-args...>
@@ -250,8 +222,7 @@ case "${1:-}" in
   complete) shift; command_complete "$@" ;;
   verify) shift; exec "$CAPTAIN_HOLD" verify "$@" ;;
   resolve) shift; command_resolve "$@" ;;
-  answer|decline) shift; command_close "$@" ;;
-  repair) shift; command_repair "$@" ;;
+  answer|decline|repair) shift; command_close "$@" ;;
   answers) shift; exec "$CAPTAIN_HOLD" answers "$@" ;;
   bind) shift; exec "$CAPTAIN_HOLD" bind "$@" ;;
   unbind) shift; exec "$CAPTAIN_HOLD" unbind "$@" ;;

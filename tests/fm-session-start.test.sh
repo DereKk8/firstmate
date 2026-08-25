@@ -29,9 +29,6 @@
 #     surfaces exactly once (inline or as a wake, never both), a read-only
 #     session declares the checks it skipped, and the tasks-axi compatibility
 #     verdict is paid for once per session start
-#   - the reset-window handoff note: printed once when newer than the
-#     previous session start, not reprinted at the next session start, and
-#     not consumed by a read-only session that never acquired the lock
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -702,45 +699,6 @@ write_pi_loaded_markers() {
 
 # --- context digest: absent vs empty vs present -----------------------------
 
-test_reset_handoff_note_read_only_session_does_not_consume_marker() {
-  local rec root home fakebin holder_pid out out2
-
-  rec=$(new_world reset-handoff-read-only)
-  IFS='|' read -r root home fakebin <<EOF
-$rec
-EOF
-  make_fake_toolchain "$fakebin"
-  make_fake_ps_claude "$fakebin"
-
-  mkdir -p "$home/data/reset-window"
-  printf '# Session reset 2026-07-25-1000\n\n## In-flight\n- fm-ro-task: watch build\n' \
-    > "$home/data/reset-window/2026-07-25-1000.md"
-
-  sleep 300 &
-  holder_pid=$!
-  printf '%s\n' "$holder_pid" > "$home/state/.lock"
-
-  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-
-  assert_contains "$out" "READ-ONLY SESSION" "expected a lock refusal for this test setup"
-  assert_contains "$out" "fm-ro-task: watch build" \
-    "read-only session did not still surface the reset-window note"
-  [ -f "$home/state/.last-session-start" ] && fail "read-only session advanced the .last-session-start marker, a durable mutation the read-only path must not perform"
-
-  # The session that actually holds the lock must still see the note.
-  rm -f "$home/state/.lock"
-  kill "$holder_pid" 2>/dev/null || true
-  wait "$holder_pid" 2>/dev/null || true
-
-  out2=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  assert_not_contains "$out2" "READ-ONLY SESSION" "second run should have acquired the lock cleanly"
-  assert_contains "$out2" "fm-ro-task: watch build" \
-    "the session holding the lock did not see the note a prior read-only session left untouched"
-  [ -f "$home/state/.last-session-start" ] || fail "the locked session did not advance the .last-session-start marker"
-
-  pass "a read-only session does not consume the reset-window note or advance its marker"
-}
-
 test_context_digest_absent_empty_present() {
   local rec root home fakebin out
   rec=$(new_world context-digest)
@@ -1409,6 +1367,65 @@ EOF
   assert_contains "$out" "wake annotation: latest wake-EVENT observed at drain, not current state: task-z.status: needs-decision: pick a library" "fm-session-start.sh did not preserve the drain's separate annotation line"
 
   pass "fm-session-start.sh composes the real fm-lock.sh, fm-bootstrap.sh, and fm-wake-drain.sh output verbatim"
+}
+
+test_branch_outcome_replay_and_lease_sweep() {
+  local rec root home fakebin out
+  rec=$(new_world branch-recovery)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_harness "$fakebin" pi
+
+  # A crash window the locked start must close: the supervision branch stored
+  # an outcome durably that never reached main, plus one lease whose
+  # supervising process died and one still held by a live process.
+  FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
+    --task task-b --verdict captain --summary 'PR https://example.com/pr/b checks green' >/dev/null \
+    || fail "could not seed the unread branch outcome"
+  printf 'branch\t999999\t123\n' > "$home/state/.lease-task-dead"
+  FM_HOME="$home" FM_SUPERVISION_ACTOR=branch FM_LEASE_HOLDER_PID=$$ "$ROOT/bin/fm-lease.sh" claim task-live --actor branch \
+    || fail "could not seed the live lease"
+
+  out=$(run_pi_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  assert_contains "$out" "BRANCH OUTCOMES (handled by the supervision branch, not yet seen by this session):" \
+    "locked start did not replay the unread branch outcome"
+  assert_contains "$out" "https://example.com/pr/b" "replayed outcome lost its content"
+  [ ! -e "$home/state/.lease-task-dead" ] || fail "locked start left a provably dead lease in place"
+  [ -e "$home/state/.lease-task-live" ] || fail "locked start swept a live lease"
+
+  # Replay is one-shot: presenting the digest is the delivery, so the next
+  # locked start stays silent about the same outcome.
+  out=$(run_pi_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  case "$out" in
+    *"BRANCH OUTCOMES"*) fail "second start re-presented already-replayed branch outcomes" ;;
+  esac
+  pass "locked Pi session start replays unread branch outcomes once and sweeps only dead leases"
+}
+
+test_non_pi_session_start_leaves_branch_state_untouched() {
+  local rec root home fakebin out
+  rec=$(new_world non-pi-branch-recovery)
+  IFS='|' read -r root home fakebin <<EOF
+$rec
+EOF
+  make_fake_toolchain "$fakebin"
+  make_fake_ps_claude "$fakebin"
+
+  FM_HOME="$home" "$ROOT/bin/fm-branch-outcome.sh" append \
+    --task task-b --verdict captain --summary 'unread Pi branch outcome' >/dev/null \
+    || fail "could not seed the non-Pi unread branch outcome"
+  rm -f "$home/state/.branch-outcomes-cursor"
+  printf 'branch\t999999\t123\n' > "$home/state/.lease-task-dead"
+
+  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
+  case "$out" in
+    *"BRANCH OUTCOMES"*|*"unread Pi branch outcome"*) fail "non-Pi session replayed Pi branch outcomes" ;;
+  esac
+  [ -e "$home/state/.lease-task-dead" ] || fail "non-Pi session swept a Pi branch lease"
+  [ ! -e "$home/state/.branch-outcomes-cursor" ] || fail "non-Pi session marked a Pi branch outcome read"
+  pass "non-Pi session start neither sweeps nor replays Pi branch state"
 }
 
 # --- deferred network stage -------------------------------------------------
@@ -2227,58 +2244,6 @@ EOF
 
 # --- fleet-state digest: no in-flight tasks ----------------------------------
 
-# --- reset-window handoff note ----------------------------------------------
-
-test_reset_handoff_note_printed_when_newer_than_previous_session_start() {
-  local rec root home fakebin out
-  rec=$(new_world reset-handoff-newer)
-  IFS='|' read -r root home fakebin <<EOF
-$rec
-EOF
-  make_fake_toolchain "$fakebin"
-  make_fake_ps_claude "$fakebin"
-
-  mkdir -p "$home/data/reset-window"
-  printf '# Session reset 2026-07-25-1200\n\n## In-flight\n- fm-demo-task: watch CI\n' \
-    > "$home/data/reset-window/2026-07-25-1200.md"
-
-  out=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-
-  assert_contains "$out" "handoff note from the session this one replaced" \
-    "digest did not label the reset-window handoff note"
-  assert_contains "$out" "fm-demo-task: watch CI" \
-    "digest did not print the reset-window note content"
-  [ -f "$home/state/.last-session-start" ] || fail "session start did not record a .last-session-start marker"
-
-  pass "session start prints a reset-window note newer than the previous session start"
-}
-
-test_reset_handoff_note_not_reprinted_at_next_session_start() {
-  local rec root home fakebin out1 out2
-  rec=$(new_world reset-handoff-not-reprinted)
-  IFS='|' read -r root home fakebin <<EOF
-$rec
-EOF
-  make_fake_toolchain "$fakebin"
-  make_fake_ps_claude "$fakebin"
-
-  mkdir -p "$home/data/reset-window"
-  printf '# Session reset 2026-07-25-0900\n\n## In-flight\n- fm-old-task: watch tests\n' \
-    > "$home/data/reset-window/2026-07-25-0900.md"
-
-  out1=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  assert_contains "$out1" "fm-old-task: watch tests" \
-    "first session start did not print the reset-window note"
-
-  out2=$(run_session_start "$home" "$root" "$fakebin:$BASE_PATH")
-  assert_not_contains "$out2" "fm-old-task: watch tests" \
-    "second session start reprinted a reset-window note no newer than the previous session start"
-  assert_contains "$out2" "none (no reset note newer than the previous session start)" \
-    "second session start did not report the reset-window note as already surfaced"
-
-  pass "session start does not reprint a reset-window note that is not newer than the previous session start"
-}
-
 test_fleet_digest_empty_fleet() {
   local rec root home fakebin out
   rec=$(new_world empty-fleet)
@@ -2491,9 +2456,6 @@ EOF
   pass "session start rejects Pi loaded markers from previous sessions"
 }
 
-test_reset_handoff_note_printed_when_newer_than_previous_session_start
-test_reset_handoff_note_not_reprinted_at_next_session_start
-test_reset_handoff_note_read_only_session_does_not_consume_marker
 test_context_digest_absent_empty_present
 test_lock_refusal_read_only_path
 test_lock_write_failure_read_only_path
@@ -2518,6 +2480,8 @@ test_orphan_status_logs_are_printed
 test_endpoint_liveness_tmux
 test_endpoint_liveness_herdr
 test_composition_invokes_real_scripts
+test_branch_outcome_replay_and_lease_sweep
+test_non_pi_session_start_leaves_branch_state_untouched
 test_backlog_compact_tasks_axi_omits_bodies_and_keeps_metadata
 test_backlog_queued_bound_discloses_its_remainder
 test_backlog_compact_manual_backend_skips_indented_bodies
