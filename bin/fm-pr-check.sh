@@ -73,21 +73,6 @@ fi
 # bin/fm-review-diff.sh resolves the head from the remote when none is recorded.
 # bin/fm-pr-merge.sh reads a GitLab head live at merge time for the same reason,
 # and treats a recorded value that disagrees as stale rather than authoritative.
-pr_check_refuse() {  # <message>
-  echo "pr-check: REFUSED: $1" >&2
-  exit 1
-}
-
-pr_check_what_changed_bulleted() {  # <body>
-  printf '%s\n' "$1" | awk '
-    /^## What Changed[ \t]*$/ { heading = 1; next }
-    heading && /^[ \t]*$/ { next }
-    heading && /^-[ \t]/ { bulleted = 1; heading = 0; next }
-    { heading = 0 }
-    END { exit(bulleted ? 0 : 1) }
-  '
-}
-
 WT=$(grep '^worktree=' "$META" | tail -1 | cut -d= -f2- || true)
 PR_HEAD=
 if [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/dev/null 2>&1; then
@@ -97,116 +82,6 @@ if [ "$PROVIDER" = github ] && [ -n "$WT" ] && [ -d "$WT" ] && command -v gh >/d
   fi
 fi
 
-# --- Structured PR verification (GitHub only) -------------------------------
-# Fail closed: every unverifiable path is a refuse, never a silent pass-through.
-if [ "$PROVIDER" = github ]; then
-  PR_MERGE_STATE=""
-  PR_BASE=""
-  PR_BODY=""
-  PR_MERGE_STATE=$(gh pr view "$URL" --json mergeStateStatus -q .mergeStateStatus 2>/dev/null) \
-    || pr_check_refuse "failed to fetch merge state for $URL from GitHub"
-  PR_BASE=$(gh pr view "$URL" --json baseRefName -q .baseRefName 2>/dev/null) \
-    || pr_check_refuse "failed to fetch base branch for $URL from GitHub"
-  PR_BODY=$(gh pr view "$URL" --json body -q .body 2>/dev/null) \
-    || pr_check_refuse "failed to fetch PR body for $URL from GitHub"
-
-  REFUSE=0
-  REASONS=""
-
-  MODE=""
-  if [ -f "$META" ]; then
-    MODE=$(grep '^mode=' "$META" | tail -1 | cut -d= -f2- || true)
-  fi
-  if [ "$MODE" = "no-mistakes" ]; then
-    if [ -z "$PR_BODY" ]; then
-      REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - PR body is empty, but task mode=no-mistakes always generates one"
-    elif ! pr_check_what_changed_bulleted "$PR_BODY"; then
-      REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - PR body has no '## What Changed' bulleted section"
-    fi
-  fi
-
-  # Merge state: DIRTY means the PR cannot cleanly merge.
-  if [ "$PR_MERGE_STATE" = "DIRTY" ]; then
-    REFUSE=1
-    REASONS="${REASONS}${REASONS:+$'\n'}  - GitHub reports merge state DIRTY (PR likely needs a rebase)"
-  fi
-
-  # A stacked_base= declaration is written only by fm-spawn.sh before the
-  # worker starts. It replaces the registry/default comparison only after the
-  # declared remote branch exists and GitHub reports it as the exact PR base.
-  # A merged parent often loses its branch, so that state refuses until the task
-  # is re-declared against its current intended base.
-  PROJ=""
-  STACKED_BASE=""
-  if [ -f "$META" ]; then
-    PROJ=$(grep '^project=' "$META" | tail -1 | cut -d= -f2- || true)
-    STACKED_BASE=$(grep '^stacked_base=' "$META" | tail -1 | cut -d= -f2- || true)
-  fi
-  if [ -z "$PROJ" ]; then
-    REFUSE=1
-    REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify PR base branch: project= absent from task meta"
-  elif [ ! -d "$PROJ" ]; then
-    REFUSE=1
-    REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify PR base branch: project directory not found at ${PROJ}"
-  elif [ -n "$STACKED_BASE" ]; then
-    if ! git check-ref-format "refs/heads/$STACKED_BASE" >/dev/null 2>&1; then
-      REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify stacked PR base: task declaration '${STACKED_BASE}' is not a valid branch name"
-    elif ! git -C "$PROJ" ls-remote --exit-code --heads origin "refs/heads/$STACKED_BASE" >/dev/null 2>&1; then
-      REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - cannot verify stacked PR base: declared parent branch '${STACKED_BASE}' does not exist on origin (re-declare the task against its current intended base)"
-    elif [ -z "$PR_BASE" ] || [ "$PR_BASE" != "$STACKED_BASE" ]; then
-      REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - WRONG STACKED BASE BRANCH: PR targets '${PR_BASE}' but task declares '${STACKED_BASE}'"
-    fi
-  else
-    # Registry base wins over repo default.
-    # The registry base=<branch> is the authoritative expected target for
-    # projects that do not accept PRs against the repo default (e.g. aide-*
-    # repos target dev, not main). When set it must match; when unset the
-    # repo's true remote default applies. The project is resolved by exact
-    # canonical path identity only, never by a loose basename, so a real-path
-    # clone whose directory name differs from its registry name still resolves
-    # its own base, and an unresolvable path refuses instead of silently
-    # falling back to the repo default.
-    EXPECTED_BASE=$("$FM_ROOT/bin/fm-project-base.sh" --path "$PROJ")
-    if [ -n "$EXPECTED_BASE" ] && [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$EXPECTED_BASE" ]; then
-      REFUSE=1
-      REASONS="${REASONS}${REASONS:+$'\n'}  - WRONG BASE BRANCH: PR targets '${PR_BASE}' but project registry expects '${EXPECTED_BASE}' (this project does NOT accept PRs against '${PR_BASE}'; re-open the PR targeting '${EXPECTED_BASE}')"
-    elif [ -z "$EXPECTED_BASE" ]; then
-      LS_RC=0
-      LS_OUT=$(git -C "$PROJ" ls-remote --symref origin HEAD 2>/dev/null) || LS_RC=$?
-      if [ "$LS_RC" -ne 0 ]; then
-        REFUSE=1
-        REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: ls-remote failed for project at ${PROJ}"
-      else
-        TRUE_DEFAULT=$(printf '%s\n' "$LS_OUT" \
-          | sed -n 's|^ref: refs/heads/\([^\t]*\)\tHEAD$|\1|p' | head -1)
-        if [ -z "$TRUE_DEFAULT" ]; then
-          REFUSE=1
-          REASONS="${REASONS}${REASONS:+$'\n'}  - cannot determine true default branch: remote HEAD carries no symbolic ref"
-        elif [ -n "$PR_BASE" ] && [ "$PR_BASE" != "$TRUE_DEFAULT" ]; then
-          REFUSE=1
-          REASONS="${REASONS}${REASONS:+$'\n'}  - PR base '${PR_BASE}' differs from project's true remote default '${TRUE_DEFAULT}'"
-        fi
-      fi
-    fi
-  fi
-
-  if [ "$REFUSE" -eq 1 ]; then
-    echo "pr-check: REFUSED to arm merge poll for $URL" >&2
-    echo "pr-check: the PR is not mergeable or cannot be verified:" >&2
-    printf '%s\n' "$REASONS" >&2
-    exit 1
-  fi
-fi
-
-# --- Arm the merge poll (hardened static-template mechanism) -----------------
-# Structured verification above decides WHETHER to arm; everything below decides
-# HOW to arm it safely: atomic meta rewrite plus a byte-static watcher check
-# script, so no per-task data is ever interpolated into shell source.
 META_TMP=
 META_LOCK=
 META_LOCK_HELD=0

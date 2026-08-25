@@ -1,10 +1,5 @@
 #!/usr/bin/env bash
-# tests/fm-end-session.test.sh - bin/fm-end-session.sh (the /end-session
-# skill's mechanics): preflight preservation checks, the handoff note,
-# best-effort backup, monitoring quiesce, and lock release, plus the
-# invariants the skill promises: unresolved decisions and queued
-# notifications are never touched, and nothing in the flow ever launches a
-# successor session.
+# Behavior tests for the read-only end-session preflight.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -12,582 +7,205 @@ set -u
 
 END_SESSION="$ROOT/bin/fm-end-session.sh"
 TMP_ROOT=$(fm_test_tmproot fm-end-session)
-mkdir -p "$TMP_ROOT/archives"
-REAL_TMUX=$(command -v tmux || true)
-fm_git_identity fmtest fmtest@example.invalid
-
-# make_fake_ps_harness <fakebin>: every pid `ps` is asked about reports as a
-# live claude process with a FIXED synthetic ppid (FM_TEST_LOCK_PID), so the
-# ancestry walk converges on that same constant pid regardless of which real
-# OS process is asking - the acquire step and every later fm-end-session.sh
-# invocation are different real processes, but they resolve the identical
-# "self" identity under this fake, exactly what makes
-# fm_session_lock_owned_by_self answer true across separate invocations.
 FM_TEST_LOCK_PID=42
-make_fake_ps_harness() {
+
+make_fake_ps() {
   local fakebin=$1
   cat > "$fakebin/ps" <<SH
 #!/usr/bin/env bash
-set -u
 case "\$*" in
-  *"comm="*) printf 'claude\n'; exit 0 ;;
-  *"args="*) printf 'claude\n'; exit 0 ;;
-  *"ppid="*) printf '%s\n' "$FM_TEST_LOCK_PID"; exit 0 ;;
+  *"comm="*) printf 'claude\n' ;;
+  *"args="*) printf 'claude\n' ;;
+  *"ppid="*) printf '%s\n' "$FM_TEST_LOCK_PID" ;;
+  *) exit 1 ;;
 esac
-exit 1
 SH
   chmod +x "$fakebin/ps"
 }
 
-# make_home <name>: an isolated FM_HOME with state/, data/ (its own git repo,
-# so backup is exercisable), and config/, plus a fakebin with a harness-faking
-# ps so this test shell owns the session lock.
 make_home() {
-  local dir="$TMP_ROOT/$1"
-  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config"
-  fm_git_init_commit "$dir/home/data"
-  fm_git_add_origin "$dir/home/data" "$dir/data-origin.git"
-  git -C "$dir/home/data" push -q -u origin HEAD 2>/dev/null || true
-  local fakebin
-  fakebin=$(fm_fakebin "$dir")
-  make_fake_ps_harness "$fakebin"
+  local name=$1 dir fakebin
+  dir="$TMP_ROOT/$name"
+  mkdir -p "$dir/home/state" "$dir/home/data" "$dir/home/config" "$dir/fakebin"
+  fakebin="$dir/fakebin"
+  make_fake_ps "$fakebin"
   printf '%s\n' "$dir/home"
 }
 
-# acquire_lock_as_self <home> <fakebin>: write state/.lock with the constant
-# synthetic pid the fake ps above always resolves the ancestry walk to.
-acquire_lock_as_self() {  # <home> <fakebin>
-  local home=$1
-  printf '%s\n' "$FM_TEST_LOCK_PID" > "$home/state/.lock"
-}
+acquire_lock() { printf '%s\n' "$FM_TEST_LOCK_PID" > "$1/state/.lock"; }
 
-run_es() {  # <home> <fakebin> <subcommand...>
+run_es() {
   local home=$1 fakebin=$2
   shift 2
-  PATH="$fakebin:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
-    FM_AGENT_ARCHIVES_ROOT="$TMP_ROOT/archives" "$END_SESSION" "$@"
+  PATH="$fakebin:$PATH" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$END_SESSION" "$@"
 }
 
-make_validation_tools() {  # <fakebin>
-  local fakebin=$1
-  cat > "$fakebin/tmux" <<'SH'
-#!/usr/bin/env bash
-case "${1:-}" in
-  list-windows) printf 'worker\n' ;;
-  display-message)
-    case "$*" in
-      *pane_current_command*) printf 'claude\n' ;;
-    esac
-    ;;
-esac
-SH
-  cat > "$fakebin/no-mistakes" <<'SH'
-#!/usr/bin/env bash
-case "${1:-} ${2:-}" in
-  'axi status') printf '%s\n' "${FM_END_SESSION_TEST_NM_STATUS:-}" ;;
-esac
-SH
-  chmod +x "$fakebin/tmux" "$fakebin/no-mistakes"
-}
-
-make_no_nm_toolbin() {  # <dir>
-  local dir=$1 toolbin git_bin
-  toolbin="$dir/no-nm-toolbin"
-  mkdir -p "$toolbin"
-  git_bin=$(command -v git) || fail "git is required for the no-mistakes-absent fixture"
-  ln -s "$git_bin" "$toolbin/git"
-  printf '%s\n' "$toolbin"
-}
-
-run_es_without_no_mistakes() {  # <home> <fakebin> <toolbin> <subcommand...>
-  local home=$1 fakebin=$2 toolbin=$3
-  shift 3
-  PATH="$fakebin:$toolbin:/usr/bin:/bin" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" "$END_SESSION" "$@"
-}
-
-make_reconcile_tools() {  # <fakebin> <log>
-  local fakebin=$1 log=$2
-  cat > "$fakebin/no-mistakes" <<'SH'
-#!/usr/bin/env bash
-exit 0
-SH
-  cat > "$fakebin/treehouse" <<SH
-#!/usr/bin/env bash
-if [ "\${1:-}" = return ]; then
-  target="\${@: -1}"
-  printf 'return %s\n' "\$target" >> "$log"
-  rm -rf -- "\$target"
-fi
-exit 0
-SH
-  chmod +x "$fakebin/no-mistakes" "$fakebin/treehouse"
-}
-
-make_reconcile_task() {  # <home> <id> <worktree> <push:yes|no>
-  local home=$1 id=$2 worktree=$3 push=$4 project
-  project="$home/$id-project"
-  fm_git_worktree "$project" "$worktree" "fm/$id"
-  git -C "$worktree" config extensions.worktreeConfig true
-  git -C "$worktree" config --worktree fm.firstmate-task "$id"
-  if [ "$push" = yes ]; then
-    git -C "$worktree" push -q origin "fm/$id"
-  else
-    git -C "$worktree" -c user.name=fmtest -c user.email=fmtest@example.invalid commit -q --allow-empty -m unlanded
-  fi
-  # Normal ship teardown now archives the named task artifacts before returning
-  # this worktree, so every ordinary fixture starts with the required directory.
-  mkdir -p "$worktree/.agent/tasks/$id"
-  printf '%s\n' fixture > "$worktree/.agent/tasks/$id/plan.md"
-  fm_write_meta "$home/state/$id.meta" \
-    "window=" "worktree=$worktree" "project=$project" "kind=ship" "mode=local-only"
-}
-
-# --- 1. successful isolated shutdown, empty fleet -----------------------
-
-test_successful_shutdown_empty_fleet() {
-  local home fakebin out note_path backup_out
-  home=$(make_home ok-empty)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  out=$(run_es "$home" "$fakebin" preflight) \
-    || fail "preflight refused an empty, lock-owned fleet: $out"
-  [ -z "$out" ] || fail "preflight listed live helpers for an empty fleet: $out"
-
-  note_path=$(run_es "$home" "$fakebin" note) || fail "note failed"
-  assert_present "$note_path" "handoff note was not written"
-  assert_grep "No successor session was launched" "$note_path" \
-    "handoff note omits the no-successor statement"
-
-  backup_out=$(run_es "$home" "$fakebin" backup) || fail "backup command itself failed"
-  case "$backup_out" in
-    "BACKUP: ok"|"BACKUP: clean"*) : ;;
-    *) fail "backup reported an unexpected result: $backup_out" ;;
-  esac
-
-  run_es "$home" "$fakebin" quiesce >/dev/null || fail "quiesce refused with no monitoring active"
-  run_es "$home" "$fakebin" finalize >/dev/null || fail "finalize refused after a clean flow"
-
-  assert_absent "$home/state/.lock" "finalize did not release the session lock"
-  pass "end-session: empty-fleet flow completes and releases the lock last"
-}
-
-# --- 2. refusal with unsafe active work: unresolved endpoint state -------
-
-test_refuses_on_ambiguous_endpoint() {
-  local home fakebin out rc
-  home=$(make_home unsafe-endpoint)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  # backend=zellij with no zellij tooling present classifies as "unverified"
-  # by fm_backend_agent_state - exactly the class of endpoint state a
-  # graceful stop cannot be safely targeted against.
-  fm_write_meta "$home/state/risky-a.meta" \
-    "worktree=$home/worktree" "window=session:risky" "backend=zellij" "kind=ship"
-
-  set +e
-  out=$(run_es "$home" "$fakebin" preflight 2>&1)
-  rc=$?
-  set -e
-  [ "$rc" -ne 0 ] || fail "preflight succeeded despite an unclassifiable live endpoint: $out"
-  assert_contains "$out" "REFUSED:" "refusal was not reported with a REFUSED: line"
-  assert_contains "$out" "risky-a" "refusal did not name the offending task"
-  assert_present "$home/state/.lock" "a preflight refusal must never touch the session lock"
-  pass "end-session: preflight refuses when a live endpoint cannot be confidently classified"
-}
-
-# --- 3. unresolved decisions and 4. queued notifications survive untouched -
-
-test_decisions_and_wake_queue_untouched() {
-  local home fakebin before_backlog before_queue after_backlog after_queue
-  home=$(make_home preserve)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  printf '## In flight\n- open-decision-1: needs-decision - pick a base branch [key=base-branch]\n' \
-    > "$home/data/backlog.md"
-  printf 'signal open-decision-1 needs-decision: pick a base branch\n' \
-    > "$home/state/.wake-queue"
-  before_backlog=$(cat "$home/data/backlog.md")
-  before_queue=$(cat "$home/state/.wake-queue")
-
-  run_es "$home" "$fakebin" preflight >/dev/null || fail "preflight refused a clean fleet unexpectedly"
-  run_es "$home" "$fakebin" note >/dev/null || fail "note failed"
-  run_es "$home" "$fakebin" backup >/dev/null || fail "backup failed"
-  run_es "$home" "$fakebin" quiesce >/dev/null || fail "quiesce failed"
-  run_es "$home" "$fakebin" finalize >/dev/null || fail "finalize failed"
-
-  after_backlog=$(cat "$home/data/backlog.md")
-  after_queue=$(cat "$home/state/.wake-queue")
-  [ "$before_backlog" = "$after_backlog" ] || fail "shutdown mutated the backlog (an open decision must never be touched)"
-  [ "$before_queue" = "$after_queue" ] || fail "shutdown mutated the durable wake queue (a queued notification must never be dropped)"
-  pass "end-session: an open decision and a queued notification both survive the full flow byte-for-byte"
-}
-
-# --- 5. no successor is ever launched -------------------------------------
-
-test_never_launches_a_successor() {
-  local home fakebin runlog
-  home=$(make_home no-launch)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-  runlog="$(dirname "$home")/runtime.log"
-  : > "$runlog"
-
-  # Any tool capable of starting a new session logs every invocation. A
-  # successor launch would show up here as a "start"/"new-window" call.
-  local tool
-  for tool in tmux herdr claude codex opencode pi grok kimi; do
-    cat > "$fakebin/$tool" <<SH
-#!/usr/bin/env bash
-printf '%s <%s>\n' "$tool" "\$*" >> "$runlog"
-exit 0
-SH
-    chmod +x "$fakebin/$tool"
-  done
-  # ps must still resolve to the fake harness above; restore it after the
-  # loop overwrote it if the harness name collided with a logged tool.
-  make_fake_ps_harness "$fakebin"
-
-  run_es "$home" "$fakebin" preflight >/dev/null
-  run_es "$home" "$fakebin" note >/dev/null
-  run_es "$home" "$fakebin" backup >/dev/null
-  run_es "$home" "$fakebin" quiesce >/dev/null
-  run_es "$home" "$fakebin" finalize >/dev/null
-
-  if grep -Eiq 'new-window|new-session|agent start|resume|--continue' "$runlog"; then
-    fail "end-session invoked something launch-shaped: $(cat "$runlog")"
-  fi
-  pass "end-session: the full flow never invokes a session-launch command"
-}
-
-# --- 6. partial-shutdown failure leaves a deterministic recovery state ---
-
-test_partial_failure_leaves_session_still_supervising() {
-  local home fakebin out rc stuck_pid
-  home=$(make_home partial-fail)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  # A real process that ignores SIGTERM, standing in for a watcher wedged
-  # deeply enough that a graceful stop genuinely cannot confirm it exited.
-  # `kill` is a bash builtin, so it cannot be PATH-shimmed - a real
-  # trap-and-ignore process is the only faithful way to exercise this.
-  bash -c 'trap "" TERM; exec sleep 300' &
-  stuck_pid=$!
-  mkdir -p "$home/state/.watch.lock"
-  printf '%s\n' "$stuck_pid" > "$home/state/.watch.lock/pid"
-
-  set +e
-  out=$(FM_END_SESSION_WATCHER_STOP_ATTEMPTS=3 FM_END_SESSION_WATCHER_STOP_SLEEP=0.05 \
-    run_es "$home" "$fakebin" quiesce 2>&1)
-  rc=$?
-  set -e
-  [ "$rc" -ne 0 ] || fail "quiesce succeeded against a watcher pid that never exits: $out"
-  assert_contains "$out" "REFUSED:" "quiesce failure was not reported with a REFUSED: line"
-  assert_present "$home/state/.lock" "a quiesce failure must never release the session lock"
-
-  set +e
-  out=$(run_es "$home" "$fakebin" finalize 2>&1)
-  rc=$?
-  set -e
-  [ "$rc" -eq 0 ] || fail "finalize refused even though this session still owns the lock: $out"
-  # finalize succeeding here shows the session remained fully able to keep
-  # supervising (lock intact, ownership provable) right up to a deliberate
-  # retry - never an ambiguous half-shutdown.
-  assert_absent "$home/state/.lock" "finalize (once called) did not release the lock"
-
-  kill -KILL "$stuck_pid" 2>/dev/null || true
-  wait "$stuck_pid" 2>/dev/null || true
-  pass "end-session: an unstoppable watcher refuses quiesce and leaves the lock (and supervision) intact, not ambiguous"
-}
-
-# --- secondmates are never treated as helpers to stop ---------------------
-
-test_secondmates_are_never_listed_as_live_helpers() {
-  local home fakebin out
-  home=$(make_home no-secondmate-stop)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  fm_write_secondmate_meta "$home/state/aide.meta" "$TMP_ROOT/aide-home"
-
-  out=$(run_es "$home" "$fakebin" preflight) || fail "preflight refused with only a secondmate on record: $out"
-  assert_not_contains "$out" "LIVE_HELPER" \
-    "preflight listed a secondmate as a helper to gracefully stop"
-  pass "end-session: a registered secondmate is never listed for graceful interruption"
-}
-
-# --- regression: Orca terminal= tasks are never silently skipped ---------
-
-test_orca_task_included_without_a_window_field() {
-  local home fakebin out
-  home=$(make_home orca-included)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  # Orca records its endpoint as terminal=, never window=. A gate that reads
-  # window= directly (rather than resolving through fm_backend_target_of_meta)
-  # would silently drop this task from every helper-stop and status count.
-  fm_write_meta "$home/state/orca-a.meta" \
-    "worktree=$home/worktree" "terminal=orca-term-abc123" "backend=orca" "kind=ship"
-
-  set +e
-  out=$(run_es "$home" "$fakebin" preflight 2>&1)
-  set -e
-  # orca has no live-agent classifier (fm_backend_agent_state falls through
-  # to "unverified" for it too), so preflight refuses - but critically it
-  # must NAME the orca task, proving it was actually considered rather than
-  # silently absent from both the LIVE_HELPER list and the refusal.
-  assert_contains "$out" "orca-a" \
-    "an Orca-backed task (terminal= only, no window=) was invisible to preflight"
-
-  out=$(run_es "$home" "$fakebin" status)
-  assert_contains "$out" "live_helpers:" "status did not print a live_helpers line"
-  pass "end-session: an Orca task with only terminal= (no window=) is never silently skipped"
-}
-
-# --- regression: watch-lock stop is identity-checked, not just pid-checked -
-
-test_watch_lock_identity_mismatch_treated_as_stale_never_signaled() {
-  local home fakebin out real_pid term_log
-  home=$(make_home identity-mismatch)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  # A real, live process recorded as the watcher pid, but whose recorded
-  # pid-identity does NOT match its actual current identity (as if the
-  # original watcher exited and this pid number was reused by something
-  # else entirely). The fix must treat this as stale and never signal it -
-  # confirmed by a TERM trap that would log if it ever fired.
-  term_log="$(dirname "$home")/term.log"
-  : > "$term_log"
-  bash -c "trap 'echo signaled >> '\"$term_log\"'; exit 0' TERM; exec sleep 300" &
-  real_pid=$!
-  mkdir -p "$home/state/.watch.lock"
-  printf '%s\n' "$real_pid" > "$home/state/.watch.lock/pid"
-  printf 'proc-starttime=0 cmdline-hex=deadbeef\n' > "$home/state/.watch.lock/pid-identity"
-
-  out=$(run_es "$home" "$fakebin" quiesce) || fail "quiesce refused an identity-mismatched (stale) watch lock: $out"
-  assert_contains "$out" "stale" "an identity-mismatched watch lock was not reported as stale"
-  sleep 0.2
-  [ ! -s "$term_log" ] || fail "quiesce sent SIGTERM to a pid whose identity did not match the recorded watcher - exactly the PID-reuse hazard the fix must close"
-
-  kill -KILL "$real_pid" 2>/dev/null || true
-  wait "$real_pid" 2>/dev/null || true
-  pass "end-session: a watch-lock pid whose identity no longer matches is treated as stale and never signaled"
-}
-
-# --- regression: quiesce refuses while a live helper is still up ---------
-
-test_quiesce_refuses_while_a_live_helper_remains() {
-  [ -n "$REAL_TMUX" ] || { pass "end-session: quiesce-blocks-on-live-helper (skip - tmux not installed)"; return 0; }
-  local home fakebin out socket session=es-live-helper window=es-worker claude_bin
-  home=$(make_home quiesce-blocks)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  socket="$(dirname "$home")/tmux.sock"
-  claude_bin="$(dirname "$home")/claude-bin"
-  mkdir -p "$claude_bin"
-  cp "$(command -v sleep)" "$claude_bin/claude"
-  env -u TMUX -u TMUX_PANE "$REAL_TMUX" -S "$socket" new-session -d -s "$session" -n "$window" \
-    "exec '$claude_bin/claude' 300"
-
+make_tmux() {
+  local fakebin=$1 command=${2:-bash}
   cat > "$fakebin/tmux" <<SH
 #!/usr/bin/env bash
-exec '$REAL_TMUX' -S '$socket' "\$@"
+case "\${1:-}" in
+  list-windows) printf 'worker\n' ;;
+  display-message) printf '%s\n' '$command' ;;
+  *) exit 1 ;;
+esac
 SH
   chmod +x "$fakebin/tmux"
-
-  fm_write_meta "$home/state/live-a.meta" \
-    "worktree=$home/worktree" "window=$session:$window" "backend=tmux" "kind=ship"
-
-  set +e
-  out=$(run_es "$home" "$fakebin" quiesce 2>&1)
-  set -e
-  assert_contains "$out" "REFUSED:" "quiesce did not refuse while a live helper was still running"
-  assert_contains "$out" "live-a" "quiesce's refusal did not name the still-live task"
-  assert_present "$home/state/.lock" "quiesce's refusal must never touch the session lock"
-
-  env -u TMUX -u TMUX_PANE "$REAL_TMUX" -S "$socket" kill-server 2>/dev/null || true
-  pass "end-session: quiesce refuses to proceed while step 4's graceful-stop loop has not actually finished"
 }
 
-# --- regression: active validation preserves branch custody -----------------
+make_herdr() {
+  local fakebin=$1
+  cat > "$fakebin/herdr" <<'SH'
+#!/usr/bin/env bash
+case "${1:-} ${2:-}" in
+  "pane get") printf '%s\n' '{"result":{"pane":{"pane_id":"p1"}}}' ;;
+  "agent get") printf '%s\n' '{"result":{"agent":{"agent":"pi","agent_status":"working"}}}' ;;
+  "pane process-info") printf '%s\n' '{"result":{"type":"pane_process_info","process_info":{"pane_id":"p1","foreground_processes":[{"name":"pi"}]}}}' ;;
+  *) exit 1 ;;
+esac
+SH
+  chmod +x "$fakebin/herdr"
+}
 
-test_active_validation_is_visible_but_exempt_from_shutdown() {
-  local home fakebin worktree branch head out toolbin
-  home=$(make_home validation-active)
+test_lock_refusal() {
+  local home fakebin out rc
+  home=$(make_home no-lock)
   fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-  make_validation_tools "$fakebin"
+  set +e
+  out=$(run_es "$home" "$fakebin" preflight 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "missing session lock should refuse"
+  assert_contains "$out" "this process does not hold the session lock" \
+    "lock refusal was not reported"
+  pass "preflight refuses without session-lock ownership"
+}
 
-  worktree="$TMP_ROOT/validation-active-worktree"
-  branch=fm/validation-active
+test_empty_home_succeeds() {
+  local home fakebin out
+  home=$(make_home empty)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock "$home"
+  out=$(run_es "$home" "$fakebin" preflight) || fail "empty home refused: $out"
+  [ -z "$out" ] || fail "empty home reported a live helper: $out"
+  pass "preflight accepts a lock-owned empty home"
+}
+
+test_unclassified_endpoint_refuses() {
+  local home fakebin out rc
+  home=$(make_home unknown-endpoint)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock "$home"
+  fm_write_meta "$home/state/task-x1.meta" \
+    "kind=ship" "backend=zellij" "window=session:worker"
+  set +e
+  out=$(run_es "$home" "$fakebin" preflight 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "unclassified endpoint should refuse"
+  assert_contains "$out" "cannot be confidently classified" \
+    "endpoint refusal was not reported"
+  assert_contains "$out" "task-x1" "endpoint refusal did not name the task"
+  pass "preflight refuses an endpoint it cannot classify"
+}
+
+test_unreadable_meta_refuses() {
+  local home fakebin out rc
+  home=$(make_home unreadable-meta)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock "$home"
+  printf 'kind=ship\nwindow=session:worker\n' > "$home/real.meta"
+  ln -s "$home/real.meta" "$home/state/task-x1.meta"
+  set +e
+  out=$(run_es "$home" "$fakebin" preflight 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "unsafe meta should refuse"
+  assert_contains "$out" "state/*.meta cannot be read" \
+    "meta refusal was not reported"
+  pass "preflight refuses an unsafe task record"
+}
+
+test_live_helper_is_reported_for_skill() {
+  local home fakebin out
+  home=$(make_home live-helper)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock "$home"
+  make_tmux "$fakebin" claude
+  fm_write_meta "$home/state/task-x1.meta" \
+    "kind=ship" "backend=tmux" "window=session:worker"
+  out=$(run_es "$home" "$fakebin" preflight) \
+    || fail "live helper preflight refused: $out"
+  assert_contains "$out" "LIVE_HELPER task-x1 tmux session:worker" \
+    "preflight did not return the helper for graceful stopping"
+  pass "preflight reports a live helper without mutating state"
+}
+
+test_herdr_endpoint_is_classified() {
+  local home fakebin out
+  home=$(make_home herdr-endpoint)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock "$home"
+  make_herdr "$fakebin"
+  fm_write_meta "$home/state/task-x1.meta" \
+    "kind=ship" "backend=herdr" "window=session:p1"
+  out=$(run_es "$home" "$fakebin" preflight) \
+    || fail "herdr endpoint preflight refused: $out"
+  assert_contains "$out" "LIVE_HELPER task-x1 herdr session:p1" \
+    "preflight did not classify the herdr endpoint as live"
+  pass "preflight classifies a live herdr endpoint"
+}
+
+test_active_validation_refuses() {
+  local home fakebin out rc worktree head
+  home=$(make_home active-validation)
+  fakebin="$(dirname "$home")/fakebin"
+  acquire_lock "$home"
+  make_tmux "$fakebin" claude
+  worktree="$TMP_ROOT/active-validation-worktree"
   fm_git_init_commit "$worktree"
-  git -C "$worktree" checkout -qb "$branch"
+  git -C "$worktree" checkout -qb fm/task-x1
   head=$(git -C "$worktree" rev-parse HEAD)
-  fm_write_meta "$home/state/validation-a.meta" \
-    "worktree=$worktree" "window=validation:worker" "backend=tmux" "kind=ship"
-
-  FM_END_SESSION_TEST_NM_STATUS=$(cat <<EOF
+  cat > "$fakebin/no-mistakes" <<SH
+#!/usr/bin/env bash
+cat <<'EOF'
 run:
-  id: "01RUN"
-  branch: $branch
+  branch: fm/task-x1
   status: running
   head: "$head"
-  pr: ""
-  findings: none
 EOF
-)
-  export FM_END_SESSION_TEST_NM_STATUS
-
-  out=$(run_es "$home" "$fakebin" preflight) || fail "preflight refused an active validation run: $out"
-  assert_contains "$out" "VALIDATION_ACTIVE validation-a tmux validation:worker" \
-    "preflight did not report the active validation run"
-  assert_not_contains "$out" "LIVE_HELPER validation-a" \
-    "preflight classified the active validation worker as stoppable"
-  run_es "$home" "$fakebin" quiesce >/dev/null \
-    || fail "quiesce refused while the only live worker was in active validation"
-
-  FM_END_SESSION_TEST_NM_STATUS=$(cat <<EOF
-run:
-  id: "01RUN"
-  branch: $branch
-  status: completed
-  head: "$head"
-  pr: ""
-  findings: none
-EOF
-)
-  out=$(run_es "$home" "$fakebin" preflight) || fail "preflight refused a terminal validation run: $out"
-  assert_contains "$out" "LIVE_HELPER validation-a tmux validation:worker" \
-    "preflight exempted a terminal validation run"
-
-  rm "$fakebin/no-mistakes"
-  toolbin=$(make_no_nm_toolbin "$(dirname "$home")")
-  out=$(run_es_without_no_mistakes "$home" "$fakebin" "$toolbin" preflight) \
-    || fail "preflight refused when no-mistakes was unavailable: $out"
-  assert_contains "$out" "LIVE_HELPER validation-a tmux validation:worker" \
-    "preflight exempted a worker when no-mistakes was unavailable"
-  pass "end-session: active validation is visible but exempt from graceful stop and quiesce"
+SH
+  chmod +x "$fakebin/no-mistakes"
+  fm_write_meta "$home/state/task-x1.meta" \
+    "kind=ship" "backend=tmux" "window=session:worker" "worktree=$worktree"
+  set +e
+  out=$(run_es "$home" "$fakebin" preflight 2>&1)
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "active validation should refuse"
+  assert_contains "$out" "attributed non-terminal validation run is active" \
+    "validation refusal was not reported"
+  pass "preflight preserves branch custody during active validation"
 }
 
-# --- regression: handoff note surfaces pr= and worktree dirty state ------
-
-test_note_reports_pr_and_worktree_status() {
-  local home fakebin note_path proj_dir
-  home=$(make_home note-detail)
+test_only_preflight_is_exposed() {
+  local home fakebin out rc
+  home=$(make_home commands)
   fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-
-  proj_dir="$TMP_ROOT/note-detail-project"
-  fm_git_init_commit "$proj_dir"
-  printf 'dirty\n' > "$proj_dir/scratch.txt"
-
-  fm_write_meta "$home/state/withpr.meta" \
-    "worktree=$proj_dir" "window=note-detail:none" "backend=tmux" "kind=ship" \
-    "pr=https://github.com/example/repo/pull/42"
-
-  note_path=$(run_es "$home" "$fakebin" note) || fail "note failed"
-  assert_grep "pr: https://github.com/example/repo/pull/42" "$note_path" \
-    "handoff note omitted the task's recorded pr= field"
-  assert_grep "worktree: has uncommitted changes" "$note_path" \
-    "handoff note did not surface the worktree's uncommitted changes"
-  pass "end-session: the handoff note surfaces each task's pr= and worktree dirty state"
+  set +e
+  out=$(run_es "$home" "$fakebin" status 2>&1)
+  rc=$?
+  set -e
+  expect_code 2 "$rc" "removed subcommand should be rejected"
+  assert_contains "$out" "usage:" "removed subcommand did not show usage"
+  pass "preflight exposes no shutdown mutation subcommands"
 }
 
-# --- reconciliation: landed work is cleaned through guarded teardown --------
-
-test_reconcile_tears_down_finished_task() {
-  local home fakebin log out
-  home=$(make_home reconcile-finished)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-  log="$(dirname "$home")/treehouse.log"
-  : > "$log"
-  make_reconcile_tools "$fakebin" "$log"
-  make_reconcile_task "$home" finished-task "$home/finished-wt" yes
-
-  out=$(run_es "$home" "$fakebin" reconcile) || fail "reconcile refused a landed task: $out"
-  assert_contains "$out" "CLOSING: finished-task - torn down" \
-    "reconcile did not report the finished task as torn down"
-  assert_absent "$home/state/finished-task.meta" \
-    "guarded teardown did not retire the finished task record"
-  assert_absent "$home/finished-wt" \
-    "guarded teardown did not return the finished worktree"
-  assert_grep "return $home/finished-wt" "$log" \
-    "reconcile did not use the existing treehouse teardown path"
-  pass "end-session: landed task is torn down through guarded teardown"
-}
-
-# --- reconciliation: legitimate refusal is preserved and explicit ----------
-
-test_reconcile_preserves_and_reports_unlanded_task() {
-  local home fakebin log out
-  home=$(make_home reconcile-unlanded)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-  log="$(dirname "$home")/treehouse.log"
-  : > "$log"
-  make_reconcile_tools "$fakebin" "$log"
-  make_reconcile_task "$home" unlanded-task "$home/unlanded-wt" no
-
-  out=$(run_es "$home" "$fakebin" reconcile) || fail "reconcile treated a refusal as shutdown failure: $out"
-  assert_contains "$out" "CLOSING: unlanded-task - preserved:" \
-    "reconcile did not report the guarded teardown refusal"
-  assert_present "$home/state/unlanded-task.meta" \
-    "a refused unlanded task record was removed"
-  assert_present "$home/unlanded-wt" \
-    "a refused unlanded worktree was removed"
-  [ ! -s "$log" ] || fail "reconcile invoked treehouse return after an unlanded refusal"
-  assert_grep "unlanded-task: preserved:" "$home/data/end-session/reconciliation.md" \
-    "reconciliation report omitted the preserved task"
-  pass "end-session: unlanded task remains intact and is reported with its refusal"
-}
-
-# --- reconciliation: recycled worktree identity is neutralised -------------
-
-test_reconcile_never_acts_on_recycled_worktree() {
-  local home fakebin log out project worktree
-  home=$(make_home reconcile-recycled)
-  fakebin="$(dirname "$home")/fakebin"
-  acquire_lock_as_self "$home" "$fakebin"
-  log="$(dirname "$home")/treehouse.log"
-  : > "$log"
-  make_reconcile_tools "$fakebin" "$log"
-  project="$home/recycled-project"
-  worktree="$home/recycled-wt"
-  fm_git_worktree "$project" "$worktree" fm/current-task
-  git -C "$worktree" config extensions.worktreeConfig true
-  git -C "$worktree" config --worktree fm.firstmate-task current-task
-  fm_write_meta "$home/state/recycled-task.meta" \
-    "window=" "worktree=$worktree" "project=$project" "kind=ship" "mode=local-only"
-
-  out=$(run_es "$home" "$fakebin" reconcile) || fail "reconcile refused a safely neutralised recycled record: $out"
-  assert_contains "$out" "CLOSING: recycled-task - recycled identity:" \
-    "reconcile did not flag the recycled worktree identity"
-  assert_grep "stale_worktree_cleared=" "$home/state/recycled-task.meta" \
-    "recycled record was not marked with a durable clearing reason"
-  grep -qx 'worktree=' "$home/state/recycled-task.meta" \
-    || fail "recycled worktree pointer was not neutralised"
-  [ ! -s "$log" ] || fail "reconcile acted on a worktree owned by another task"
-  pass "end-session: recycled worktree identity is marked and never acted on"
-}
-
-test_successful_shutdown_empty_fleet
-test_refuses_on_ambiguous_endpoint
-test_decisions_and_wake_queue_untouched
-test_never_launches_a_successor
-test_partial_failure_leaves_session_still_supervising
-test_secondmates_are_never_listed_as_live_helpers
-test_orca_task_included_without_a_window_field
-test_watch_lock_identity_mismatch_treated_as_stale_never_signaled
-test_quiesce_refuses_while_a_live_helper_remains
-test_active_validation_is_visible_but_exempt_from_shutdown
-test_note_reports_pr_and_worktree_status
-test_reconcile_tears_down_finished_task
-test_reconcile_preserves_and_reports_unlanded_task
-test_reconcile_never_acts_on_recycled_worktree
+test_lock_refusal
+test_empty_home_succeeds
+test_unclassified_endpoint_refuses
+test_unreadable_meta_refuses
+test_live_helper_is_reported_for_skill
+test_herdr_endpoint_is_classified
+test_active_validation_refuses
+test_only_preflight_is_exposed

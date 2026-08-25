@@ -185,10 +185,6 @@
       "audience": "agent-runtime"
     },
     {
-      "path": ".agents/skills/pr-merge-board/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": ".agents/skills/refactor-review/SKILL.md",
       "audience": "agent-runtime"
     },

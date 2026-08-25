@@ -16,11 +16,6 @@
 #   - <name> [<mode>] - <desc> (added <date>)          -> <mode> off
 #   - <name> [<mode> +yolo] - <desc> (added <date>)    -> <mode> on
 #
-# Optional per-project fields that may follow the mode bracket:
-#   base=<branch>       authoritative expected base branch (see fm-project-base.sh)
-#   path=<absolute-dir> authoritative clone location for a real-path clone that
-#                       lives outside projects/ (see fm-project-base.sh --path)
-#
 # Registered modes:
 #   no-mistakes            full pipeline -> PR -> configured merge authority (default)
 #   direct-PR              push + PR via gh-axi, no pipeline
