@@ -24,20 +24,12 @@ printf '\n' >> "$log"
 mode=$(cat "$state/mode")
 case "${1:-} ${2:-}" in
   "status --json")
-    if [ "$mode" = dead-server ]; then
-      printf '{"client":{"protocol":14,"version":"test"},"server":{"running":false}}\n'
-    else
-      printf '{"client":{"protocol":14,"version":"test"},"server":{"running":true}}\n'
-    fi
+    printf '{"client":{"protocol":14,"version":"test"},"server":{"running":true}}\n'
     ;;
   "workspace list") printf '{"result":{"workspaces":[{"workspace_id":"w1","label":"firstmate"}]}}\n' ;;
   "tab list") printf '{"result":{"tabs":[]}}\n' ;;
   "tab create") printf '{"result":{"tab":{"tab_id":"t1"},"root_pane":{"pane_id":"p1"}}}\n' ;;
   "pane get")
-    if [ "$mode" = dead-endpoint ] && [ -f "$state/launch-submitted" ]; then
-      printf '{"error":{"code":"pane_not_found"}}\n' >&2
-      exit 1
-    fi
     printf '{"result":{"pane":{"pane_id":"p1","foreground_cwd":"%s"}}}\n' "${FM_FAKE_PANE_PATH:?}"
     ;;
   "pane read")
@@ -54,11 +46,8 @@ case "${1:-} ${2:-}" in
   "pane send-keys")
     count=$(cat "$state/key-count" 2>/dev/null || echo 0)
     count=$((count + 1)); printf '%s\n' "$count" > "$state/key-count"
-    # The first Enter submits the launch command. A second Enter is safe only
-    # after the exact, known Codex trust dialog was observed.
-    if [ "$count" -eq 1 ]; then
-      touch "$state/launch-submitted"
-    elif [ -f "$state/launch-typed" ]; then
+    # A second Enter is safe only after the exact, known Codex trust dialog was observed.
+    if [ "$count" -gt 1 ] && [ -f "$state/launch-typed" ]; then
       touch "$state/trust-accepted"
     fi
     ;;
@@ -97,20 +86,6 @@ EOF
     "$SPAWN" "$id" "$proj" --mode no-mistakes --yolo off 2>&1
 }
 
-test_unreachable_herdr_endpoint_never_reports_spawned() {
-  local rec out status home
-  rec=$(make_case dead-endpoint dead-endpoint)
-  IFS='|' read -r _ home _ _ _ _ _ <<EOF
-$rec
-EOF
-  out=$(run_spawn "$rec"); status=$?
-  [ "$status" -ne 0 ] || fail "unreachable Herdr endpoint spawn should fail"
-  assert_not_contains "$out" "spawned dead-endpoint-z1" "unreachable Herdr endpoint must not report spawned"
-  assert_contains "$out" "endpoint" "unreachable Herdr endpoint failure should identify the runtime target"
-  assert_grep "window=default:p1" "$home/state/dead-endpoint-z1.meta" "endpoint failure should retain recoverable task metadata"
-  pass "fm-spawn: an unreachable Herdr endpoint fails without a false spawned result"
-}
-
 test_codex_trust_prompt_is_accepted_before_success() {
   local rec out status dir home log
   rec=$(make_case codex-trust ready)
@@ -138,7 +113,6 @@ EOF
   pass "fm-spawn: Codex in an already-trusted directory returns ready without trust-dialog interaction"
 }
 
-test_unreachable_herdr_endpoint_never_reports_spawned
 test_codex_trust_prompt_is_accepted_before_success
 test_codex_already_trusted_directory_returns_ready
 

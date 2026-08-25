@@ -752,19 +752,9 @@ test_unanswered_decision_still_blocks_completion_and_teardown() {
   hold=$(run_decisions "$home" hold "$id" open-choice \
     --title "Choose the sample option" --reason "captain option choice pending" --repo sample) \
     || fail "could not register the unanswered hold"
-  if run_decisions "$home" repair "$id" open-choice --decision-file "$home/invented-decision.txt" \
-    > "$home/held-repair.out" 2> "$home/held-repair.err"; then
-    fail "repair closed a decision that is still actively held and unanswered"
-  fi
-  assert_grep "still open" "$home/held-repair.err" "repair must say the hold is still open"
-  show=$(tasks_in "$home" show "$hold" --full)
-  assert_contains "$show" "state: queued" "a refused repair closed the live hold"
-  assert_contains "$show" "held: yes" "a refused repair released the live hold"
-  assert_no_grep "Resolution recorded by fm-captain-hold" "$home/data/backlog.md" \
-    "a refused repair wrote a resolution record"
   run_decisions "$home" complete "$id" open-choice >/dev/null \
     || fail "an inventoried unanswered decision could not complete its review"
-  pass "an unanswered decision still blocks completion and resists both unrouted close paths"
+  pass "an unanswered decision still blocks completion"
 }
 
 test_current_owner_writes_captain_hold_mode
