@@ -1,0 +1,49 @@
+# fm-brief project-aware branch naming - end-to-end evidence
+
+Fixture registry (data/projects.md):
+```
+- oulow [no-mistakes] branch=feature/{ticket}-{short-description} - Oulow branch convention (added 2026-08-19)
+- oulow-local [local-only] branch=feature/{ticket}-{short-description} - Oulow local-only fixture (added 2026-08-19)
+- undeclared [no-mistakes] - no branch convention (added 2026-08-19)
+```
+
+## 1. Ticketed declared PR delivery (no-mistakes, FM_BRIEF_TICKET=ENG-TASKS-191)
+```
+1. First action: create your branch: `git checkout -b feature/ENG-TASKS-191-provisioning-auth-sender`
+2. Run `no-mistakes doctor`; if it reports the repo is not initialized here, run `no-mistakes init`.
+
+...
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-TASKS-191`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-TASKS-191`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+```
+
+## 2. Ticketed direct-PR (branch composition + PR-title/description contract)
+```
+1. First action: create your branch: `git checkout -b feature/ENG-TASKS-191-provisioning-auth-sender-dpr`
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-TASKS-191`, and you own the PR title.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+```
+
+## 3. Ticketless declared project (FM_BRIEF_TICKET unset) - keeps fm/<task-id>
+```
+1. First action: create your branch: `git checkout -b fm/ticketless-ENG-TASKS-999-change`
+This task has no authoritative external ticket, so use the fleet branch form unless a project declaration and ticket are both present.
+For PR-based delivery, no ticket-specific PR title or issue-link requirement applies; do not invent or infer a ticket id from the task id, title, slug, or task text.
+```
+
+## 4. Undeclared project with a ticket - keeps fm/<task-id>
+```
+1. First action: create your branch: `git checkout -b fm/undeclared-change`
+```
+
+## 5. Ticketed local-only on declared project - fleet branch enforced
+```
+1. First action: create your branch: `git checkout -b fm/localonly-ticketed`
+Local-only landing always uses the fleet branch form `fm/localonly-ticketed` even when a ticket and a project branch declaration are both present; guarded local landing and sibling tooling require that form.
+When it is implemented and committed, append `done: ready in branch fm/localonly-ticketed` to the status file and stop.
+```
