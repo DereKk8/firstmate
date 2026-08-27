@@ -29,7 +29,8 @@
 #   without it carry a loud declaration so an omitted contract cannot be silent.
 # For ship tasks, --mode is REQUIRED and shapes the definition of done. Firstmate
 # resolves it per task at intake (AGENTS.md section 7); data/projects.md holds the
-# captain's standing posture as context, and this script never reads it:
+# captain's standing posture as context, and this script reads from it only the
+# optional branch template searched via fm-project-mode.sh - never the delivery mode:
 #   no-mistakes  implement -> /no-mistakes pipeline -> PR -> configured merge authority
 #   direct-PR    implement -> push + open PR via gh-axi (no pipeline) -> configured merge authority
 #   local-only   implement on branch, stop and report "ready in branch" (no push/PR);
