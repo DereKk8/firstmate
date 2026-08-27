@@ -230,7 +230,7 @@ EOF
   assert_grep "always uses the fleet branch form \`fm/localonly-ticketed\` even when a ticket and a project branch declaration are both present" "$brief" \
     "local-only delivery text did not state the fleet-form rule"
 
-  FM_HOME="$home" FM_BRIEF_TICKET= \
+  FM_HOME="$home" FM_BRIEF_TICKET='' \
     "$ROOT/bin/fm-brief.sh" ticketless-ENG-TASKS-999-change oulow --mode no-mistakes >/dev/null 2>&1 \
     || fail "declared project without a ticket should scaffold"
   brief="$home/data/ticketless-ENG-TASKS-999-change/brief.md"
