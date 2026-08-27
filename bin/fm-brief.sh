@@ -36,6 +36,9 @@
 #                the configured merge authority approves, firstmate merges to local main
 # FM_BRIEF_TICKET is the only caller-supplied external ticket seam. When set, it
 # must be the authoritative ticket field and is never inferred from task text.
+# A registered branch=<format> template composes the branch from the ticket only
+# for PR-based delivery modes; local-only landing always keeps the fleet
+# fm/<task-id> form because guarded local landing and sibling tooling require it.
 # no-mistakes-prod-only is a registry policy, not a task mode; resolve it to one of
 # the three concrete modes at intake before calling this script.
 # The generated ship brief records the chosen mode as a fixed machine-readable
@@ -300,7 +303,10 @@ if [ -n "$TICKET" ]; then
   esac
 fi
 BRANCH_NAME=fm/$ID
-if [ -n "$TICKET" ] && [ -n "$BRANCH_FORMAT" ]; then
+# Branch templates compose only for PR-based delivery. local-only landing is
+# guarded by bin/fm-merge-local.sh and sibling tooling that hardcode fm/<task-id>,
+# so a ticketed local-only task always keeps the fleet branch form.
+if [ -n "$TICKET" ] && [ -n "$BRANCH_FORMAT" ] && [ "$MODE" != local-only ]; then
   BRANCH_NAME=${BRANCH_FORMAT//\{ticket\}/$TICKET}
   BRANCH_NAME=${BRANCH_NAME//\{notion-id\}/$TICKET}
   BRANCH_NAME=${BRANCH_NAME//\{short-description\}/$SHORT_DESCRIPTION}
@@ -309,18 +315,29 @@ if [ -n "$TICKET" ] && [ -n "$BRANCH_FORMAT" ]; then
 fi
 
 if [ -n "$TICKET" ]; then
-IFS= read -r -d '' DELIVERY_SECTION <<EOF || true
+  if [ "$MODE" = local-only ]; then
+    BRANCH_FORM_LINE="Local-only landing always uses the fleet branch form \`fm/$ID\` even when a ticket and a project branch declaration are both present; guarded local landing and sibling tooling require that form."
+  else
+    BRANCH_FORM_LINE="Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation."
+  fi
+  IFS= read -r -d '' DELIVERY_SECTION <<EOF || true
 # Project delivery conventions
 The authoritative external ticket for this task is \`$TICKET\`.
+$BRANCH_FORM_LINE
+The ticket input comes only through \`FM_BRIEF_TICKET\`; never infer or invent a ticket id from the task id, title, slug, or task text.
 For PR-based delivery, the PR title must include the Notion Task ID \`$TICKET\`, and you own the PR title.
 For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
 For PR-based delivery, the PR description must include a \`## How to test\` section and \`Closes #{issue}\`.
-The ticket input comes only through \`FM_BRIEF_TICKET\`; never infer or invent a ticket id from the task id, title, slug, or task text.
 EOF
 else
-IFS= read -r -d '' DELIVERY_SECTION <<'EOF' || true
+  if [ "$MODE" = local-only ]; then
+    BRANCH_FORM_LINE="This task has no authoritative external ticket, so use the fleet branch form; local-only landing always uses \`fm/$ID\` even when a ticket and a project branch declaration are both present."
+  else
+    BRANCH_FORM_LINE="This task has no authoritative external ticket, so use the fleet branch form unless a project declaration and ticket are both present."
+  fi
+  IFS= read -r -d '' DELIVERY_SECTION <<EOF || true
 # Project delivery conventions
-This task has no authoritative external ticket, so use the fleet branch form unless a project declaration and ticket are both present.
+$BRANCH_FORM_LINE
 For PR-based delivery, no ticket-specific PR title or issue-link requirement applies; do not invent or infer a ticket id from the task id, title, slug, or task text.
 For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
 For PR-based delivery, you own the PR title.

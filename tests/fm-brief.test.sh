@@ -200,6 +200,7 @@ test_project_branch_format_uses_only_authoritative_ticket() {
   mkdir -p "$home/data"
   cat > "$home/data/projects.md" <<'EOF'
 - oulow [no-mistakes] branch=feature/{ticket}-{short-description} - Oulow branch convention (added 2026-08-19)
+- oulow-local [local-only] branch=feature/{ticket}-{short-description} - Oulow local-only branch fixture (added 2026-08-19)
 - undeclared [no-mistakes] - no branch convention (added 2026-08-19)
 EOF
 
@@ -213,6 +214,21 @@ EOF
     "ticketed brief omitted the Notion Task ID PR-title requirement"
   assert_grep "a \`## How to test\` section and \`Closes #{issue}\`" "$brief" \
     "ticketed brief omitted the SOP PR-description requirements"
+  assert_grep "the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field" "$brief" \
+    "ticketed brief omitted the backlog-field follow-up boundary"
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-TASKS-444 \
+    "$ROOT/bin/fm-brief.sh" localonly-ticketed oulow-local --mode local-only >/dev/null 2>&1 \
+    || fail "ticketed local-only task on a declared project should scaffold"
+  brief="$home/data/localonly-ticketed/brief.md"
+  assert_grep 'git checkout -b fm/localonly-ticketed' "$brief" \
+    "ticketed local-only task did not keep the fleet branch"
+  assert_no_grep 'git checkout -b feature/' "$brief" \
+    "ticketed local-only task composed a project branch"
+  assert_grep 'ready in branch fm/localonly-ticketed' "$brief" \
+    "ticketed local-only task did not report the fleet ready branch"
+  assert_grep "always uses the fleet branch form \`fm/localonly-ticketed\` even when a ticket and a project branch declaration are both present" "$brief" \
+    "local-only delivery text did not state the fleet-form rule"
 
   FM_HOME="$home" FM_BRIEF_TICKET= \
     "$ROOT/bin/fm-brief.sh" ticketless-ENG-TASKS-999-change oulow --mode no-mistakes >/dev/null 2>&1 \
