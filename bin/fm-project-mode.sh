@@ -8,13 +8,15 @@
 # yolo are resolved by firstmate at intake and passed explicitly to
 # bin/fm-brief.sh, bin/fm-spawn.sh, and bin/fm-promote.sh (AGENTS.md section 7).
 # The consumers are bin/fm-fleet-sync.sh (skip local-only clones),
-# bin/fm-home-seed.sh (refuse local-only seeding, run no-mistakes init), and
-# bin/fm-spawn.sh's advisory registry-deviation notice.
+# bin/fm-home-seed.sh (refuse local-only seeding, run no-mistakes init),
+# bin/fm-spawn.sh's advisory registry-deviation notice, and bin/fm-brief.sh's
+# project branch-template lookup.
 #
 # Registry line format (data/projects.md):
 #   - <name> - <desc> (added <date>)                  -> no-mistakes off  (legacy default)
 #   - <name> [<mode>] - <desc> (added <date>)          -> <mode> off
 #   - <name> [<mode> +yolo] - <desc> (added <date>)    -> <mode> on
+#   - <name> [<mode>] branch=<format> - <desc>        -> project branch template
 #
 # Registered modes:
 #   no-mistakes            full pipeline -> PR -> configured merge authority (default)
@@ -31,10 +33,12 @@
 #
 # --raw prints the registered annotation unmapped, so a caller that must tell a
 # conditional policy apart from a flat mode sees "no-mistakes-prod-only" itself.
-#
+# --branch-format prints the optional branch=<format> field and nothing when absent.
+# Branch templates use {ticket} or {notion-id} for the supplied ticket and
+# {short-description} or {slug} for the task's short description.
 # An unknown/missing project or unknown mode falls back to "no-mistakes off" and warns
 # to stderr, so a typo never silently drops the gate.
-# Usage: fm-project-mode.sh [--raw] <project-name>
+# Usage: fm-project-mode.sh [--raw|--branch-format] <project-name>
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,15 +47,42 @@ FM_HOME="${FM_HOME:-${FM_ROOT_OVERRIDE:-$FM_ROOT}}"
 DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 REG="$DATA/projects.md"
 RAW=0
-if [ "${1:-}" = "--raw" ]; then
-  RAW=1
-  shift
-fi
-NAME=${1:?usage: fm-project-mode.sh [--raw] <project-name>}
+BRANCH_FORMAT=0
+case "${1:-}" in
+  --raw)
+    RAW=1
+    shift
+    ;;
+  --branch-format)
+    BRANCH_FORMAT=1
+    shift
+    ;;
+  *)
+    ;;
+esac
+NAME=${1:?usage: fm-project-mode.sh [--raw|--branch-format] <project-name>}
+[ "$#" -eq 1 ] || { echo "usage: fm-project-mode.sh [--raw|--branch-format] <project-name>" >&2; exit 1; }
 
 if [ ! -f "$REG" ]; then
+  if [ "$BRANCH_FORMAT" -eq 1 ]; then
+    exit 0
+  fi
   echo "warn: no registry at $REG; defaulting $NAME to no-mistakes off" >&2
   echo "no-mistakes off"
+  exit 0
+fi
+
+if [ "$BRANCH_FORMAT" -eq 1 ]; then
+  awk -v n="$NAME" '
+    $1=="-" && $2==n {
+      for (i=3; i<=NF; i++) {
+        if ($i == "-") break
+        if ($i ~ /^branch=/ && length($i) > 7) {
+          print substr($i, 8); exit
+        }
+      }
+    }
+  ' "$REG"
   exit 0
 fi
 

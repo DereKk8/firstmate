@@ -29,11 +29,17 @@
 #   without it carry a loud declaration so an omitted contract cannot be silent.
 # For ship tasks, --mode is REQUIRED and shapes the definition of done. Firstmate
 # resolves it per task at intake (AGENTS.md section 7); data/projects.md holds the
-# captain's standing posture as context, and this script never reads it:
+# captain's standing posture as context, and this script reads from it only the
+# optional branch template searched via fm-project-mode.sh - never the delivery mode:
 #   no-mistakes  implement -> /no-mistakes pipeline -> PR -> configured merge authority
 #   direct-PR    implement -> push + open PR via gh-axi (no pipeline) -> configured merge authority
 #   local-only   implement on branch, stop and report "ready in branch" (no push/PR);
 #                the configured merge authority approves, firstmate merges to local main
+# FM_BRIEF_TICKET is the only caller-supplied external ticket seam. When set, it
+# must be the authoritative ticket field and is never inferred from task text.
+# A registered branch=<format> template composes the branch from the ticket only
+# for PR-based delivery modes; local-only landing always keeps the fleet
+# fm/<task-id> form because guarded local landing and sibling tooling require it.
 # no-mistakes-prod-only is a registry policy, not a task mode; resolve it to one of
 # the three concrete modes at intake before calling this script.
 # The generated ship brief records the chosen mode as a fixed machine-readable
@@ -285,6 +291,60 @@ exit 0
 fi
 
 REPO=${POS[1]}
+TICKET=${FM_BRIEF_TICKET:-}
+BRANCH_FORMAT=
+if [ "$KIND" = ship ]; then
+  BRANCH_FORMAT=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
+    "$FM_ROOT/bin/fm-project-mode.sh" --branch-format "$REPO" 2>/dev/null || true)
+fi
+SHORT_DESCRIPTION=$ID
+if [ -n "$TICKET" ]; then
+  case "$SHORT_DESCRIPTION" in
+    *"$TICKET"-*) SHORT_DESCRIPTION=${SHORT_DESCRIPTION#*"$TICKET"-} ;;
+  esac
+fi
+BRANCH_NAME=fm/$ID
+# Branch templates compose only for PR-based delivery. local-only landing is
+# guarded by bin/fm-merge-local.sh and sibling tooling that hardcode fm/<task-id>,
+# so a ticketed local-only task always keeps the fleet branch form.
+if [ -n "$TICKET" ] && [ -n "$BRANCH_FORMAT" ] && [ "$MODE" != local-only ]; then
+  BRANCH_NAME=${BRANCH_FORMAT//\{ticket\}/$TICKET}
+  BRANCH_NAME=${BRANCH_NAME//\{notion-id\}/$TICKET}
+  BRANCH_NAME=${BRANCH_NAME//\{short-description\}/$SHORT_DESCRIPTION}
+  BRANCH_NAME=${BRANCH_NAME//\{slug\}/$SHORT_DESCRIPTION}
+  BRANCH_NAME=${BRANCH_NAME//\{task-id\}/$ID}
+fi
+
+if [ -n "$TICKET" ]; then
+  if [ "$MODE" = local-only ]; then
+    BRANCH_FORM_LINE="Local-only landing always uses the fleet branch form \`fm/$ID\` even when a ticket and a project branch declaration are both present; guarded local landing and sibling tooling require that form."
+  else
+    BRANCH_FORM_LINE="Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation."
+  fi
+  IFS= read -r -d '' DELIVERY_SECTION <<EOF || true
+# Project delivery conventions
+The authoritative external ticket for this task is \`$TICKET\`.
+$BRANCH_FORM_LINE
+The ticket input comes only through \`FM_BRIEF_TICKET\`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID \`$TICKET\`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a \`## How to test\` section and \`Closes #{issue}\`.
+EOF
+else
+  if [ "$MODE" = local-only ]; then
+    BRANCH_FORM_LINE="This task has no authoritative external ticket, so use the fleet branch form; local-only landing always uses \`fm/$ID\` even when a ticket and a project branch declaration are both present."
+  else
+    BRANCH_FORM_LINE="This task has no authoritative external ticket, so use the fleet branch form unless a project declaration and ticket are both present."
+  fi
+  IFS= read -r -d '' DELIVERY_SECTION <<EOF || true
+# Project delivery conventions
+$BRANCH_FORM_LINE
+For PR-based delivery, no ticket-specific PR title or issue-link requirement applies; do not invent or infer a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, you own the PR title.
+EOF
+fi
+DELIVERY_SECTION=${DELIVERY_SECTION%$'\n'}
 
 if [ "$HERDR_LAB" -eq 1 ]; then
 HERDR_LAB_HELPER=$(shell_quote "$FM_ROOT/bin/fm-herdr-lab.sh")
@@ -377,11 +437,12 @@ fi
 case "$MODE" in
   direct-PR)
     SETUP2=""
-    RULE1='1. Never push to the default branch (push only your `fm/'"$ID"'` branch). Never merge a PR.'
+    RULE1="1. Never push to the default branch (push only your \`$BRANCH_NAME\` branch). Never merge a PR."
     IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
 Delivery contract: mode=direct-PR
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+$DELIVERY_SECTION
 The task is complete only when committed on your branch.
 When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
@@ -389,14 +450,15 @@ EOF
     ;;
   local-only)
     SETUP2=""
-    RULE1="1. Never push to any remote and never open a PR. Work only on your \`fm/$ID\` branch; firstmate handles the merge into local \`main\`."
+    RULE1="1. Never push to any remote and never open a PR. Work only on your \`$BRANCH_NAME\` branch; firstmate handles the merge into local \`main\`."
     IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
 Delivery contract: mode=local-only
 This task ships **local-only**: no remote, no PR, no pipeline.
-The task is complete only when committed on your branch \`fm/$ID\`. Do NOT push, do NOT open a PR, do NOT merge.
+$DELIVERY_SECTION
+The task is complete only when committed on your branch \`$BRANCH_NAME\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
-When it is implemented and committed, append \`done: ready in branch fm/$ID\` to the status file and stop.
+When it is implemented and committed, append \`done: ready in branch $BRANCH_NAME\` to the status file and stop.
 The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
     ;;
@@ -407,6 +469,7 @@ EOF
     IFS= read -r -d '' DOD <<EOF || true
 # Definition of done
 Delivery contract: mode=no-mistakes
+$DELIVERY_SECTION
 The task is complete only when committed on your branch.
 When you believe it is complete, append \`done: {summary}\` to the status file and stop.
 Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
@@ -447,7 +510,7 @@ You are in a disposable git worktree of $REPO, at a detached HEAD on a clean def
 The path check is authoritative: \`git rev-parse --git-dir\` and \`git rev-parse --git-common-dir\` can help inspect the repo, but they do not prove you are outside the primary checkout.
 If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append \`blocked: launched in primary checkout, not an isolated worktree\` to the status file and stop.
 
-1. First action: create your branch: \`git checkout -b fm/$ID\`$SETUP2
+1. First action: create your branch: \`git checkout -b $BRANCH_NAME\`$SETUP2
 
 # Rules
 $RULE1

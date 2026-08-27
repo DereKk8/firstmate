@@ -194,6 +194,64 @@ EOF
 # against any *new* unescaped apostrophe or unbalanced quote later added to
 # one of these DOD blocks, since a broken heredoc corrupts or empties the
 # generated brief content, not just the script's own syntax.
+test_project_branch_format_uses_only_authoritative_ticket() {
+  local home brief
+  home="$TMP_ROOT/project-branch-format-home"
+  mkdir -p "$home/data"
+  cat > "$home/data/projects.md" <<'EOF'
+- oulow [no-mistakes] branch=feature/{ticket}-{short-description} - Oulow branch convention (added 2026-08-19)
+- oulow-local [local-only] branch=feature/{ticket}-{short-description} - Oulow local-only branch fixture (added 2026-08-19)
+- undeclared [no-mistakes] - no branch convention (added 2026-08-19)
+EOF
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-TASKS-191 \
+    "$ROOT/bin/fm-brief.sh" provisioning-auth-sender oulow --mode no-mistakes >/dev/null 2>&1 \
+    || fail "declared project with a ticket should scaffold"
+  brief="$home/data/provisioning-auth-sender/brief.md"
+  assert_grep 'git checkout -b feature/ENG-TASKS-191-provisioning-auth-sender' "$brief" \
+    "declared project with a ticket did not compose the project branch"
+  assert_grep "the PR title must include the Notion Task ID \`ENG-TASKS-191\`" "$brief" \
+    "ticketed brief omitted the Notion Task ID PR-title requirement"
+  assert_grep "a \`## How to test\` section and \`Closes #{issue}\`" "$brief" \
+    "ticketed brief omitted the SOP PR-description requirements"
+  assert_grep "the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field" "$brief" \
+    "ticketed brief omitted the backlog-field follow-up boundary"
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-TASKS-444 \
+    "$ROOT/bin/fm-brief.sh" localonly-ticketed oulow-local --mode local-only >/dev/null 2>&1 \
+    || fail "ticketed local-only task on a declared project should scaffold"
+  brief="$home/data/localonly-ticketed/brief.md"
+  assert_grep 'git checkout -b fm/localonly-ticketed' "$brief" \
+    "ticketed local-only task did not keep the fleet branch"
+  assert_no_grep 'git checkout -b feature/' "$brief" \
+    "ticketed local-only task composed a project branch"
+  assert_grep 'ready in branch fm/localonly-ticketed' "$brief" \
+    "ticketed local-only task did not report the fleet ready branch"
+  assert_grep "always uses the fleet branch form \`fm/localonly-ticketed\` even when a ticket and a project branch declaration are both present" "$brief" \
+    "local-only delivery text did not state the fleet-form rule"
+
+  FM_HOME="$home" FM_BRIEF_TICKET='' \
+    "$ROOT/bin/fm-brief.sh" ticketless-ENG-TASKS-999-change oulow --mode no-mistakes >/dev/null 2>&1 \
+    || fail "declared project without a ticket should scaffold"
+  brief="$home/data/ticketless-ENG-TASKS-999-change/brief.md"
+  assert_grep 'git checkout -b fm/ticketless-ENG-TASKS-999-change' "$brief" \
+    "declared project without a ticket did not keep the fleet branch"
+  assert_no_grep 'git checkout -b feature/' "$brief" \
+    "ticketless task invented a project branch"
+  assert_grep 'no authoritative external ticket' "$brief" \
+    "ticketless brief did not preserve the legitimate no-ticket path"
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-TASKS-222 \
+    "$ROOT/bin/fm-brief.sh" undeclared-change undeclared --mode no-mistakes >/dev/null 2>&1 \
+    || fail "undeclared project with a ticket should scaffold"
+  brief="$home/data/undeclared-change/brief.md"
+  assert_grep 'git checkout -b fm/undeclared-change' "$brief" \
+    "undeclared project did not keep the historical fleet branch"
+  assert_no_grep 'git checkout -b feature/' "$brief" \
+    "undeclared project adopted a branch convention without a declaration"
+  pass "fm-brief.sh: declared formats use the explicit ticket, while ticketless and undeclared tasks keep fm/"
+}
+
 test_ship_modes_generate_clean_briefs() {
   local home id mode brief status
   home="$TMP_ROOT/ship-home"
@@ -750,6 +808,7 @@ test_scout_and_secondmate_scaffold() {
 test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
+test_project_branch_format_uses_only_authoritative_ticket
 test_ship_modes_generate_clean_briefs
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
