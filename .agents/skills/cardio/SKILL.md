@@ -22,7 +22,7 @@ and is not reimplemented here.
 
 ## What it does
 
-1. **List the dispatchable pending work.**
+1. **List the dispatchable pending work, from both sources.**
    Gather the Queued section of the backlog (`tasks-axi ready`, or a read of
    `data/backlog.md` under the manual backend) and present only items that are
    actually ready to launch right now:
@@ -32,7 +32,36 @@ and is not reimplemented here.
    Do not offer blocked, future-gated, or held items - `/cardio` is a launch menu, not a full backlog dump.
    Present each surviving item concise and scannable: id, one-line description, project, and its external ticket reference when the item records one.
    List items with no recorded ticket plainly with no reference.
-   If nothing qualifies, say so plainly and skip straight to step 4.
+
+   **Unfinished work from the last session.**
+   Read `data/end-session/handoff.md` before laying the candidate list out, and evaluate its leftover work alongside the backlog candidates rather than after them.
+   The `end-session` skill owns that file and writes it at shutdown; this step only reads it.
+   The point is that work carried over from the previous session stays visible as a candidate instead of being overlooked for having originated there.
+
+   A handoff is a snapshot of the world as it stood at shutdown, so it is evidence about what was left behind, never authority about what may run now.
+   Reconcile every item it names against that item's current task record, keyed on the stable backlog id, before the item reaches the menu, and offer it only when the current record is queued and ready.
+   Never let handoff prose reintroduce work that is already in flight, done, held, or blocked.
+   Leave an item off the menu when it carries no stable id, or when the handoff names it only by title or loose prose so its identity is ambiguous; reconcile it rather than guessing which record it means.
+
+   Treat both records as able to impose a restriction and neither as able to lift one.
+   If either the handoff or the backlog records an active blocker, a captain hold, or an unexpired time gate, the item is not a candidate this session.
+   Re-evaluate a time gate against the current time rather than excluding the item forever, because a gate whose moment has passed is no longer a gate.
+
+   An item the handoff names with no current task record at all is never dispatchable from the handoff alone, because cardio must not invent dispatch identity out of prose.
+   Surface it to the captain in its own short line as unfinished work needing reconciliation into a real task, which is what keeps it from being overlooked, and never place it on the authorization menu.
+   Verify a named item's stated prerequisites against current records before offering it, because a condition written as prose, such as "after the trial names a winner", stays a live gate until something current proves it met.
+   Carry every restriction the handoff records for an item into its dispatch instructions, and drop the item when the ordinary lifecycle cannot honour them.
+   Handoff prose that states a single session purpose, requires a start word, describes context only, names work the captain owns, or records something already landed is a scope or status constraint, not a candidate.
+
+   Work the handoff records as preserved because cleanup refused it stays eligible only when continuing it needs no discard, stash, or reset; anything that would require one of those is a captain decision, not a cardio candidate.
+   Every candidate must also be work a worker can genuinely continue or finish inside one isolated copy during the away stretch, so an errand, a scheduled browser operation, or work that requires mutating shared state outside the normal isolated-copy delivery path is not a cardio candidate however it is recorded.
+   Pushing a branch and opening a pull request are the normal delivery path, not shared-state mutation, and stay dispatchable.
+   Present an item found in both sources once, from the current backlog record, and never a second time as a carried-over row.
+   Label each item that came from the handoff as carried over from the previous session, so the captain knows what they are authorizing.
+   An absent handoff simply means the previous session left none; continue with the backlog candidates and say nothing about it.
+   A handoff that is unreadable, malformed, or impossible to reconcile with current task records contributes no candidates at all; continue with the backlog candidates and say plainly that its leftovers could not be assessed.
+
+   If nothing from either source qualifies, say so plainly and skip straight to step 4.
 
    **Ticket reference source.**
    The backlog item's explicit `ticket` field is authoritative for this presentation.
