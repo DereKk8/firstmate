@@ -10,7 +10,12 @@ set -u
 DIAG="$ROOT/.agents/skills/diagnostic-reasoning/SKILL.md"
 PROJECT="$ROOT/.agents/skills/project-management/SKILL.md"
 REFACTOR_REVIEW="$ROOT/.agents/skills/refactor-review/SKILL.md"
-HARNESS="$ROOT/.agents/skills/harness-adapters/SKILL.md"
+HARNESS="$ROOT/.agents/skills/harness-adapters/references/common/model-and-effort.md"
+CLAUDE="$ROOT/.agents/skills/harness-adapters/references/harness/claude.md"
+CODEX="$ROOT/.agents/skills/harness-adapters/references/harness/codex.md"
+OPENCODE="$ROOT/.agents/skills/harness-adapters/references/harness/opencode.md"
+PI="$ROOT/.agents/skills/harness-adapters/references/harness/pi.md"
+GROK="$ROOT/.agents/skills/harness-adapters/references/harness/grok.md"
 CODING="$ROOT/.agents/skills/firstmate-coding-guidelines/SKILL.md"
 RECOVERY="$ROOT/.agents/skills/stuck-crewmate-recovery/SKILL.md"
 SECONDMATE="$ROOT/.agents/skills/secondmate-provisioning/SKILL.md"
@@ -109,20 +114,20 @@ test_generic_effort_fallback_respects_precedence() {
   local section
   section=$(awk '
     /^Effort precedence is / { found = 1 }
-    found && /^The supported launch-profile flags / { exit }
+    found && /^## / { exit }
     found { print }
   ' "$HARNESS")
-  assert_contains "$section" "explicit per-task captain instruction first" \
+  assert_contains "$section" "Effort precedence is a per-task captain instruction, then applicable dispatch profile or secondmate pin, then the fallback below." \
     "effort rubric lost per-task captain precedence"
-  assert_contains "$section" "standing dispatch profile or secondmate pin" \
+  assert_contains "$section" "applicable dispatch profile or secondmate pin" \
     "effort rubric lost standing configuration precedence"
   assert_contains "$section" 'Use `low` for well-understood work' \
     "effort rubric lost its low fallback"
   assert_contains "$section" '`xhigh` for ambiguous investigation or design' \
     "effort rubric lost its xhigh fallback"
-  assert_contains "$section" "Choose intermediate levels proportionally" \
+  assert_contains "$section" "Choose intermediate levels as complexity, uncertainty, blast radius, or open-ended reasoning rises." \
     "effort rubric lost proportional intermediate levels"
-  assert_contains "$section" 'Never select `max` from this fallback' \
+  assert_contains "$section" 'Never select `max` through this fallback; only an explicit per-task or standing captain preference permits it.' \
     "effort rubric permits max without an explicit captain preference"
   if printf '%s\n' "$section" | grep -qi sol; then
     fail "generic effort fallback must not contain Sol-specific policy"
@@ -146,17 +151,21 @@ test_agent_owned_quota_array_dispatch_contract() {
     assert_grep "$phrase" "$AGENTS" "array-dispatch contract lost '$phrase'"
   done
 
-  for phrase in \
-    '| claude | Open the current interactive session' \
-    '| codex | Open the current interactive session' \
-    '| opencode | Run `opencode models [provider]`' \
-    '| pi / pi-signed | Run the selected executable as `<executable> --list-models [search]`' \
-    '| grok | Run `grok models`' \
-    "For an unfamiliar harness or model namespace, establish support and provider identity from that harness's authoritative CLI help, model listing, or current documentation rather than guessing" \
-    'report that as uncertainty rather than turning it into a supported or unsupported verdict'; do
-    assert_grep "$phrase" "$HARNESS" "model discovery guidance lost '$phrase'"
-  done
-  assert_grep 'not as a permanent namespace or provider mapping' "$HARNESS" \
+  assert_grep '| Model | `--model <model>`; discover through the interactive `/model` picker, with alias or full-name shape documented by `claude --help`. |' "$CLAUDE" \
+    "model discovery guidance lost Claude's interactive picker"
+  assert_grep '| Model discovery | Open the current interactive session' "$CODEX" \
+    "model discovery guidance lost Codex's interactive picker"
+  assert_grep '| Model discovery | Run `opencode models [provider]` to list available provider/model identifiers. |' "$OPENCODE" \
+    "model discovery guidance lost OpenCode's model listing"
+  assert_grep '| Model discovery | Run the selected executable as `<executable> --list-models [search]`; Pi' "$PI" \
+    "model discovery guidance lost Pi's model listing"
+  assert_grep '| Model | `--model <model>`; discover current account models with `grok models`. |' "$GROK" \
+    "model discovery guidance lost Grok's model listing"
+  assert_grep "For an unfamiliar namespace, establish support and provider identity from that harness's CLI help, model listing, or current documentation." "$HARNESS" \
+    "model discovery guidance lost unfamiliar-namespace discovery"
+  assert_grep 'An unreachable surface establishes nothing; report uncertainty instead of a verdict.' "$HARNESS" \
+    "model discovery guidance lost uncertainty handling"
+  assert_grep 'Treat model and provider knowledge as current discovery, not a permanent namespace or mapping.' "$HARNESS" \
     "model discovery guidance permits a fixed provider table"
   assert_grep '`quota-array-dispatch` owns the completion-aware profile-array selection procedure' "$CONFIG" \
     "configuration docs do not point to the agent-owned array procedure"
