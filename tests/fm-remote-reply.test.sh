@@ -14,6 +14,7 @@ REMOTE="$TMP_ROOT/remote"
 FAKEBIN=$(fm_fakebin "$TMP_ROOT/fake")
 CLAIMS="$TMP_ROOT/claims"
 mkdir -p "$PARENT/data" "$PARENT/state" "$REMOTE/state" "$REMOTE/data/reply" "$CLAIMS"
+chmod 700 "$PARENT/state" "$REMOTE/state" "$CLAIMS"
 # shellcheck source=bin/fm-remote-job-lib.sh
 . "$ROOT/bin/fm-remote-job-lib.sh"
 # The recorded worker pid is the serving child, not its restart supervisor, so
@@ -455,8 +456,7 @@ pass "a quiet reply window publishes the caught-up watermark the reply guard rea
 # quiet, observed through the same seen-signature gate the watcher consumes.
 FM_STATE_OVERRIDE="$PARENT/state" bash -c '
   . "$1/bin/fm-wake-lib.sh"
-  sig=$(fm_wake_signal_sig "$2/state/ios.status") || exit 1
-  printf "%s" "$sig" > "$(fm_wake_signal_seen_path "$2/state" "$2/state/ios.status")"
+  fm_wake_status_mark_current "$2/state" "$2/state/ios.status"
 ' _ "$ROOT" "$PARENT" || fail "could not prime the seen marker for the replay leg"
 cp "$PARENT/state/ios.status" "$TMP_ROOT/ios-status-before-replay"
 mv "$PARENT/state/.wake-queue" "$TMP_ROOT/wake-queue-before-replay" 2>/dev/null || true
