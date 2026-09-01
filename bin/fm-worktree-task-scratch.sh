@@ -17,9 +17,9 @@
 #     Inspect a newly leased worktree before launch. A root .env, .secrets
 #     directory, or stash ref is reported and preserved but does not block a
 #     lease because those paths can be legitimate local state. A metadata claim
-#     for the worktree refuses the lease. Every task directory is reported and
-#     preserved, including the --keep id. The command refuses when worktree and
-#     project resolve to the same path.
+#     for the worktree refuses the lease. Every task directory except the
+#     explicitly retained --keep id is reported and preserved. The command
+#     refuses when worktree and project resolve to the same path.
 #
 # Neither mode deletes a directory it cannot prove is archived. Credential
 # material and stash refs are never deleted or moved by this command.
