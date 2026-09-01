@@ -28,7 +28,7 @@ Run `bin/fm-external-tooling-check.sh` for version drift and its `safe-anytime` 
 Preserve those helpers' existing behavior exactly.
 Also report currency for the globally installed agent skills under `~/.agents/skills/`, which every harness and every worker discovers and which no other leg covers.
 Read their installed state only; `skills update -g` is the update action and stays subject to this pass's never-update rule, so name it as a recommendation and run it only on the captain's word.
-Report what new capabilities landed upstream, what content would arrive, the ancestry context, and any external-tooling or installed-skill drift with its coordination tag.
+Report notable upstream advances by commit identity, what content would arrive, the ancestry context, and any external-tooling or installed-skill drift with its coordination tag.
 
 ### 2. FIT
 
@@ -84,7 +84,7 @@ In FIT, compare newly available capabilities with the existing fleet flow and re
 In MEMORY, invoke `/stow` and relay its completion receipt.
 In INTEGRITY, perform both-direction memory-index checks, dangling-`data/`-pointer checks, and agent-skills repository checks.
 
-Report the upstream gap, notable upstream capabilities, external-tooling and installed-skill drift with coordination tags, the fit verdict, stow's receipt, agent-policy coverage and remote-baseline drift, and every other integrity finding in plain outcomes language.
+Report the upstream content verdict, incoming content, commit-identity context, external-tooling and installed-skill drift with coordination tags, the fit verdict, stow's receipt, agent-policy coverage and remote-baseline drift, and every other integrity finding in plain outcomes language.
 Stop after the report.
 The captain decides whether to proceed to full-sync mode.
 
