@@ -95,9 +95,6 @@ live_task_for_worktree() {
     [ -e "$meta" ] || [ -L "$meta" ] || continue
     task_id=${meta##*/}
     task_id=${task_id%.meta}
-    if [ "$task_id" = "$keep" ] && [ "$relaunch" -eq 1 ]; then
-      continue
-    fi
     if [ -L "$meta" ] && [ ! -f "$meta" ]; then
       LIVE_INSPECT_ERROR="task metadata is not a readable regular file: $meta"
       return 0
@@ -148,6 +145,9 @@ live_task_for_worktree() {
     fi
     if claim_real=$(canonicalize_dir "$claim"); then
       if [ "$claim_real" = "$worktree" ]; then
+        if [ "$task_id" = "$keep" ] && [ "$relaunch" -eq 1 ]; then
+          continue
+        fi
         LIVE_TASK_ID=$task_id
         return 0
       fi

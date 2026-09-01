@@ -197,6 +197,28 @@ test_prepare_lease_allows_relaunch_of_retained_claim() {
   pass "prepare-lease allows relaunch of its retained claim"
 }
 
+test_prepare_lease_refuses_malformed_relaunch_metadata_without_mutation() {
+  local case_dir rc
+  case_dir=$(make_case malformed-relaunch-meta)
+  write_task_dir "$case_dir/wt" current-task committed
+  fm_write_meta "$case_dir/state/current-task.meta" \
+    "worktree=$case_dir/wt" \
+    "project=$case_dir/project" \
+    'kind=ship' \
+    'malformed metadata'
+
+  set +e
+  run_prepare "$case_dir" --relaunch >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "relaunch prepare-lease should refuse malformed retained metadata"
+  assert_grep 'could not parse task metadata' "$case_dir/err" \
+    "malformed retained metadata did not refuse the lease"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "malformed retained metadata refusal deleted task scratch"
+  pass "prepare-lease refuses malformed retained metadata during relaunch"
+}
+
 test_prepare_lease_refuses_live_worktree_without_mutation() {
   local case_dir rc
   case_dir=$(make_case live-slot)
@@ -479,6 +501,7 @@ test_prepare_lease_reports_contaminated_worktree_without_mutation
 test_prepare_lease_allows_legitimate_env
 test_prepare_lease_refuses_fresh_reuse_of_retained_claim
 test_prepare_lease_allows_relaunch_of_retained_claim
+test_prepare_lease_refuses_malformed_relaunch_metadata_without_mutation
 test_prepare_lease_refuses_live_worktree_without_mutation
 test_remove_archived_deletes_only_after_archive_exists
 test_remove_archived_refuses_empty_archive
