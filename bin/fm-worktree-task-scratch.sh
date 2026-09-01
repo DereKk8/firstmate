@@ -62,6 +62,12 @@ resolve_real_dir() {
   (cd -- "$path" && pwd -P)
 }
 
+state_dir_is_enumerable() {
+  local state=$1
+  [ -r "$state" ] && [ -x "$state" ] || return 1
+  find "$state" -mindepth 1 -maxdepth 1 -print >/dev/null 2>&1
+}
+
 canonicalize_dir() {
   local path=$1
   [ -d "$path" ] || return 1
@@ -231,6 +237,10 @@ prepare_lease() {
     refuse "state directory is missing or unsafe: $state_in"
     return 1
   }
+  if ! state_dir_is_enumerable "$state"; then
+    refuse "state directory is not readable and enumerable: $state"
+    return 1
+  fi
   if [ "$worktree" = "$project" ]; then
     refuse "refusing to clean task scratch when worktree and project are the same path: $worktree"
     return 1

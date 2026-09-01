@@ -321,6 +321,25 @@ test_prepare_lease_refuses_primary_checkout() {
   pass "prepare-lease refuses to clean the product repository itself"
 }
 
+test_prepare_lease_refuses_unreadable_state_without_mutation() {
+  local case_dir rc
+  case_dir=$(make_case unreadable-state)
+  write_task_dir "$case_dir/wt" current-task current
+  chmod 100 "$case_dir/state"
+
+  set +e
+  run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  chmod 755 "$case_dir/state" || true
+  set -e
+  expect_code 1 "$rc" "prepare-lease should refuse when the state directory cannot be enumerated"
+  assert_grep 'state directory is not readable and enumerable' "$case_dir/err" \
+    "unreadable state directory did not refuse the lease"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "unreadable state directory refusal deleted task scratch"
+  pass "prepare-lease refuses an unreadable state directory without mutation"
+}
+
 test_prepare_lease_refuses_unreadable_live_metadata_without_mutation() {
   local case_dir rc
   case_dir=$(make_case unreadable-meta)
@@ -466,6 +485,7 @@ test_remove_archived_refuses_empty_archive
 test_remove_archived_refuses_mismatched_archive
 test_remove_archived_is_idempotent_when_source_already_gone
 test_prepare_lease_refuses_primary_checkout
+test_prepare_lease_refuses_unreadable_state_without_mutation
 test_prepare_lease_refuses_unreadable_live_metadata_without_mutation
 test_prepare_lease_refuses_ambiguous_metadata_without_mutation
 test_prepare_lease_refuses_missing_claim_metadata_without_mutation
