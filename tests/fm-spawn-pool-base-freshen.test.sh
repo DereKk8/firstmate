@@ -33,7 +33,19 @@ esac
 exit 0
 SH
   chmod +x "$fakebin/tmux"
-  fm_fake_exit0 "$fakebin" treehouse
+  cat > "$fakebin/treehouse" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "${FM_FAKE_TREEHOUSE_LOG:?FM_FAKE_TREEHOUSE_LOG unset}"
+if [ "${1:-}" = return ] && [ "${2:-}" = --force ]; then
+  rm -rf -- "${FM_FAKE_TREEHOUSE_POOL:?FM_FAKE_TREEHOUSE_POOL unset}/.env" \
+    "${FM_FAKE_TREEHOUSE_POOL:?FM_FAKE_TREEHOUSE_POOL unset}/.secrets" \
+    "${FM_FAKE_TREEHOUSE_POOL:?FM_FAKE_TREEHOUSE_POOL unset}/.agent/tasks/live-task"
+  git -C "$FM_FAKE_TREEHOUSE_POOL" reset --hard --quiet HEAD
+fi
+exit 0
+SH
+  chmod +x "$fakebin/treehouse"
   printf '%s\n' "$fakebin"
 }
 
@@ -83,7 +95,8 @@ run_spawn() {
     FM_STATE_OVERRIDE="$HOME_DIR/state" FM_DATA_OVERRIDE="$HOME_DIR/data" \
     FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" FM_CONFIG_OVERRIDE="$HOME_DIR/config" \
     FM_SPAWN_NO_GUARD=1 TMUX="fake,1,0" FM_FAKE_PANE_PATH="$POOL_DIR" \
-    FM_FAKE_TMUX_LOG="$CASE_DIR/tmux.log" PATH="$FAKEBIN_DIR:$PATH" \
+    FM_FAKE_TMUX_LOG="$CASE_DIR/tmux.log" FM_FAKE_TREEHOUSE_LOG="$CASE_DIR/treehouse.log" \
+    FM_FAKE_TREEHOUSE_POOL="$POOL_DIR" PATH="$FAKEBIN_DIR:$PATH" \
     "$SPAWN" "$id" "$PROJECT_DIR" "$@" 2>&1
 }
 
@@ -317,6 +330,42 @@ test_spawn_refuses_unarchived_pool_without_mutation() {
   pass "spawn reports and preserves unarchived pooled scratch"
 }
 
+test_live_claim_refusal_preserves_leased_slot() {
+  local rec id out status exclude stash_before stash_after treehouse_log
+  id='pool-live-claim-refusal-r6'
+  rec=$(make_case live-claim-refusal "$id")
+  read_case_record "$rec"
+
+  exclude=$(git -C "$POOL_DIR" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$exclude")"
+  printf '%s\n' '.env' '.agent/' >> "$exclude"
+  printf 'must survive refusal\n' > "$POOL_DIR/.env"
+  mkdir -p "$POOL_DIR/.agent/tasks/live-task"
+  printf 'live scratch\n' > "$POOL_DIR/.agent/tasks/live-task/notes.txt"
+  printf 'stash work\n' > "$POOL_DIR/README.md"
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    stash push --quiet -m live-slot-state
+  stash_before=$(git -C "$POOL_DIR" stash list)
+  printf 'worktree=%s\n' "$POOL_DIR" > "$HOME_DIR/state/live-task.meta"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn succeeded despite a live task claim"
+  assert_contains "$out" 'WORKTREE LEASE REFUSED' \
+    "spawn did not report the live task claim"
+  assert_present "$POOL_DIR/.env" "refusal deleted the pooled credential file"
+  assert_present "$POOL_DIR/.agent/tasks/live-task/notes.txt" \
+    "refusal deleted the live task scratch"
+  stash_after=$(git -C "$POOL_DIR" stash list)
+  [ "$stash_after" = "$stash_before" ] || fail "refusal changed the pooled stash"
+  assert_grep "worktree=$POOL_DIR" "$HOME_DIR/state/live-task.meta" \
+    "refusal changed the live task claim"
+  treehouse_log=$(cat "$CASE_DIR/treehouse.log" 2>/dev/null || true)
+  assert_not_contains "$treehouse_log" 'return --force' \
+    "refusal force-returned the live task's pooled worktree"
+  pass "a live pooled-worktree claim refuses without destructive cleanup"
+}
+
 test_spawn_reports_contaminated_pool_and_warns_worker() {
   local rec id exclude out status launch_brief
   id='pool-contaminated-lease-r2'
@@ -366,6 +415,7 @@ test_unreachable_origin_refuses_stale_pool_base
 test_no_origin_launches_from_local_head
 test_leased_pool_preserves_archived_prior_scratch
 test_spawn_refuses_unarchived_pool_without_mutation
+test_live_claim_refusal_preserves_leased_slot
 test_spawn_reports_contaminated_pool_and_warns_worker
 
 echo "# all fm-spawn-pool-base-freshen tests passed"

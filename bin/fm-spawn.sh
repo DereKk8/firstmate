@@ -2362,6 +2362,7 @@ if [ "$KIND" != secondmate ]; then
     --keep "$ID" \
     --project "$PROJ_ABS" \
     --state "$STATE" 2>&1) || {
+    TREEHOUSE_ABORT_CLEANUP=0
     printf '%s\n' "$LEASE_OUTPUT" >&2
     echo "error: could not prepare task scratch in worktree '$WT'; refusing to launch" >&2
     exit 1
