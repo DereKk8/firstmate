@@ -134,7 +134,7 @@
 #   default-branch commit when safe; skipped syncs warn and launch unchanged.
 #   Ship/scout spawns refuse to launch unless the resolved task path is a real
 #   git worktree root distinct from the primary project checkout.
-#   Before a fresh ship or scout worker starts, its clean task worktree fetches
+#   Before a fresh ship or scout worker starts, its task worktree fetches
 #   origin, resolves the current remote default branch, and resets to its tip.
 #   A repository with no origin launches from its local HEAD without an upstream
 #   comparison.
@@ -1164,8 +1164,8 @@ launch_template() {
     # per-task pointer), so the template is identical for ship/scout/secondmate.
     grok) printf '%s' 'grok --always-approve __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     # Cursor Agent CLI. --trust suppresses the workspace-trust prompt, which
-    # --yolo does NOT cover and which would otherwise block every spawn, since
-    # each task gets a fresh worktree path cursor has never seen. --yolo is the
+    # --yolo does NOT cover and which would otherwise block every spawn when the
+    # pooled task path is not trusted yet. --yolo is the
     # --force alias whose TUI label is "Run Everything". --workspace pins the
     # exact worktree. -w/--worktree is deliberately never passed: it allocates a
     # SECOND worktree under ~/.cursor/worktrees and would break firstmate's

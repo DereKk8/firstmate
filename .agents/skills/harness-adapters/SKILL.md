@@ -299,7 +299,7 @@ Firstmate sets `FM_PI_HARNESS` explicitly for both worker launch identities, and
 Keep the brief as one positional argument.
 Multiple positional args become separate queued messages; `fm-spawn`'s template already does this correctly.
 
-Project trust dialog can appear on the first pi run in any not-yet-trusted directory, observed even on clean worktrees.
+Project trust dialog can appear on the first pi run in any not-yet-trusted directory, observed even on tracked-clean pooled worktrees.
 Accept with Enter.
 The decision persists per path in `~/.pi/agent/trust.json`, so later spawns in the same worktree slot skip it.
 
@@ -388,7 +388,7 @@ Do not confuse `harness=cursor` using a `cursor-grok-4.5-*` model with `harness=
 | Skill invocation | `/<skill>`, for example `/no-mistakes`. Cursor discovers firstmate's user-level skills; `/no-mistakes` autocompleted with firstmate's own description and invoked the skill. |
 | Slash submission | The popup is REAL and swallows the first Enter: the first closes the popup and a SECOND submits, the same hazard as grok. The submit core's retried Enter covers it. |
 | Autonomy | `--yolo`, the documented alias for `--force`, whose TUI footer reads `Run Everything`. |
-| Trust dialog | `--trust` suppresses it. `--yolo` does NOT, and every task gets a fresh worktree path, so without `--trust` every spawn would block on it. |
+| Trust dialog | `--trust` suppresses it. `--yolo` does NOT, and pooled worktree paths may be reused, so without `--trust` an untrusted path can block the spawn. |
 | Environment marker | `CURSOR_INVOKED_AS=cursor-agent` on the agent process and its children, plus `CURSOR_AGENT=1` on child/tool processes. Other `CURSOR_*` endpoint and credential variables are not identity markers. |
 | Effort | No effort flag exists. The requested axis is recorded in task metadata and never reaches the launch command. |
 | Composer | A BARE row whose prompt glyph is `→` (U+2192); no border. Idle placeholders are `Plan, search, build anything` fresh and `Add a follow-up` after a turn, drawn de-emphasised so a styled capture separates them from real typed text. |
@@ -453,7 +453,7 @@ Kimi Code CLI launches from the absolute path resolved from `PATH`, falling back
 | Interrupt | Single Escape, which prints `Interrupted by user`. |
 | Skill invocation | `/<skill>`, for example `/no-mistakes`; firstmate skills are discovered. |
 | Autonomy | `--auto`; `-y` and `--yolo` are weaker and are not used. |
-| Trust dialog | None on a clean first launch in a fresh pooled worktree. |
+| Trust dialog | None on a clean first launch in a pooled worktree. |
 | Slash submission | One Enter submits, with no popup swallow or settle hazard. |
 | Environment marker | None; detection relies on process ancestry command name `kimi`. |
 | Composer | Bordered box with a bare `>` prompt glyph and no observed ghost or placeholder text. |
@@ -495,7 +495,7 @@ Muse Code is a CREWMATE and SCOUT adapter only.
 | Interrupt | Single Escape, which closes the run with `terminal: cancelled` AND restores the interrupted prompt into the composer as real bright text, so `fm-control` follows Escape with `C-u` to clear it; `fm-send`'s legacy key path reads the same composer-clear table. |
 | Skill invocation | `/<skill>`, the claude/grok form. |
 | Autonomy | `--yolo`, which disables approval, disables the sandbox, and trusts the workspace for the run. |
-| Trust dialog | `Do you trust this workspace?` with `1 Trust and continue` preselected, accepted by Enter. `--yolo` suppresses it entirely, which is what firstmate relies on because every task gets a fresh worktree path. |
+| Trust dialog | `Do you trust this workspace?` with `1 Trust and continue` preselected, accepted by Enter. `--yolo` suppresses it entirely, which is what firstmate relies on because pooled worktree paths may be reused. |
 | Environment marker | None. Detection is process ancestry on the anchored prefix `muse-bin-*`. The launch clears foreign primary markers before Muse starts so their higher detection precedence cannot override that ancestry. `MUSE_CURRENT_SESSION_LOG` is a session-log PATH rather than an identity, and its export to tool subprocesses is unverified. |
 | Composer | Bordered box whose prompt glyph is `⟩` (U+27E9) in truecolor `38;2;90;160;255`, luminance ~149.9 - the narrowest margin over the 128 ghost threshold in the fleet. Typed text is `38;2;204;211;219` (~209.8). No idle placeholder or ghost text was observed. |
 | Effort | `--reasoning-effort`, default `high`; see the launch-profile table above for the mapping. |

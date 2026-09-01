@@ -830,7 +830,7 @@ This row is a delivery guard for submit acknowledgement only; recorded worker st
 
 | Fact | Observed |
 | --- | --- |
-| Workspace trust | `--trust` suppressed the prompt; `--yolo` alone did NOT, and the prompt blocks a fresh worktree |
+| Workspace trust | `--trust` suppressed the prompt; `--yolo` alone did NOT, and the prompt blocks an untrusted pooled worktree |
 | Autonomy | `--yolo` (alias of `--force`); the footer renders `Run Everything` |
 | Worktree | `-w/--worktree` allocates a SECOND worktree under `~/.cursor/worktrees` and is never passed |
 | Effort | no effort flag exists; requested effort stays in task metadata |
