@@ -141,10 +141,6 @@
       "audience": "agent-runtime"
     },
     {
-      "path": ".agents/skills/end-session/SKILL.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": ".agents/skills/diagnostic-reasoning/SKILL.md",
       "audience": "agent-runtime"
     },

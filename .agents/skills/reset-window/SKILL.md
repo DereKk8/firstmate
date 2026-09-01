@@ -1,140 +1,83 @@
 ---
 name: reset-window
-description: Reset the running firstmate session into a fresh-context successor (a "context reset"). Flushes volatile conversation context to durable state, releases the fleet lock, and launches a new firstmate session that catches up from disk. Use when the captain invokes /reset-window, says context is full / getting long, or asks to reset context and continue in a new session. (Distinct from backlog handoff to a secondmate.)
+description: End the current firstmate session cleanly by curating durable knowledge and appending a handoff the next session is guided from. Use when the captain invokes /reset-window, says context is full or getting long, or asks to wrap up the session. It launches no successor - the captain closes this window and opens the next one himself.
 metadata:
   internal: true
 ---
 
 # reset-window
 
-Retire the current firstmate session and stand up a fresh-context successor that
-continues the same work. A window reset is designed to be a **non-event**:
-almost all truth already lives on disk (`data/`, `state/`, backlog, each task's
-backend), and `bin/fm-session-start.sh` reads it. This skill's only real job is to
-flush the small slice of context that lives *only* in this conversation, release
-the lock, and launch the successor so its own session-start is clean.
+Leave the next firstmate session everything it needs, then stop.
 
-This is unrelated to backlog handoff (`bin/fm-backlog-handoff.sh`, routing work to a
-secondmate). This skill resets the firstmate session itself.
+Almost all truth already lives on disk - `data/`, `state/`, the backlog, and each task's own backend - and `bin/fm-session-start.sh` reads it.
+So this skill has exactly two jobs: curate the knowledge that lives only in this conversation, and append the short volatile handoff that session start does not surface on its own.
 
-## Arguments (optional)
+The captain closes this window and opens the next session himself.
+This skill never launches, schedules, or hints a successor, and never tears anything down.
 
-`/reset-window [--model <id>] [--effort <low|medium|high>] [--harness <adapter>]`
-
-Defaults mirror the current session's own harness/model/effort. The captain may
-name any verified harness (see `harness-adapters`); Opus is `claude-opus-4-8`.
+This is unrelated to backlog handoff, `bin/fm-backlog-handoff.sh`, which routes work to a secondmate.
 
 ## Procedure
 
 ### 1. Curate durable knowledge
 
-Invoke `/stow` before writing the continuation note.
+Invoke `/stow` before writing the handoff.
 `/stow` is the sole owner of the complete startup-memory curation and knowledge-routing pass.
 Do not perform its routing steps separately here, because that would route the same finding twice.
 Continue only after `/stow` has captured all durable findings and reported any unresolved curation exception.
 
-### 2. Write the continuation note
+### 2. Append the handoff
 
-Everything the successor needs must be on disk, because its conversation memory starts empty.
-Record only volatile context that is not already represented by the durable state and routing completed by `/stow`.
+`data/handoff.md` is the single handoff pointer, newest entry first.
+Append a new dated section at the top and keep only the three most recent; older entries are transient scaffolding and are pruned, not archived, because `/stow` already routed everything durable to its real owner.
 
-Write the continuation note to `data/reset-window/<YYYY-MM-DD-HHMM>.md`:
+Record only volatile "where we are right now" context that the durable state does not already carry:
 
 ```
-# Session reset <timestamp>
+# Handoff <YYYY-MM-DD HHMM>
 
-## Scope / constraints in force this session
-<e.g. "Working aide repos only today.">
+## Scope / constraints in force
+<e.g. "Oulow repos only today; product freeze still on.">
 
-## In-flight — what the successor must actively watch
-- <task id>: <live state> — <what to watch / next expected event>
+## In flight - what the next session must actively watch
+- <task id>: <live state> - <what to watch / next expected event>
 
-## Open threads / pending captain decisions
-- <thread> — <status>
+## Open threads and pending captain decisions
+- <thread> - <status>
 
 ## Parked / awaiting decision
-- <branch or item> — <what it needs>
+- <branch or item> - <what it needs>
 ```
 
-This note is transient scaffolding for the next session, not a permanent record;
-older ones can be pruned freely. Keep the exact path you wrote — step 6 names it
-directly in the successor's launch prompt.
+Write nothing here that belongs to a durable owner.
+A fact worth keeping past the next session goes to memory, the rulings record, a report, or the backlog through `/stow`, never into this file.
 
 ### 3. Back up fleet data
 
-`git -C data add -A && git -C data commit -m "session reset" && git -C data push`
-(best-effort; never let a push failure block the reset — report a persistent
-failure to the captain).
+`git -C data add -A && git -C data commit -m "session handoff" && git -C data push`
 
-### 4. Quiesce this session
+Best-effort: never let a push failure block the reset, and report a persistent failure to the captain.
 
-Stop the supervision cycle: do **not** re-arm the watcher after this point, and
-start no new work. The successor will own supervision. Any wake that fires in the
-gap is safely enqueued to `state/.wake-queue` and drained by the successor —
-no wake is ever lost, so a brief unsupervised gap is fine.
+### 4. Quiesce and hand off
 
-### 5. Release the fleet lock
+Stop the supervision cycle: do not re-arm the watcher after this point, and start no new work.
+Any wake that fires in the gap is safely enqueued to `state/.wake-queue` and drained by the next session, so no wake is lost.
 
-The successor cannot take over while this session still holds the lock (it would
-be forced read-only). Release it so session-start acquires cleanly:
-
-```sh
-rm -f "${FM_HOME:-$PWD}/state/.lock"
-```
-
-Release the lock **before** launching the successor — never the other way round.
-
-### 6. Launch the successor
-
-Backend-aware. Resolve the backend from `config/backend` (herdr is this fleet's
-default). The successor launches at the firstmate repo root, on the requested
-harness/model/effort, with a catch-up prompt so it runs session-start itself.
-
-The launch prompt must name the exact `data/reset-window/<YYYY-MM-DD-HHMM>.md`
-path written in step 1, not a bare "catch up". Session start does not surface this
-note; the launch prompt is the successor's only guaranteed pointer to it, so a
-successor that never reads its instructions can still find it named explicitly
-in its very first prompt. Substitute `<note-path>` below with that literal path,
-exactly as `<model>` and `<effort>` are already substituted.
-
-**herdr backend:**
-```sh
-herdr agent start firstmate-<model-short> \
-  --cwd "$FM_HOME" --focus \
-  --env CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false \
-  -- env -u ANTHROPIC_BASE_URL claude \
-       --model <model> --effort <effort> --permission-mode bypassPermissions \
-       "We are resuming a session of Firstmate. The prior session left a handoff note at <note-path> — read it, then catch up."
-```
-
-**tmux backend** (only if `config/backend` is tmux / no herdr):
-```sh
-tmux new-window -t "$SESSION" -n firstmate-<model-short> -d \
-  'cd "$FM_HOME" && env -u ANTHROPIC_BASE_URL claude --model <model> --effort <effort> \
-     --permission-mode bypassPermissions "We are resuming a session of Firstmate. The prior session left a handoff note at <note-path> — read it, then catch up."'
-```
-
-For a non-Claude successor harness, use that adapter's launch shape from
-`harness-adapters` (positional prompt vs `--prompt`, autonomy flag, model/effort
-flags) instead of the Claude form above.
-
-### 7. Hand off to the captain
+Do **not** release the session lock.
+Closing the window kills this harness process, and `bin/fm-lock.sh` treats a dead harness pid as stale and lets the next session reclaim it.
+Releasing the lock while this session is still live is what would leave a live session unable to act.
 
 Tell the captain, in plain outcomes:
-- the successor is up and which tab/window to switch to;
-- that it will catch itself up (read its persisted state and the reset note) and
-  take over watching in-flight work;
-- that this window can be closed once they've switched.
+
+- what was curated and where the handoff was appended;
+- anything still unresolved that the next session must pick up;
+- that he can close this window whenever he is ready and start the next session normally.
 
 Then stop. This session does nothing further.
 
 ## Non-negotiables
 
-- **Release the lock before launching the successor.** Two live firstmates fighting
-  over one lock forces the second into read-only — the opposite of a reset.
-- **Durable facts go to their real home, not the reset note.** `/stow` owns that routing and the note is only for volatile "where we are right now" context that would otherwise be lost.
-- **Never discard unlanded work as part of a reset.** Parked branches, uncommitted
-  crewmate work, and open PRs are handed off by *recording* them, never by tearing
-  them down.
-- **The successor is harness-agnostic.** Default to mirroring the current harness;
-  honor an explicit captain override; never launch on an unverified adapter.
+- **Durable facts go to their real home, not the handoff.** `/stow` owns that routing; the handoff carries only volatile context that would otherwise be lost.
+- **Never discard unlanded work.** Parked branches, uncommitted worker output, and open PRs are handed off by recording them, never by tearing them down.
+- **Never stop, close, or clean up a helper as part of a reset.** This skill ends a conversation, not the fleet.
+- **Never launch, schedule, or hint a successor session.**
