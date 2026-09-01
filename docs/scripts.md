@@ -110,7 +110,7 @@ The shared no-mistakes gate refusal for fleet lifecycle entrypoints is summarize
 | `fm-promote.sh`          | Promote a scout task in place to a protected ship task with an explicit delivery mode |
 | `fm-teardown.sh`         | Fail-closed teardown: return landed ship worktrees, require completed scout deliverables, retire secondmate homes |
 | `fm-archive-task.sh`     | Copy a landed ship task's artifact directory into the product-local archive and the best-effort backup mirror, then attempt to remove that named source from the worktree |
-| `fm-worktree-task-scratch.sh` | Report preserved pooled-worktree local state, refuse only live worktree claims, and remove only archived leftover `.agent/tasks` directories |
+| `fm-worktree-task-scratch.sh` | Report preserved pooled-worktree local state, refuse live claims and uninspectable task records, and remove leftover `.agent/tasks` directories only when the archive contents match |
 | `fm-harness.sh`          | Detect the running harness and resolve crew or secondmate harness, model, and effort |
 | `fm-lock.sh`             | Per-home firstmate session lock                                                      |
 | `fm-x-lib.sh`            | Shared Relay config, relay, and reply-threading helpers                              |

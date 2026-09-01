@@ -140,11 +140,13 @@
 #   comparison.
 #   An unreachable origin, unresolved default branch, or non-clean worktree
 #   refuses the spawn rather than risking a PR based on stale history.
-#   After that refresh for a new lease, bin/fm-worktree-task-scratch.sh removes
-#   only archived leftover .agent/tasks directories. A root .env, .secrets, or
-#   stash ref is reported and preserved without blocking the lease; only a live
-#   metadata claim refuses. Prior-task scratch is also reported and preserved,
-#   reporting the contamination before a worker starts.
+#   Before that refresh for a new lease, bin/fm-worktree-task-scratch.sh
+#   prepare-lease inspects the slot and never deletes. A root .env, .secrets, or
+#   stash ref is reported and preserved without blocking the lease. A live
+#   metadata claim, or any task record that cannot be inspected, refuses.
+#   Prior-task scratch is reported and preserved. Recorded worktree= paths are
+#   the canonical physical directory. Archived leftover .agent/tasks directories
+#   are removed only later by fm-archive-task.sh after a matching archive copy.
 #   Relaunches keep their recorded worktree untouched.
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
 #     fm-spawn.sh fix-a-k3=projects/foo add-b-q7=projects/bar [--scout]
@@ -2326,7 +2328,7 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
       p_real=$(real_path_or_raw "$p")
       if [ "$p_real" != "$PROJ_ABS_REAL" ]; then
         if [ -n "$candidate" ] && [ "$p_real" = "$candidate" ]; then
-          WT="$p"
+          WT="$p_real"
           break
         fi
         candidate="$p_real"

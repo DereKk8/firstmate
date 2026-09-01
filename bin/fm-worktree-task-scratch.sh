@@ -10,19 +10,22 @@
 # Usage:
 #   fm-worktree-task-scratch.sh remove-archived --worktree <path> --task <id> --archive <path>
 #     Remove .agent/tasks/<id> from the worktree only after --archive exists as
-#     a real directory and is a different path from the source. A missing
-#     source is success. A missing or unsafe archive is a loud refusal and
-#     leaves the source untouched.
+#     a real directory, does not overlap the source, and matches the source
+#     contents. An empty or unequal archive is a loud refusal and leaves the
+#     source untouched. A missing source is success.
 #   fm-worktree-task-scratch.sh prepare-lease --worktree <path> --keep <id> --project <path> --state <path>
-#     Inspect a newly leased worktree before launch. A root .env, .secrets
-#     directory, or stash ref is reported and preserved but does not block a
-#     lease because those paths can be legitimate local state. A metadata claim
-#     for the worktree refuses the lease. Every task directory except the
-#     explicitly retained --keep id is reported and preserved. The command
-#     refuses when worktree and project resolve to the same path.
+#     Inspect a newly leased worktree before launch. This mode never deletes.
+#     A root .env, .secrets directory, or stash ref is reported and preserved
+#     but does not block a lease because those paths can be legitimate local
+#     state. A metadata claim for the worktree, or any task record that cannot
+#     be opened, read, or parsed, refuses the lease. Claim paths are compared
+#     as canonical physical directories, including when a recorded path is a
+#     symlink. Every task directory except the explicitly retained --keep id is
+#     reported and preserved. The command refuses when worktree and project
+#     resolve to the same path.
 #
-# Neither mode deletes a directory it cannot prove is archived. Credential
-# material and stash refs are never deleted or moved by this command.
+# Neither mode deletes a directory it cannot prove is an equal archive copy.
+# Credential material and stash refs are never deleted or moved by this command.
 set -u
 
 usage() {
@@ -58,6 +61,12 @@ resolve_real_dir() {
   (cd -- "$path" && pwd -P)
 }
 
+canonicalize_dir() {
+  local path=$1
+  [ -d "$path" ] || return 1
+  (cd -- "$path" && pwd -P)
+}
+
 require_flag_value() {
   local flag=$1
   [ -n "${2:-}" ] || {
@@ -74,18 +83,36 @@ tasks_tree_is_real() {
 live_task_for_worktree() {
   local state=$1 worktree=$2 keep=$3 meta claim claim_real task_id
   LIVE_TASK_ID=
+  LIVE_INSPECT_ERROR=
   for meta in "$state"/*.meta; do
     [ -e "$meta" ] || [ -L "$meta" ] || continue
-    [ -f "$meta" ] && [ ! -L "$meta" ] || continue
     task_id=${meta##*/}
     task_id=${task_id%.meta}
     [ "$task_id" = "$keep" ] && continue
-    claim=$(sed -n 's/^worktree=//p' "$meta" | head -n 1)
+    if [ -L "$meta" ] && [ ! -f "$meta" ]; then
+      LIVE_INSPECT_ERROR="task metadata is not a readable regular file: $meta"
+      return 0
+    fi
+    if [ ! -f "$meta" ]; then
+      LIVE_INSPECT_ERROR="task metadata is not a readable regular file: $meta"
+      return 0
+    fi
+    claim=
+    if ! claim=$(sed -n 's/^worktree=//p' "$meta" 2>/dev/null); then
+      LIVE_INSPECT_ERROR="could not read task metadata: $meta"
+      return 0
+    fi
+    claim=${claim%%$'\n'*}
     [ -n "$claim" ] || continue
-    claim_real=$(resolve_real_dir "$claim" 2>/dev/null || true)
-    if [ "$claim_real" = "$worktree" ]; then
-      LIVE_TASK_ID=${meta##*/}
-      LIVE_TASK_ID=${LIVE_TASK_ID%.meta}
+    if claim_real=$(canonicalize_dir "$claim"); then
+      if [ "$claim_real" = "$worktree" ]; then
+        LIVE_TASK_ID=$task_id
+        return 0
+      fi
+      continue
+    fi
+    if path_present "$claim"; then
+      LIVE_INSPECT_ERROR="could not resolve worktree claim '$claim' in $meta"
       return 0
     fi
   done
@@ -130,6 +157,10 @@ remove_archived() {
   }
   if paths_overlap "$source" "$archive"; then
     refuse "refusing to remove source that overlaps the archive: $source"
+    return 1
+  fi
+  if ! diff -qr -- "$source" "$archive" >/dev/null 2>&1; then
+    refuse "archive does not match source; refusing to remove: $source"
     return 1
   fi
   if ! rm -rf -- "$source"; then
@@ -198,6 +229,11 @@ prepare_lease() {
     fi
   fi
   if live_task_for_worktree "$state" "$worktree" "$keep"; then
+    if [ -n "${LIVE_INSPECT_ERROR:-}" ]; then
+      printf 'WORKTREE LEASE REFUSED: %s\n' "$LIVE_INSPECT_ERROR" >&2
+      printf '  no worker was started; inspect the slot before leasing it again\n' >&2
+      return 1
+    fi
     live_task=$LIVE_TASK_ID
   fi
 

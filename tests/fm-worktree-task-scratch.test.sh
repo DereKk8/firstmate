@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Behavior tests for bin/fm-worktree-task-scratch.sh.
 #
-# prepare-lease is the lease-time safety net: archived leftovers leave the
-# worktree, while unarchived or still-live directories block the lease.
-# remove-archived is the tidy path used after a successful local archive copy.
+# prepare-lease never deletes. It reports preserved local state, refuses a live
+# or uninspectable metadata claim, and still leases when prior-task scratch or
+# gitignored credentials remain. remove-archived is the tidy path used after a
+# successful local archive copy, and only when that copy matches the source.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -53,7 +54,7 @@ run_remove() {
     "$@"
 }
 
-test_prepare_lease_removes_archived_leftover() {
+test_prepare_lease_preserves_archived_leftover() {
   local case_dir rc
   case_dir=$(make_case lease-both-halves)
   write_task_dir "$case_dir/wt" current-task current
@@ -76,7 +77,7 @@ test_prepare_lease_removes_archived_leftover() {
   pass "prepare-lease preserves an independently archived leftover"
 }
 
-test_prepare_lease_refuses_unarchived_worktree_without_mutation() {
+test_prepare_lease_preserves_unarchived_worktree_without_mutation() {
   local case_dir rc
   case_dir=$(make_case unarchived-slot)
   write_task_dir "$case_dir/wt" current-task current
@@ -217,16 +218,54 @@ test_remove_archived_deletes_only_after_archive_exists() {
   assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
     "remove-archived deleted a source it could not prove was archived"
 
-  write_archive "$case_dir/project" current-task archived
+  write_archive "$case_dir/project" current-task source
   run_remove "$case_dir" >"$case_dir/out2" 2>"$case_dir/err2" \
-    || fail "remove-archived failed after the archive existed: $(cat "$case_dir/err2")"
+    || fail "remove-archived failed after a matching archive existed: $(cat "$case_dir/err2")"
   assert_absent "$case_dir/wt/.agent/tasks/current-task" \
     "remove-archived left the source after a proven archive"
   assert_present "$case_dir/project/.agent/archive/current-task/plan.md" \
     "remove-archived disturbed the archive"
-  grep -qx archived "$case_dir/project/.agent/archive/current-task/plan.md" \
+  grep -qx source "$case_dir/project/.agent/archive/current-task/plan.md" \
     || fail "remove-archived changed the archive contents"
-  pass "remove-archived refuses without an archive and deletes only after one exists"
+  pass "remove-archived refuses without an archive and deletes only after a matching copy exists"
+}
+
+test_remove_archived_refuses_empty_archive() {
+  local case_dir rc
+  case_dir=$(make_case remove-empty-archive)
+  write_task_dir "$case_dir/wt" current-task source
+  mkdir -p "$case_dir/project/.agent/archive/current-task"
+
+  set +e
+  run_remove "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "remove-archived should refuse an empty archive"
+  assert_grep "archive does not match source" "$case_dir/err" \
+    "empty-archive refusal was not clear"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "remove-archived deleted a source whose archive was empty"
+  pass "remove-archived refuses an empty archive without deleting the source"
+}
+
+test_remove_archived_refuses_mismatched_archive() {
+  local case_dir rc
+  case_dir=$(make_case remove-mismatch-archive)
+  write_task_dir "$case_dir/wt" current-task LIVE_SECRET
+  write_archive "$case_dir/project" current-task OLD_DIFFERENT
+
+  set +e
+  run_remove "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "remove-archived should refuse a mismatched archive"
+  assert_grep "archive does not match source" "$case_dir/err" \
+    "mismatch-archive refusal was not clear"
+  grep -qx LIVE_SECRET "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    || fail "remove-archived deleted or changed a source whose archive differed"
+  grep -qx OLD_DIFFERENT "$case_dir/project/.agent/archive/current-task/plan.md" \
+    || fail "remove-archived changed the mismatched archive"
+  pass "remove-archived refuses a mismatched archive without deleting the source"
 }
 
 test_remove_archived_is_idempotent_when_source_already_gone() {
@@ -263,14 +302,71 @@ test_prepare_lease_refuses_primary_checkout() {
   pass "prepare-lease refuses to clean the product repository itself"
 }
 
-test_prepare_lease_removes_archived_leftover
-test_prepare_lease_refuses_unarchived_worktree_without_mutation
+test_prepare_lease_refuses_unreadable_live_metadata_without_mutation() {
+  local case_dir rc
+  case_dir=$(make_case unreadable-meta)
+  write_task_dir "$case_dir/wt" current-task current
+  write_task_dir "$case_dir/wt" live-task live
+  fm_write_meta "$case_dir/state/live-task.meta" \
+    "worktree=$case_dir/wt" \
+    "project=$case_dir/project" \
+    'kind=ship'
+  chmod 000 "$case_dir/state/live-task.meta"
+
+  set +e
+  run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  chmod 644 "$case_dir/state/live-task.meta" || true
+  set -e
+  expect_code 1 "$rc" "prepare-lease should refuse when live metadata cannot be read"
+  assert_grep 'WORKTREE LEASE REFUSED' "$case_dir/err" \
+    "unreadable metadata did not refuse the lease"
+  assert_grep 'could not read task metadata' "$case_dir/err" \
+    "unreadable metadata refusal did not name the inspect failure"
+  assert_present "$case_dir/wt/.agent/tasks/live-task/plan.md" \
+    "unreadable metadata refusal deleted live scratch"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "unreadable metadata refusal deleted current scratch"
+  pass "prepare-lease refuses unreadable live metadata without mutation"
+}
+
+test_prepare_lease_refuses_symlink_worktree_claim_without_mutation() {
+  local case_dir rc
+  case_dir=$(make_case symlink-claim)
+  write_task_dir "$case_dir/wt" current-task current
+  write_task_dir "$case_dir/wt" live-task live
+  ln -s "$case_dir/wt" "$case_dir/wt-link"
+  fm_write_meta "$case_dir/state/live-task.meta" \
+    "worktree=$case_dir/wt-link" \
+    "project=$case_dir/project" \
+    'kind=ship'
+
+  set +e
+  run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "prepare-lease should refuse a symlink worktree claim for the same slot"
+  assert_grep 'currently leased by task live-task' "$case_dir/err" \
+    "symlink worktree claim did not identify the owning task"
+  assert_present "$case_dir/wt/.agent/tasks/live-task/plan.md" \
+    "symlink worktree claim refusal deleted live scratch"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "symlink worktree claim refusal deleted current scratch"
+  pass "prepare-lease refuses a canonical-matching symlink worktree claim without mutation"
+}
+
+test_prepare_lease_preserves_archived_leftover
+test_prepare_lease_preserves_unarchived_worktree_without_mutation
 test_prepare_lease_reports_contaminated_worktree_without_mutation
 test_prepare_lease_allows_legitimate_env
 test_prepare_lease_inspects_existing_task_metadata
 test_prepare_lease_refuses_live_worktree_without_mutation
 test_remove_archived_deletes_only_after_archive_exists
+test_remove_archived_refuses_empty_archive
+test_remove_archived_refuses_mismatched_archive
 test_remove_archived_is_idempotent_when_source_already_gone
 test_prepare_lease_refuses_primary_checkout
+test_prepare_lease_refuses_unreadable_live_metadata_without_mutation
+test_prepare_lease_refuses_symlink_worktree_claim_without_mutation
 
 echo "# all fm-worktree-task-scratch tests passed"

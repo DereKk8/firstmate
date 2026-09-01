@@ -293,7 +293,7 @@ test_leased_pool_preserves_archived_prior_scratch() {
   pass "a leased pooled worktree preserves prior task scratch"
 }
 
-test_spawn_refuses_unarchived_pool_without_mutation() {
+test_spawn_preserves_unarchived_pool_without_mutation() {
   local rec id exclude out status launch_brief
   id='pool-unarchived-lease-r1'
   rec=$(make_case unarchived-lease "$id")
@@ -375,6 +375,63 @@ test_live_claim_refusal_preserves_leased_slot() {
   pass "a live pooled-worktree claim refuses without destructive cleanup"
 }
 
+test_unreadable_live_meta_refuses_without_reset() {
+  local rec id out status claimed_head
+  id='pool-unreadable-meta-r7'
+  rec=$(make_case unreadable-meta "$id")
+  read_case_record "$rec"
+
+  printf 'local committed work\n' > "$POOL_DIR/live-task.txt"
+  git -C "$POOL_DIR" add live-task.txt
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm live-task-work
+  claimed_head=$(git -C "$POOL_DIR" rev-parse HEAD)
+  printf 'worktree=%s\n' "$POOL_DIR" > "$HOME_DIR/state/live-task.meta"
+  chmod 000 "$HOME_DIR/state/live-task.meta"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  chmod 644 "$HOME_DIR/state/live-task.meta" || true
+  [ "$status" -ne 0 ] || fail "spawn succeeded despite unreadable live task metadata"
+  assert_contains "$out" 'WORKTREE LEASE REFUSED' \
+    "spawn did not refuse unreadable live metadata"
+  assert_contains "$out" 'could not read task metadata' \
+    "spawn did not name the inspect failure"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$claimed_head" ] \
+    || fail "unreadable metadata spawn reset committed work from the live task"
+  assert_grep 'local committed work' "$POOL_DIR/live-task.txt" \
+    "unreadable metadata spawn removed committed work from the live task"
+  pass "unreadable live metadata refuses without resetting committed work"
+}
+
+test_symlink_live_claim_refuses_without_reset() {
+  local rec id out status claimed_head
+  id='pool-symlink-claim-r8'
+  rec=$(make_case symlink-claim "$id")
+  read_case_record "$rec"
+
+  printf 'local committed work\n' > "$POOL_DIR/live-task.txt"
+  git -C "$POOL_DIR" add live-task.txt
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm live-task-work
+  claimed_head=$(git -C "$POOL_DIR" rev-parse HEAD)
+  ln -s "$POOL_DIR" "$CASE_DIR/pool-link"
+  printf 'worktree=%s\n' "$CASE_DIR/pool-link" > "$HOME_DIR/state/live-task.meta"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn succeeded despite a symlink live worktree claim"
+  assert_contains "$out" 'WORKTREE LEASE REFUSED' \
+    "spawn did not refuse a symlink live worktree claim"
+  assert_contains "$out" 'currently leased by task live-task' \
+    "spawn did not identify the owning task for a symlink claim"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$claimed_head" ] \
+    || fail "symlink-claim spawn reset committed work from the live task"
+  assert_grep 'local committed work' "$POOL_DIR/live-task.txt" \
+    "symlink-claim spawn removed committed work from the live task"
+  pass "a symlink live worktree claim refuses without resetting committed work"
+}
+
 test_spawn_reports_contaminated_pool_and_warns_worker() {
   local rec id exclude out status launch_brief
   id='pool-contaminated-lease-r2'
@@ -423,8 +480,10 @@ test_unresolved_remote_default_refuses_pool
 test_unreachable_origin_refuses_stale_pool_base
 test_no_origin_launches_from_local_head
 test_leased_pool_preserves_archived_prior_scratch
-test_spawn_refuses_unarchived_pool_without_mutation
+test_spawn_preserves_unarchived_pool_without_mutation
 test_live_claim_refusal_preserves_leased_slot
+test_unreadable_live_meta_refuses_without_reset
+test_symlink_live_claim_refuses_without_reset
 test_spawn_reports_contaminated_pool_and_warns_worker
 
 echo "# all fm-spawn-pool-base-freshen tests passed"
