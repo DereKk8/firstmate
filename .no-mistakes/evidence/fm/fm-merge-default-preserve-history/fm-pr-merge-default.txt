@@ -1,0 +1,5 @@
+$ bash tests/fm-pr-merge.test.sh
+ok - fm-pr-merge defaults a GitHub merge with no caller method to a merge commit
+ok - fm-pr-merge lets each explicit caller merge method win over the default
+ok - fm-pr-merge parses a GitHub PR URL into gh-axi number and --repo arguments
+ok - fm-pr-merge leaves GitHub extra-arg handling unchanged, including --sha
