@@ -1,0 +1,6 @@
+ok - upstream currency: squash-landed content is current despite an ancestry gap
+ok - upstream currency: genuine incoming content has a diffstat and absent-file list
+ok - upstream currency: squash residue and genuinely new content remain distinct
+ok - upstream currency: conflict markers are excluded and conflicted paths are reported separately
+ok - upstream currency: Git older than 2.38 uses an explicit ancestry-only fallback
+# all fm-upstream-check tests passed
