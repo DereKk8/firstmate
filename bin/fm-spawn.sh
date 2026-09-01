@@ -2348,8 +2348,7 @@ fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
 fi
-if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] \
-   && [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ]; then
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   LEASE_OUTPUT=$("$SCRIPT_DIR/fm-worktree-task-scratch.sh" prepare-lease \
     --worktree "$WT" \
     --keep "$ID" \

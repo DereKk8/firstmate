@@ -64,16 +64,16 @@ test_prepare_lease_removes_archived_leftover() {
   run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
   rc=$?
   set -e
-  expect_code 0 "$rc" "prepare-lease should remove an independently archived leftover"
-  assert_absent "$case_dir/wt/.agent/tasks/old-archived" \
-    "prepare-lease left an archived prior task directory in the leased worktree"
+  expect_code 0 "$rc" "prepare-lease should preserve an independently archived leftover"
+  assert_present "$case_dir/wt/.agent/tasks/old-archived/plan.md" \
+    "prepare-lease deleted an archived prior task directory"
   assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
     "prepare-lease deleted the current task directory"
   grep -qx current "$case_dir/wt/.agent/tasks/current-task/plan.md" \
     || fail "prepare-lease changed the current task directory"
-  assert_grep "removed old-archived (archived)" "$case_dir/out" \
-    "prepare-lease did not report removing the archived leftover"
-  pass "prepare-lease removes an independently archived leftover"
+  assert_grep "preserved old-archived (prior task scratch)" "$case_dir/err" \
+    "prepare-lease did not report preserving the archived leftover"
+  pass "prepare-lease preserves an independently archived leftover"
 }
 
 test_prepare_lease_refuses_unarchived_worktree_without_mutation() {
@@ -88,11 +88,9 @@ test_prepare_lease_refuses_unarchived_worktree_without_mutation() {
   run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
   rc=$?
   set -e
-  expect_code 1 "$rc" "prepare-lease should refuse unarchived prior task scratch"
-  assert_grep 'WORKTREE LEASE REFUSED' "$case_dir/err" \
-    "unarchived scratch refusal was not loud"
-  assert_grep 'no worker was started' "$case_dir/err" \
-    "unarchived scratch refusal did not make launch visibility explicit"
+  expect_code 0 "$rc" "prepare-lease should allow unarchived prior task scratch"
+  assert_grep 'preserved old-unarchived (prior task scratch)' "$case_dir/err" \
+    "unarchived scratch preservation was not loud"
   assert_present "$case_dir/wt/.agent/tasks/old-archived/plan.md" \
     "unarchived scratch refusal removed archived scratch before reporting"
   assert_present "$case_dir/wt/.agent/tasks/old-unarchived/plan.md" \
@@ -132,8 +130,8 @@ test_prepare_lease_reports_contaminated_worktree_without_mutation() {
     "prepare-lease deleted the env file"
   assert_present "$case_dir/wt/.secrets/redis_password.txt" \
     "prepare-lease deleted credential material"
-  assert_absent "$case_dir/wt/.agent/tasks/old-archived" \
-    "prepare-lease failed to remove independently archived scratch"
+  assert_present "$case_dir/wt/.agent/tasks/old-archived/plan.md" \
+    "prepare-lease deleted archived scratch"
   assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
     "prepare-lease deleted current scratch"
   [ "$(git -C "$case_dir/wt" stash list | wc -l)" -eq 1 ] \
@@ -156,6 +154,27 @@ test_prepare_lease_allows_legitimate_env() {
   assert_present "$case_dir/wt/.env" \
     "a legitimate env file was removed during lease preparation"
   pass "prepare-lease allows a normal checkout with legitimate local env state"
+}
+
+test_prepare_lease_inspects_existing_task_metadata() {
+  local case_dir rc
+  case_dir=$(make_case retained-meta)
+  printf 'LOCAL_SETTING=expected\n' > "$case_dir/wt/.env"
+  fm_write_meta "$case_dir/state/current-task.meta" \
+    "worktree=$case_dir/wt" \
+    "project=$case_dir/project" \
+    'kind=ship'
+
+  set +e
+  run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "prepare-lease should inspect a retained task metadata retry"
+  assert_grep 'preserved: .env (not a lease blocker)' "$case_dir/err" \
+    "retained metadata retry skipped lease inspection"
+  assert_present "$case_dir/wt/.env" \
+    "retained metadata retry deleted inherited local state"
+  pass "prepare-lease inspects retained task metadata retries"
 }
 
 test_prepare_lease_refuses_live_worktree_without_mutation() {
@@ -248,6 +267,7 @@ test_prepare_lease_removes_archived_leftover
 test_prepare_lease_refuses_unarchived_worktree_without_mutation
 test_prepare_lease_reports_contaminated_worktree_without_mutation
 test_prepare_lease_allows_legitimate_env
+test_prepare_lease_inspects_existing_task_metadata
 test_prepare_lease_refuses_live_worktree_without_mutation
 test_remove_archived_deletes_only_after_archive_exists
 test_remove_archived_is_idempotent_when_source_already_gone

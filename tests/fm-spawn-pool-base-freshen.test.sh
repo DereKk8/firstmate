@@ -251,7 +251,7 @@ test_unresolved_remote_default_refuses_pool() {
   pass "an unresolved remote default branch refuses the pooled worktree"
 }
 
-test_leased_pool_strips_archived_prior_scratch() {
+test_leased_pool_preserves_archived_prior_scratch() {
   local rec id exclude out status
   id='pool-scratch-lease-r1'
   rec=$(make_case scratch-lease "$id")
@@ -271,11 +271,13 @@ test_leased_pool_strips_archived_prior_scratch() {
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
   expect_code 0 "$status" "spawn should lease a pooled worktree that still has leftover scratch"
-  assert_absent "$POOL_DIR/.agent/tasks/old-archived" \
-    "spawn left an archived prior task directory in the leased worktree"
+  assert_present "$POOL_DIR/.agent/tasks/old-archived/plan.md" \
+    "spawn deleted an archived prior task directory"
+  assert_contains "$out" 'preserved old-archived (prior task scratch)' \
+    "spawn did not report archived prior task scratch"
   assert_present "$POOL_DIR/.agent/tasks/$id/plan.md" \
     "spawn deleted the current task directory"
-  pass "a leased pooled worktree drops independently archived leftovers"
+  pass "a leased pooled worktree preserves prior task scratch"
 }
 
 test_spawn_refuses_unarchived_pool_without_mutation() {
@@ -298,18 +300,16 @@ test_spawn_refuses_unarchived_pool_without_mutation() {
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
-  [ "$status" -ne 0 ] || fail "spawn launched a worker with unarchived prior task scratch"
-  assert_contains "$out" 'WORKTREE LEASE REFUSED' \
-    "spawn did not refuse unarchived prior task scratch"
-  assert_contains "$out" 'no worker was started' \
-    "spawn did not make unarchived scratch refusal visible"
+  expect_code 0 "$status" "spawn should allow unarchived prior task scratch"
+  assert_contains "$out" 'preserved old-unarchived (prior task scratch)' \
+    "spawn did not report unarchived prior task scratch"
   assert_present "$POOL_DIR/.agent/tasks/old-archived/plan.md" \
-    "spawn removed safe scratch before refusing unsafe scratch"
+    "spawn deleted archived prior task scratch"
   assert_present "$POOL_DIR/.agent/tasks/old-unarchived/plan.md" \
     "spawn deleted unarchived prior task scratch"
   assert_present "$POOL_DIR/.agent/tasks/$id/plan.md" \
-    "spawn deleted current task scratch while refusing"
-  pass "spawn refuses a pooled worktree with unarchived prior task scratch"
+    "spawn deleted current task scratch"
+  pass "spawn reports and preserves unarchived pooled scratch"
 }
 
 test_spawn_reports_contaminated_pool_and_warns_worker() {
@@ -359,7 +359,7 @@ test_dirty_pool_refuses_without_discarding_work
 test_unresolved_remote_default_refuses_pool
 test_unreachable_origin_refuses_stale_pool_base
 test_no_origin_launches_from_local_head
-test_leased_pool_strips_archived_prior_scratch
+test_leased_pool_preserves_archived_prior_scratch
 test_spawn_refuses_unarchived_pool_without_mutation
 test_spawn_reports_contaminated_pool_and_warns_worker
 
