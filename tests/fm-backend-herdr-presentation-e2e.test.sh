@@ -644,11 +644,24 @@ SECOND_TWO_INFO=$(lab workspace get "$SECOND_TWO_WSID") || fail "focused secondm
   || fail "projected create or workspace.move stole focus from the captain's current space"
 pass "real Herdr lab: every projected create, task-tab create, seeded prune, and move preserves active workspace and tab"
 
-# The anchor only establishes the durable firstmate workspace. Retire its task
-# before reusing the single pooled Treehouse slot for the restart fixtures; the
-# lease preflight must correctly refuse any still-live claim.
+# Release the pooled task slot while retaining a durable firstmate workspace
+# for the projection parent lookup used by the recovery fixtures.
 teardown_task anchor "$HOME_DIR" > "$TMP_ROOT/anchor-teardown.out" 2> "$TMP_ROOT/anchor-teardown.err" \
   || fail "anchor teardown failed before same-identity recovery: $(cat "$TMP_ROOT/anchor-teardown.err")"
+FIRSTMATE_RECREATED=$(lab workspace create --cwd "$PROJECT_DIR" --label firstmate --no-focus) \
+  || fail "durable firstmate workspace recreation failed before same-identity recovery"
+FIRSTMATE_WSID=$(printf '%s' "$FIRSTMATE_RECREATED" | jq -r '.result.workspace.workspace_id // empty')
+[ -n "$FIRSTMATE_WSID" ] \
+  || fail "durable firstmate workspace recreation returned no workspace id"
+FIRSTMATE_SOCKET=$(PATH="$FAKEBIN:$PATH" HERDR_SESSION="$HERDR_LAB_SESSION" bash -c '
+  . "$0/bin/backends/herdr.sh"
+  fm_backend_herdr_presentation_session_socket_path "$1"
+' "$ROOT" "$HERDR_LAB_SESSION")
+[ -n "$FIRSTMATE_SOCKET" ] \
+  || fail "could not resolve the Herdr session socket for firstmate workspace recreation"
+PATH="$HERDR_ORIGINAL_PATH" "$ROOT/bin/backends/herdr-workspace-move.py" \
+  "$FIRSTMATE_SOCKET" "$FIRSTMATE_WSID" 0 >/dev/null \
+  || fail "could not restore firstmate workspace order before same-identity recovery"
 
 mkdir -p "$ACTIVE_SEEDED_CONTROL"
 printf '%s\n' requested > "$ACTIVE_SEEDED_CONTROL/stage"
