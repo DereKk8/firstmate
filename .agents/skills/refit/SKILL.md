@@ -21,12 +21,14 @@ The pass never updates tooling, pushes, restarts daemons, or merges on its own.
 
 ### 1. CURRENCY
 
-Run `bin/fm-upstream-check.sh` for the upstream gap.
+Run `bin/fm-upstream-check.sh` for the upstream content verdict and its commit-identity context.
+Treat the content verdict as the sync decision, never the raw ancestry count.
+A nonzero ancestry gap with zero incoming content is squash residue from a prior refit, so report the fork as content-current and do not sync.
 Run `bin/fm-external-tooling-check.sh` for version drift and its `safe-anytime` versus `needs-quiet-fleet` coordination.
 Preserve those helpers' existing behavior exactly.
 Also report currency for the globally installed agent skills under `~/.agents/skills/`, which every harness and every worker discovers and which no other leg covers.
 Read their installed state only; `skills update -g` is the update action and stays subject to this pass's never-update rule, so name it as a recommendation and run it only on the captain's word.
-Report what new capabilities landed upstream, how far behind this fork is, and any external-tooling or installed-skill drift with its coordination tag.
+Report what new capabilities landed upstream, what content would arrive, the ancestry context, and any external-tooling or installed-skill drift with its coordination tag.
 
 ### 2. FIT
 
