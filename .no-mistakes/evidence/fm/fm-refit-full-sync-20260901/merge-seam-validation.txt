@@ -1,0 +1,8 @@
+$ git show --no-patch --pretty=%P 5ef28f2f596c6df332da70eb29400c9d196eb3d6
+74ce26f0a65ab7075a3d0e5afa9e6f870b7c1d5d 41d0ab3910ece4e90db0194f756437b3abe8ab8f
+$ git merge-base --is-ancestor 41d0ab3910ece4e90db0194f756437b3abe8ab8f 5ef28f2f596c6df332da70eb29400c9d196eb3d6
+upstream tip is an ancestor: yes
+$ umask 077; bash tests/fm-pr-merge.test.sh; bash tests/fm-procevent-quota.test.sh; bash tests/fm-public-followup.test.sh
+targeted integration tests: completed successfully
+$ bash tests/fm-procevent.test.sh
+procevent suite: completed successfully under private test umask
