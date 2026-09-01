@@ -644,6 +644,12 @@ SECOND_TWO_INFO=$(lab workspace get "$SECOND_TWO_WSID") || fail "focused secondm
   || fail "projected create or workspace.move stole focus from the captain's current space"
 pass "real Herdr lab: every projected create, task-tab create, seeded prune, and move preserves active workspace and tab"
 
+# The anchor only establishes the durable firstmate workspace. Retire its task
+# before reusing the single pooled Treehouse slot for the restart fixtures; the
+# lease preflight must correctly refuse any still-live claim.
+teardown_task anchor "$HOME_DIR" > "$TMP_ROOT/anchor-teardown.out" 2> "$TMP_ROOT/anchor-teardown.err" \
+  || fail "anchor teardown failed before same-identity recovery: $(cat "$TMP_ROOT/anchor-teardown.err")"
+
 mkdir -p "$ACTIVE_SEEDED_CONTROL"
 printf '%s\n' requested > "$ACTIVE_SEEDED_CONTROL/stage"
 ACTIVE_SEEDED_START=$(log_line_count)

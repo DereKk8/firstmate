@@ -2979,12 +2979,12 @@ fi
 "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort || true
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
-LAUNCH_BRIEF="$BRIEF_REAL"
+LAUNCH_BRIEF="$BRIEF"
 if [ -n "$LEASE_NOTICE" ]; then
   LAUNCH_BRIEF="$TASK_TMP/launch-brief.md"
   {
     printf '%s\n\n' "$LEASE_NOTICE"
-    cat "$BRIEF_REAL"
+    cat "$BRIEF"
   } > "$LAUNCH_BRIEF" || {
     echo "error: could not prepare the contamination warning for the worker; refusing to launch" >&2
     exit 1
