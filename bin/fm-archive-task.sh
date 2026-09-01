@@ -321,6 +321,19 @@ if [ -n "$OTHER_TASKS" ]; then
     "$TASKS_DIR" "$ID" "$OTHER_TASKS"
 fi
 
+if [ "$FORCE" = 0 ] && path_present "$LOCAL_ARCHIVE" \
+   && [ -d "$LOCAL_ARCHIVE" ] && [ ! -L "$LOCAL_ARCHIVE" ] \
+   && diff -qr -- "$SOURCE" "$LOCAL_ARCHIVE" >/dev/null 2>&1; then
+  if "$SCRIPT_DIR/fm-worktree-task-scratch.sh" remove-archived \
+      --worktree "$WT" --task "$ID" --archive "$LOCAL_ARCHIVE"; then
+    PRODUCT_NAME=$(basename "$PROJ")
+    printf 'archived task %s already present at %s; removed its remaining worktree source\n' \
+      "$ID" "$LOCAL_ARCHIVE"
+    mirror_local_archive
+    exit 0
+  fi
+fi
+
 AGENT_DIR="$PROJ/.agent"
 ARCHIVE_ROOT="$AGENT_DIR/archive"
 if path_present "$AGENT_DIR"; then

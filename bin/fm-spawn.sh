@@ -668,7 +668,6 @@ spawn_remote_secondmate() {
 }
 
 BACKEND=
-TREEHOUSE_ABORT_CLEANUP=0
 ORCA_ABORT_CLEANUP=0
 ORCA_WORKTREE_ID=
 ORCA_TERMINAL=
@@ -760,12 +759,6 @@ spawn_abort_cleanup() {
   if [ "$HERDR_PRESENTATION_ORDER_LOCK_HELD" = 1 ]; then
     HERDR_PRESENTATION_ORDER_LOCK_HELD=0
     fm_lock_release "$HERDR_PRESENTATION_ORDER_LOCK" || true
-  fi
-  if [ "$TREEHOUSE_ABORT_CLEANUP" = 1 ]; then
-    TREEHOUSE_ABORT_CLEANUP=0
-    if ! ( cd "$FM_ROOT" && treehouse return --force "$WT" ) >/dev/null 2>&1; then
-      echo "warning: could not return treehouse worktree after aborted spawn: ${WT:-unknown}" >&2
-    fi
   fi
   if [ "$ORCA_ABORT_CLEANUP" = 1 ]; then
     ORCA_ABORT_CLEANUP=0
@@ -2351,7 +2344,6 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   fi
 
   validate_spawn_worktree "treehouse get" "$T"
-  TREEHOUSE_ABORT_CLEANUP=1
 fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
@@ -2362,7 +2354,6 @@ if [ "$KIND" != secondmate ]; then
     --keep "$ID" \
     --project "$PROJ_ABS" \
     --state "$STATE" 2>&1) || {
-    TREEHOUSE_ABORT_CLEANUP=0
     printf '%s\n' "$LEASE_OUTPUT" >&2
     echo "error: could not prepare task scratch in worktree '$WT'; refusing to launch" >&2
     exit 1
@@ -2855,7 +2846,6 @@ if [ "$SPAWN_TASK_SET_LOCK_HELD" = 1 ]; then
   fm_lock_release "$SPAWN_TASK_SET_LOCK"
 fi
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
-TREEHOUSE_ABORT_CLEANUP=0
 
 LAUNCH_BRIEF="$BRIEF_REAL"
 if [ -n "$LEASE_NOTICE" ]; then
