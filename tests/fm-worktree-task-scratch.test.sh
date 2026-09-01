@@ -389,6 +389,46 @@ test_prepare_lease_refuses_missing_claim_metadata_without_mutation() {
   pass "prepare-lease refuses metadata without a claim"
 }
 
+test_prepare_lease_refuses_empty_worktree_claim_without_mutation() {
+  local case_dir rc
+  case_dir=$(make_case empty-claim-meta)
+  write_task_dir "$case_dir/wt" current-task current
+  fm_write_meta "$case_dir/state/broken-task.meta" \
+    'worktree=' \
+    'kind=ship'
+
+  set +e
+  run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "prepare-lease should refuse an empty worktree claim"
+  assert_grep 'could not parse task metadata' "$case_dir/err" \
+    "empty worktree claim did not refuse the lease"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "empty claim refusal deleted task scratch"
+  pass "prepare-lease refuses empty worktree claims"
+}
+
+test_prepare_lease_refuses_relative_worktree_claim_without_mutation() {
+  local case_dir rc
+  case_dir=$(make_case relative-claim-meta)
+  write_task_dir "$case_dir/wt" current-task current
+  fm_write_meta "$case_dir/state/broken-task.meta" \
+    'worktree=relative-wt' \
+    'kind=ship'
+
+  set +e
+  run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "prepare-lease should refuse a relative worktree claim"
+  assert_grep 'not an absolute path' "$case_dir/err" \
+    "relative worktree claim did not refuse the lease"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "relative claim refusal deleted task scratch"
+  pass "prepare-lease refuses relative worktree claims"
+}
+
 test_prepare_lease_refuses_symlink_worktree_claim_without_mutation() {
   local case_dir rc
   case_dir=$(make_case symlink-claim)
@@ -429,6 +469,8 @@ test_prepare_lease_refuses_primary_checkout
 test_prepare_lease_refuses_unreadable_live_metadata_without_mutation
 test_prepare_lease_refuses_ambiguous_metadata_without_mutation
 test_prepare_lease_refuses_missing_claim_metadata_without_mutation
+test_prepare_lease_refuses_empty_worktree_claim_without_mutation
+test_prepare_lease_refuses_relative_worktree_claim_without_mutation
 test_prepare_lease_refuses_symlink_worktree_claim_without_mutation
 
 echo "# all fm-worktree-task-scratch tests passed"

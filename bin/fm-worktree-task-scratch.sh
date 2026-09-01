@@ -121,7 +121,7 @@ live_task_for_worktree() {
         if (key == "kind") { kind = value }
       }
       END {
-        if (invalid || claims > 1 || (claims == 0 && kind != "secondmate")) exit 1
+        if (invalid || claims > 1 || (claims == 0 && kind != "secondmate") || (claims == 1 && claim == "")) exit 1
         printf "%d\t%s\n", claims, claim
       }
     ' "$meta" 2>/dev/null); then
@@ -129,7 +129,17 @@ live_task_for_worktree() {
       return 0
     fi
     claim=${parsed#*$'\t'}
-    [ -n "$claim" ] || continue
+    if [ -n "$claim" ]; then
+      case "$claim" in
+        /*) ;;
+        *)
+          LIVE_INSPECT_ERROR="worktree claim is not an absolute path in $meta"
+          return 0
+          ;;
+      esac
+    else
+      continue
+    fi
     if claim_real=$(canonicalize_dir "$claim"); then
       if [ "$claim_real" = "$worktree" ]; then
         LIVE_TASK_ID=$task_id
