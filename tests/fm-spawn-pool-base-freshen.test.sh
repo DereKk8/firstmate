@@ -20,6 +20,9 @@ make_spawn_fakebin() {
   cat > "$fakebin/tmux" <<'SH'
 #!/usr/bin/env bash
 set -u
+if [ -n "${FM_FAKE_TMUX_LOG:-}" ]; then
+  printf '%s\n' "$*" >> "$FM_FAKE_TMUX_LOG"
+fi
 case "$*" in
   *"#{pane_current_path}"*) printf '%s\n' "${FM_FAKE_PANE_PATH:?FM_FAKE_PANE_PATH unset}"; exit 0 ;;
 esac
@@ -80,7 +83,7 @@ run_spawn() {
     FM_STATE_OVERRIDE="$HOME_DIR/state" FM_DATA_OVERRIDE="$HOME_DIR/data" \
     FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" FM_CONFIG_OVERRIDE="$HOME_DIR/config" \
     FM_SPAWN_NO_GUARD=1 TMUX="fake,1,0" FM_FAKE_PANE_PATH="$POOL_DIR" \
-    PATH="$FAKEBIN_DIR:$PATH" \
+    FM_FAKE_TMUX_LOG="$CASE_DIR/tmux.log" PATH="$FAKEBIN_DIR:$PATH" \
     "$SPAWN" "$id" "$PROJECT_DIR" "$@" 2>&1
 }
 
@@ -259,14 +262,10 @@ test_leased_pool_strips_archived_prior_scratch() {
   printf '%s\n' '.agent/' >> "$exclude"
 
   mkdir -p "$POOL_DIR/.agent/tasks/old-archived" \
-    "$POOL_DIR/.agent/tasks/old-unarchived" \
-    "$POOL_DIR/.agent/tasks/still-live" \
     "$POOL_DIR/.agent/tasks/$id" \
     "$PROJECT_DIR/.agent/archive/old-archived"
   printf 'old archived\n' > "$POOL_DIR/.agent/tasks/old-archived/plan.md"
   printf 'old archived\n' > "$PROJECT_DIR/.agent/archive/old-archived/plan.md"
-  printf 'keep unarchived\n' > "$POOL_DIR/.agent/tasks/old-unarchived/plan.md"
-  printf 'keep live\n' > "$POOL_DIR/.agent/tasks/still-live/plan.md"
   printf 'current\n' > "$POOL_DIR/.agent/tasks/$id/plan.md"
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
@@ -274,17 +273,47 @@ test_leased_pool_strips_archived_prior_scratch() {
   expect_code 0 "$status" "spawn should lease a pooled worktree that still has leftover scratch"
   assert_absent "$POOL_DIR/.agent/tasks/old-archived" \
     "spawn left an archived prior task directory in the leased worktree"
-  assert_present "$POOL_DIR/.agent/tasks/old-unarchived/plan.md" \
-    "spawn deleted an unarchived prior task directory"
-  assert_present "$POOL_DIR/.agent/tasks/still-live/plan.md" \
-    "spawn deleted a still-live task directory"
   assert_present "$POOL_DIR/.agent/tasks/$id/plan.md" \
     "spawn deleted the current task directory"
-  pass "a leased pooled worktree drops archived leftovers and preserves unarchived scratch"
+  pass "a leased pooled worktree drops independently archived leftovers"
 }
 
-test_spawn_refuses_contaminated_pool_without_launching() {
+test_spawn_refuses_unarchived_pool_without_mutation() {
   local rec id exclude out status
+  id='pool-unarchived-lease-r1'
+  rec=$(make_case unarchived-lease "$id")
+  read_case_record "$rec"
+
+  exclude=$(git -C "$POOL_DIR" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$exclude")"
+  printf '%s\n' '.agent/' >> "$exclude"
+  mkdir -p "$POOL_DIR/.agent/tasks/old-archived" \
+    "$POOL_DIR/.agent/tasks/old-unarchived" \
+    "$POOL_DIR/.agent/tasks/$id" \
+    "$PROJECT_DIR/.agent/archive/old-archived"
+  printf 'old archived\n' > "$POOL_DIR/.agent/tasks/old-archived/plan.md"
+  printf 'old archived\n' > "$PROJECT_DIR/.agent/archive/old-archived/plan.md"
+  printf 'keep unarchived\n' > "$POOL_DIR/.agent/tasks/old-unarchived/plan.md"
+  printf 'current\n' > "$POOL_DIR/.agent/tasks/$id/plan.md"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn launched a worker with unarchived prior task scratch"
+  assert_contains "$out" 'WORKTREE LEASE REFUSED' \
+    "spawn did not refuse unarchived prior task scratch"
+  assert_contains "$out" 'no worker was started' \
+    "spawn did not make unarchived scratch refusal visible"
+  assert_present "$POOL_DIR/.agent/tasks/old-archived/plan.md" \
+    "spawn removed safe scratch before refusing unsafe scratch"
+  assert_present "$POOL_DIR/.agent/tasks/old-unarchived/plan.md" \
+    "spawn deleted unarchived prior task scratch"
+  assert_present "$POOL_DIR/.agent/tasks/$id/plan.md" \
+    "spawn deleted current task scratch while refusing"
+  pass "spawn refuses a pooled worktree with unarchived prior task scratch"
+}
+
+test_spawn_reports_contaminated_pool_and_warns_worker() {
+  local rec id exclude out status launch_brief
   id='pool-contaminated-lease-r2'
   rec=$(make_case contaminated-lease "$id")
   read_case_record "$rec"
@@ -301,20 +330,26 @@ test_spawn_refuses_contaminated_pool_without_launching() {
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
-  [ "$status" -ne 0 ] || fail "spawn launched a worker from a contaminated pooled worktree"
-  assert_contains "$out" 'CONTAMINATED WORKTREE' \
+  expect_code 0 "$status" "spawn should allow non-authoritative local state"
+  assert_contains "$out" 'WORKTREE NOTICE' \
     "spawn did not surface the contaminated worktree"
-  assert_contains "$out" 'no worker was started' \
-    "spawn did not make the contamination visible before launch"
+  assert_contains "$out" "spawned $id" \
+    "spawn did not launch from a worktree with report-only state"
+  launch_brief="/tmp/fm-$id/launch-brief.md"
+  assert_present "$launch_brief" \
+    "spawn did not create the worker's contamination warning brief"
+  assert_grep 'WARNING: This pooled worktree contains pre-existing gitignored local state' \
+    "$launch_brief" "worker brief omitted the contamination warning"
   assert_present "$POOL_DIR/.env" \
-    "spawn deleted the contaminated env file while refusing the lease"
+    "spawn deleted the contaminated env file"
   assert_present "$POOL_DIR/.secrets/redis_password.txt" \
-    "spawn deleted credential material while refusing the lease"
+    "spawn deleted credential material"
   [ "$(git -C "$POOL_DIR" stash list | wc -l)" -eq 1 ] \
-    || fail "spawn deleted a stash while refusing the contaminated lease"
-  assert_absent "$HOME_DIR/state/$id.meta" \
-    "spawn published task metadata despite refusing the contaminated lease"
-  pass "spawn refuses a contaminated pooled worktree before any worker starts"
+    || fail "spawn deleted a stash while preparing the contaminated lease"
+  assert_present "$HOME_DIR/state/$id.meta" \
+    "spawn did not publish task metadata after a report-only contamination"
+  rm -rf "/tmp/fm-$id"
+  pass "spawn reports inherited local state and warns the worker before launch"
 }
 
 test_stale_pool_base_refreshes_before_branching
@@ -325,6 +360,7 @@ test_unresolved_remote_default_refuses_pool
 test_unreachable_origin_refuses_stale_pool_base
 test_no_origin_launches_from_local_head
 test_leased_pool_strips_archived_prior_scratch
-test_spawn_refuses_contaminated_pool_without_launching
+test_spawn_refuses_unarchived_pool_without_mutation
+test_spawn_reports_contaminated_pool_and_warns_worker
 
 echo "# all fm-spawn-pool-base-freshen tests passed"

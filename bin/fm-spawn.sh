@@ -694,6 +694,9 @@ RELAUNCH_REPLACEMENT_STATE=
 RELAUNCH_REPLACEMENT_WT=
 CONFIG_INHERIT_LOCK=
 CONFIG_INHERIT_LOCK_HELD=0
+LEASE_OUTPUT=
+LEASE_NOTICE=
+LAUNCH_BRIEF=
 
 parse_orca_worktree_result() {
   local raw=$1 rest
@@ -2346,14 +2349,21 @@ if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
 fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] \
    && [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ]; then
-  "$SCRIPT_DIR/fm-worktree-task-scratch.sh" prepare-lease \
+  LEASE_OUTPUT=$("$SCRIPT_DIR/fm-worktree-task-scratch.sh" prepare-lease \
     --worktree "$WT" \
     --keep "$ID" \
     --project "$PROJ_ABS" \
-    --state "$STATE" || {
+    --state "$STATE" 2>&1) || {
+    printf '%s\n' "$LEASE_OUTPUT" >&2
     echo "error: could not prepare task scratch in worktree '$WT'; refusing to launch" >&2
     exit 1
   }
+  if [ -n "$LEASE_OUTPUT" ]; then
+    printf '%s\n' "$LEASE_OUTPUT" >&2
+  fi
+  if printf '%s\n' "$LEASE_OUTPUT" | grep -Fq 'WORKTREE NOTICE:'; then
+    LEASE_NOTICE='WARNING: This pooled worktree contains pre-existing gitignored local state such as .env, .secrets, or git stash refs. Lease preflight preserved it. Treat it as inherited state and do not attribute failures to this branch without checking it first.'
+  fi
 fi
 
 # Treehouse pools can inherit an upstream push policy and branch tracking for
@@ -2837,7 +2847,18 @@ if [ "$SPAWN_TASK_SET_LOCK_HELD" = 1 ]; then
 fi
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
-sq_brief=$(shell_quote "$BRIEF")
+LAUNCH_BRIEF="$BRIEF_REAL"
+if [ -n "$LEASE_NOTICE" ]; then
+  LAUNCH_BRIEF="$TASK_TMP/launch-brief.md"
+  {
+    printf '%s\n\n' "$LEASE_NOTICE"
+    cat "$BRIEF_REAL"
+  } > "$LAUNCH_BRIEF" || {
+    echo "error: could not prepare the contamination warning for the worker; refusing to launch" >&2
+    exit 1
+  }
+fi
+sq_brief=$(shell_quote "$LAUNCH_BRIEF")
 sq_turnend=$(shell_quote "$TURNEND")
 sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
 sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
@@ -2951,7 +2972,7 @@ if [ "$HARNESS" = kimi ]; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"
     exit 1
   fi
-  KIMI_POINTER="Read the brief at $BRIEF_REAL and follow it exactly."
+  KIMI_POINTER="Read the brief at $LAUNCH_BRIEF and follow it exactly."
   KIMI_SUBMIT_RETRIES=${FM_KIMI_SUBMIT_RETRIES:-3}
   KIMI_SUBMIT_SLEEP=${FM_KIMI_SUBMIT_SLEEP:-${FM_KIMI_POLL_INTERVAL:-0.5}}
   KIMI_SUBMIT_SETTLE=${FM_KIMI_SUBMIT_SETTLE:-0}

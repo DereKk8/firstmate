@@ -15,16 +15,16 @@
 #     leaves the source untouched.
 #   fm-worktree-task-scratch.sh prepare-lease --worktree <path> --keep <id> --project <path> --state <path>
 #     Inspect a newly leased worktree before launch. A root .env, .secrets
-#     directory, stash ref, or metadata claim for the worktree preserves every
-#     file and refuses the lease with a visible contamination report. Otherwise
-#     the --keep id is never removed and every other task directory is removed
-#     only when the product-local archive at <project>/.agent/archive/<id> is a
-#     real directory. The command refuses when worktree and project resolve to
-#     the same path.
+#     directory, or stash ref is reported and preserved but does not block a
+#     lease because those paths can be legitimate local state. A metadata claim
+#     for the worktree or an unarchived task directory preserves every file and
+#     refuses the lease. Otherwise the --keep id is never removed and every
+#     other task directory is removed only when the product-local archive at
+#     <project>/.agent/archive/<id> is a real directory. The command refuses
+#     when worktree and project resolve to the same path.
 #
-# Neither mode deletes a directory it cannot prove is archived. A contaminated
-# or currently leased worktree is preserved in full; credential material and
-# stash refs are never deleted or moved by this command.
+# Neither mode deletes a directory it cannot prove is archived. Credential
+# material and stash refs are never deleted or moved by this command.
 set -u
 
 usage() {
@@ -153,7 +153,8 @@ remove_archived() {
 prepare_lease() {
   local worktree_in=$1 keep=$2 project_in=$3 state_in=$4
   local worktree project state tasks_dir candidate candidate_id stash_refs stash_count
-  local contamination=0 live_task='' env_present=0 secrets_present=0
+  local contamination=0 live_task='' env_present=0 secrets_present=0 lease_blocked=0
+  local -a removable=()
   path_safe_id "$keep" || {
     echo "error: invalid keep id: $keep" >&2
     exit 2
@@ -195,18 +196,20 @@ prepare_lease() {
   if [ "$stash_count" -gt 0 ]; then
     contamination=1
   fi
+  if [ "$contamination" -eq 1 ]; then
+    printf 'WORKTREE NOTICE: pre-existing gitignored state was found in %s\n' "$worktree" >&2
+    [ "$env_present" -eq 0 ] || printf '  preserved: .env (not a lease blocker)\n' >&2
+    [ "$secrets_present" -eq 0 ] || printf '  preserved: .secrets (not a lease blocker)\n' >&2
+    if [ "$stash_count" -gt 0 ]; then
+      printf '  preserved: %s git stash ref(s) (not a lease blocker)\n' "$stash_count" >&2
+    fi
+  fi
   if live_task_for_worktree "$state" "$worktree"; then
     live_task=$LIVE_TASK_ID
   fi
 
-  if [ "$contamination" -eq 1 ] || [ -n "$live_task" ]; then
-    printf 'CONTAMINATED WORKTREE: refusing to lease %s\n' "$worktree" >&2
-    [ -z "$live_task" ] || printf '  preserved: currently leased by task %s\n' "$live_task" >&2
-    [ "$env_present" -eq 0 ] || printf '  preserved: credential file %s/.env\n' "$worktree" >&2
-    [ "$secrets_present" -eq 0 ] || printf '  preserved: credential directory %s/.secrets\n' "$worktree" >&2
-    if [ "$stash_count" -gt 0 ]; then
-      printf '  preserved: %s git stash ref(s)\n' "$stash_count" >&2
-    fi
+  if [ -n "$live_task" ]; then
+    printf 'WORKTREE LEASE REFUSED: %s is currently leased by task %s\n' "$worktree" "$live_task" >&2
     printf '  no worker was started; inspect the slot before leasing it again\n' >&2
     return 1
   fi
@@ -228,23 +231,40 @@ prepare_lease() {
     fi
     if [ -L "$candidate" ] || [ ! -d "$candidate" ]; then
       printf 'worktree-task-scratch: preserved %s (unsafe)\n' "$candidate_id"
+      lease_blocked=1
       continue
     fi
     if ! path_safe_id "$candidate_id"; then
       printf 'worktree-task-scratch: preserved %s (unsafe id)\n' "$candidate_id"
+      lease_blocked=1
       continue
     fi
     if ! archive_is_proven "$project" "$candidate_id"; then
       printf 'worktree-task-scratch: preserved %s (not archived)\n' "$candidate_id"
+      lease_blocked=1
       continue
     fi
+    removable+=("$candidate")
+  done
+  if [ "$lease_blocked" -ne 0 ]; then
+    printf 'WORKTREE LEASE REFUSED: prior task scratch cannot be proven safe to remove\n' >&2
+    printf '  no worker was started; inspect the slot before leasing it again\n' >&2
+    return 1
+  fi
+
+  for candidate in "${removable[@]}"; do
+    candidate_id=${candidate##*/}
     if ! rm -rf -- "$candidate"; then
-      printf 'worktree-task-scratch: preserved %s (remove failed)\n' "$candidate_id"
-      continue
+      printf 'worktree-task-scratch: preserved %s (remove failed)\n' "$candidate_id" >&2
+      printf 'WORKTREE LEASE REFUSED: archived scratch could not be removed\n' >&2
+      printf '  no worker was started; inspect the slot before leasing it again\n' >&2
+      return 1
     fi
     if path_present "$candidate"; then
-      printf 'worktree-task-scratch: preserved %s (still present after remove)\n' "$candidate_id"
-      continue
+      printf 'worktree-task-scratch: preserved %s (still present after remove)\n' "$candidate_id" >&2
+      printf 'WORKTREE LEASE REFUSED: archived scratch remains in the slot\n' >&2
+      printf '  no worker was started; inspect the slot before leasing it again\n' >&2
+      return 1
     fi
     printf 'worktree-task-scratch: removed %s (archived)\n' "$candidate_id"
   done
