@@ -143,8 +143,8 @@
 #   After that refresh for a new lease, bin/fm-worktree-task-scratch.sh removes
 #   only archived leftover .agent/tasks directories. A root .env, .secrets, or
 #   stash ref is reported and preserved without blocking the lease; only a live
-#   metadata claim or prior-task scratch that cannot be proven archived refuses,
-#   preserving the slot and reporting the contamination before a worker starts.
+#   metadata claim refuses. Prior-task scratch is also reported and preserved,
+#   reporting the contamination before a worker starts.
 #   Relaunches keep their recorded worktree untouched.
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
 #     fm-spawn.sh fix-a-k3=projects/foo add-b-q7=projects/bar [--scout]
