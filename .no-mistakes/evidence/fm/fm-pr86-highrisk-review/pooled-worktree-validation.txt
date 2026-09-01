@@ -1,0 +1,54 @@
+$ tests/fm-worktree-task-scratch.test.sh
+ok - prepare-lease preserves an independently archived leftover
+ok - prepare-lease preserves all task scratch when one prior task is unarchived
+ok - prepare-lease reports but preserves credential and stash state
+ok - prepare-lease allows a normal checkout with legitimate local env state
+ok - prepare-lease refuses fresh reuse of a retained claim
+ok - prepare-lease allows relaunch of its retained claim
+ok - prepare-lease refuses malformed retained metadata during relaunch
+ok - prepare-lease preserves a live task's complete worktree
+ok - remove-archived refuses without an archive and deletes only after a matching copy exists
+ok - remove-archived refuses an empty archive without deleting the source
+ok - remove-archived preserves an empty source when its archive is empty
+ok - remove-archived refuses a mismatched archive without deleting the source
+ok - remove-archived succeeds when the source is already gone
+ok - prepare-lease refuses to clean the product repository itself
+ok - prepare-lease refuses an unreadable state directory without mutation
+ok - prepare-lease refuses unreadable live metadata without mutation
+ok - prepare-lease refuses ambiguous metadata
+ok - prepare-lease refuses metadata without a claim
+ok - prepare-lease refuses empty worktree claims
+ok - prepare-lease refuses relative worktree claims
+ok - prepare-lease refuses a canonical-matching symlink worktree claim without mutation
+# all fm-worktree-task-scratch tests passed
+
+$ tests/fm-archive-task.test.sh
+ok - archive copies the named task artifacts, removes the source, and reports success
+ok - missing worktree refuses without archiving
+ok - missing task artifacts refuse
+ok - existing archive refuses without force
+ok - force replaces an existing archive
+ok - completed archive survives a retry after worktree cleanup
+ok - only the requested task directory is copied
+ok - a matching existing archive removes the leftover worktree source
+ok - a retry after the worktree source is gone succeeds when the archive exists
+
+$ tests/fm-spawn-pool-base-freshen.test.sh
+ok - a stale pooled worktree refreshes to current origin/main before a crew branch is created
+ok - a stale pooled worktree resolves and refreshes a non-main default branch
+ok - direct-PR ships and scouts both refresh stale pooled worktrees before launch
+ok - a dirty pooled worktree is refused without discarding its local work
+ok - an unresolved remote default branch refuses the pooled worktree
+ok - an unreachable origin refuses a potentially stale pooled worktree
+ok - two consecutive spawns across a moved submodule pin end in a refusal naming both pins and no remedy
+ok - an unpushed submodule commit keeps the uncommitted-work refusal and survives it
+ok - work inside a submodule is still refused as uncommitted work, not called stale
+ok - a stale pin carrying real work is refused conservatively, never called stale
+ok - a stale pin beside other dirt yields the conservative refusal alone, with no stale-pin line
+ok - a leased pooled worktree preserves prior task scratch
+ok - spawn reports and preserves unarchived pooled scratch
+ok - a live pooled-worktree claim refuses without destructive cleanup
+ok - unreadable live metadata refuses without resetting committed work
+ok - a symlink live worktree claim refuses without resetting committed work
+ok - spawn reports inherited local state and warns the worker before launch
+# all fm-spawn-pool-base-freshen tests passed
