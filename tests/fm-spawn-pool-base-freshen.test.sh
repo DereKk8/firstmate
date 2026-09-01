@@ -331,7 +331,7 @@ test_spawn_refuses_unarchived_pool_without_mutation() {
 }
 
 test_live_claim_refusal_preserves_leased_slot() {
-  local rec id out status exclude stash_before stash_after treehouse_log
+  local rec id out status exclude stash_before stash_after treehouse_log claimed_head
   id='pool-live-claim-refusal-r6'
   rec=$(make_case live-claim-refusal "$id")
   read_case_record "$rec"
@@ -342,6 +342,11 @@ test_live_claim_refusal_preserves_leased_slot() {
   printf 'must survive refusal\n' > "$POOL_DIR/.env"
   mkdir -p "$POOL_DIR/.agent/tasks/live-task"
   printf 'live scratch\n' > "$POOL_DIR/.agent/tasks/live-task/notes.txt"
+  printf 'local committed work\n' > "$POOL_DIR/live-task.txt"
+  git -C "$POOL_DIR" add live-task.txt
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm live-task-work
+  claimed_head=$(git -C "$POOL_DIR" rev-parse HEAD)
   printf 'stash work\n' > "$POOL_DIR/README.md"
   git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
     stash push --quiet -m live-slot-state
@@ -358,6 +363,10 @@ test_live_claim_refusal_preserves_leased_slot() {
     "refusal deleted the live task scratch"
   stash_after=$(git -C "$POOL_DIR" stash list)
   [ "$stash_after" = "$stash_before" ] || fail "refusal changed the pooled stash"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$claimed_head" ] \
+    || fail "refusal reset committed work from the live task"
+  assert_grep 'local committed work' "$POOL_DIR/live-task.txt" \
+    "refusal removed committed work from the live task"
   assert_grep "worktree=$POOL_DIR" "$HOME_DIR/state/live-task.meta" \
     "refusal changed the live task claim"
   treehouse_log=$(cat "$CASE_DIR/treehouse.log" 2>/dev/null || true)

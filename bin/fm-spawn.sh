@@ -2345,9 +2345,6 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
 
   validate_spawn_worktree "treehouse get" "$T"
 fi
-if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
-  freshen_spawn_worktree_base "$WT" || exit 1
-fi
 if [ "$KIND" != secondmate ]; then
   LEASE_OUTPUT=$("$SCRIPT_DIR/fm-worktree-task-scratch.sh" prepare-lease \
     --worktree "$WT" \
@@ -2364,6 +2361,9 @@ if [ "$KIND" != secondmate ]; then
   if printf '%s\n' "$LEASE_OUTPUT" | grep -Eq 'WORKTREE NOTICE:|worktree-task-scratch:'; then
     LEASE_NOTICE='WARNING: This pooled worktree contains pre-existing gitignored local state such as .env, .secrets, or git stash refs or task scratch. Lease preflight preserved it. Treat it as inherited state and do not attribute failures to this branch without checking it first.'
   fi
+fi
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
+  freshen_spawn_worktree_base "$WT" || exit 1
 fi
 
 # Treehouse pools can inherit an upstream push policy and branch tracking for
