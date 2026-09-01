@@ -2348,7 +2348,7 @@ fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
 fi
-if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
+if [ "$KIND" != secondmate ]; then
   LEASE_OUTPUT=$("$SCRIPT_DIR/fm-worktree-task-scratch.sh" prepare-lease \
     --worktree "$WT" \
     --keep "$ID" \
@@ -2361,8 +2361,8 @@ if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   if [ -n "$LEASE_OUTPUT" ]; then
     printf '%s\n' "$LEASE_OUTPUT" >&2
   fi
-  if printf '%s\n' "$LEASE_OUTPUT" | grep -Fq 'WORKTREE NOTICE:'; then
-    LEASE_NOTICE='WARNING: This pooled worktree contains pre-existing gitignored local state such as .env, .secrets, or git stash refs. Lease preflight preserved it. Treat it as inherited state and do not attribute failures to this branch without checking it first.'
+  if printf '%s\n' "$LEASE_OUTPUT" | grep -Eq 'WORKTREE NOTICE:|worktree-task-scratch:'; then
+    LEASE_NOTICE='WARNING: This pooled worktree contains pre-existing gitignored local state such as .env, .secrets, or git stash refs or task scratch. Lease preflight preserved it. Treat it as inherited state and do not attribute failures to this branch without checking it first.'
   fi
 fi
 

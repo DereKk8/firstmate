@@ -281,7 +281,7 @@ test_leased_pool_preserves_archived_prior_scratch() {
 }
 
 test_spawn_refuses_unarchived_pool_without_mutation() {
-  local rec id exclude out status
+  local rec id exclude out status launch_brief
   id='pool-unarchived-lease-r1'
   rec=$(make_case unarchived-lease "$id")
   read_case_record "$rec"
@@ -303,6 +303,11 @@ test_spawn_refuses_unarchived_pool_without_mutation() {
   expect_code 0 "$status" "spawn should allow unarchived prior task scratch"
   assert_contains "$out" 'preserved old-unarchived (prior task scratch)' \
     "spawn did not report unarchived prior task scratch"
+  launch_brief="/tmp/fm-$id/launch-brief.md"
+  assert_present "$launch_brief" \
+    "spawn did not create the worker's contamination warning brief"
+  assert_grep 'WARNING: This pooled worktree contains pre-existing gitignored local state' \
+    "$launch_brief" "worker brief omitted the scratch warning"
   assert_present "$POOL_DIR/.agent/tasks/old-archived/plan.md" \
     "spawn deleted archived prior task scratch"
   assert_present "$POOL_DIR/.agent/tasks/old-unarchived/plan.md" \
