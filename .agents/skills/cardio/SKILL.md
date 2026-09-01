@@ -34,8 +34,8 @@ and is not reimplemented here.
    List items with no recorded ticket plainly with no reference.
 
    **Unfinished work from the last session.**
-   Read `data/end-session/handoff.md` before laying the candidate list out, and evaluate its leftover work alongside the backlog candidates rather than after them.
-   The `end-session` skill owns that file and writes it at shutdown; this step only reads it.
+   Read `data/handoff.md` before laying the candidate list out, and evaluate its leftover work alongside the backlog candidates rather than after them.
+   The `reset-window` skill owns that file and appends to it; this step only reads it, and an absent file simply means no handoff is pending.
    The point is that work carried over from the previous session stays visible as a candidate instead of being overlooked for having originated there.
 
    A handoff is a snapshot of the world as it stood at shutdown, so it is evidence about what was left behind, never authority about what may run now.

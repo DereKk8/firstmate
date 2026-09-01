@@ -30,7 +30,7 @@ test_recurring_startup_memory_curation_contract() {
   assert_grep 'Finish at or below the effective budget, or open a concrete captain decision before ending the pass' "$stow" \
     "stow no longer resolves an over-budget memory pass safely"
   # shellcheck disable=SC2016 # The literal backticks are part of the skill contract.
-  assert_grep 'Invoke `/stow` before writing the continuation note' "$reset" \
+  assert_grep 'Invoke `/stow` before writing the handoff' "$reset" \
     "reset no longer requires startup-memory curation"
   assert_grep 'Do not perform its routing steps separately here' "$reset" \
     "reset can route durable findings twice"

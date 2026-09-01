@@ -457,10 +457,8 @@ The skill owns the daemon procedure; these safety facts remain inline:
 - Bias ambiguous input toward exit because a present captain takes precedence.
 
 When the captain invokes `/cardio`, load the `cardio` skill: it authorizes a batch of dispatchable queued work, dispatches what the captain picks, then hands off to `/afk` unchanged.
-When the captain invokes `/reset-window`, load the `reset-window` skill to flush context and continue in a fresh session.
-
-**End session**: invoke `/end-session` and load the `end-session` skill when the captain invokes it, says they are done for the day, or asks to shut firstmate down completely.
-Unlike `/reset-window`, which flushes context and immediately launches a fresh-context successor that keeps supervising, and unlike `/afk`, which keeps supervising more quietly, `/end-session` is the one that actually stops: it proves the fleet is durably preserved, stops helpers and monitoring only through their verified graceful paths, releases the session lock last, and launches no successor at all.
+When the captain invokes `/reset-window`, says context is full, or asks to wrap up the session, load the `reset-window` skill: it curates durable knowledge through `/stow` and appends the handoff the next session is guided from.
+It launches no successor and tears nothing down, because the captain closes the window and opens the next session himself; `/afk` remains the way to keep supervising quietly instead of stopping.
 
 ### Stuck-worker trigger
 
