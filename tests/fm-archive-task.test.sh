@@ -43,7 +43,9 @@ test_happy_path_copies_named_task() {
     "archive has the wrong content"
   assert_grep "archived task task-x1" "$case_dir/out" \
     "happy path did not report success"
-  pass "archive copies the named task artifacts and reports success"
+  assert_absent "$case_dir/wt/.agent/tasks/task-x1" \
+    "happy path left the archived source in the worktree"
+  pass "archive copies the named task artifacts, removes the source, and reports success"
 }
 
 test_missing_worktree_refuses() {
@@ -139,7 +141,46 @@ test_only_named_task_is_copied() {
     "named task was not archived"
   assert_absent "$case_dir/project/.agent/archive/other-task" \
     "another task was copied"
+  assert_absent "$case_dir/wt/.agent/tasks/task-x1" \
+    "named source was left in the worktree"
+  assert_present "$case_dir/wt/.agent/tasks/other-task/plan.md" \
+    "another task directory was removed"
   pass "only the requested task directory is copied"
+}
+
+test_matching_archive_retry_removes_remaining_source() {
+  local case_dir
+  case_dir=$(make_case matching-retry)
+  write_task_artifact "$case_dir" first
+  run_archive "$case_dir" >/dev/null 2>"$case_dir/err1" \
+    || fail "first archive failed: $(cat "$case_dir/err1")"
+  mkdir -p "$case_dir/wt/.agent/tasks/task-x1"
+  printf '%s\n' first > "$case_dir/wt/.agent/tasks/task-x1/plan.md"
+  run_archive "$case_dir" >"$case_dir/out" 2>"$case_dir/err" \
+    || fail "matching retry failed: $(cat "$case_dir/err")"
+  assert_grep "removed its remaining worktree source" "$case_dir/out" \
+    "matching retry did not remove the leftover source"
+  assert_absent "$case_dir/wt/.agent/tasks/task-x1" \
+    "matching retry left the source"
+  grep -qx first "$case_dir/project/.agent/archive/task-x1/plan.md" \
+    || fail "matching retry changed the archive"
+  pass "a matching existing archive removes the leftover worktree source"
+}
+
+test_retry_after_source_removal_is_idempotent() {
+  local case_dir rc
+  case_dir=$(make_case source-gone)
+  write_task_artifact "$case_dir" first
+  run_archive "$case_dir" >/dev/null 2>"$case_dir/err1" \
+    || fail "first archive failed: $(cat "$case_dir/err1")"
+  set +e
+  run_archive "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "retry with a missing source and existing archive should succeed"
+  assert_grep "already present" "$case_dir/out" \
+    "source-gone retry did not report the existing archive"
+  pass "a retry after the worktree source is gone succeeds when the archive exists"
 }
 
 test_happy_path_copies_named_task
@@ -149,3 +190,5 @@ test_existing_destination_requires_force
 test_force_replaces_destination
 test_retry_after_worktree_return_is_idempotent
 test_only_named_task_is_copied
+test_matching_archive_retry_removes_remaining_source
+test_retry_after_source_removal_is_idempotent

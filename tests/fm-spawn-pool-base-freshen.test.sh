@@ -80,6 +80,7 @@ test_stale_pool_base_refreshes_before_branching() {
   fi
 
   id='pool-current-base-repeat-r1'
+  rm -f "$HOME_DIR/state/pool-current-base-r1.meta"
   mkdir -p "$HOME_DIR/data/$id"
   printf 'brief for %s\n' "$id" > "$HOME_DIR/data/$id/brief.md"
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
@@ -278,6 +279,7 @@ strand_submodule_pin_via_spawn() {  # <seed-id>
     || fail "the first spawn did not move the pooled base across the moved submodule pin"
   [ "$(git -C "$POOL_DIR/ui" rev-parse HEAD)" = "$SUBPIN1" ] \
     || fail "the first spawn did not strand the submodule on the pin the old base recorded"
+  rm -f "$HOME_DIR/state/$id.meta"
 }
 
 test_stale_submodule_pin_explains_itself() {
@@ -425,6 +427,213 @@ test_stale_pin_beside_other_dirt_reports_one_verdict() {
   pass "a stale pin beside other dirt yields the conservative refusal alone, with no stale-pin line"
 }
 
+test_leased_pool_preserves_archived_prior_scratch() {
+  local rec id exclude out status
+  id='pool-scratch-lease-r1'
+  rec=$(make_case scratch-lease "$id")
+  read_case_record "$rec"
+
+  exclude=$(git -C "$POOL_DIR" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$exclude")"
+  printf '%s\n' '.agent/' >> "$exclude"
+  mkdir -p "$POOL_DIR/.agent/tasks/old-archived" \
+    "$POOL_DIR/.agent/tasks/$id" \
+    "$PROJECT_DIR/.agent/archive/old-archived"
+  printf 'old archived\n' > "$POOL_DIR/.agent/tasks/old-archived/plan.md"
+  printf 'old archived\n' > "$PROJECT_DIR/.agent/archive/old-archived/plan.md"
+  printf 'current\n' > "$POOL_DIR/.agent/tasks/$id/plan.md"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should lease a pooled worktree that still has leftover scratch"
+  assert_present "$POOL_DIR/.agent/tasks/old-archived/plan.md" \
+    "spawn deleted an archived prior task directory"
+  assert_contains "$out" 'preserved old-archived (prior task scratch)' \
+    "spawn did not report archived prior task scratch"
+  assert_present "$POOL_DIR/.agent/tasks/$id/plan.md" \
+    "spawn deleted the current task directory"
+  pass "a leased pooled worktree preserves prior task scratch"
+}
+
+test_spawn_preserves_unarchived_pool_without_mutation() {
+  local rec id exclude out status launch_brief
+  id='pool-unarchived-lease-r1'
+  rec=$(make_case unarchived-lease "$id")
+  read_case_record "$rec"
+
+  exclude=$(git -C "$POOL_DIR" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$exclude")"
+  printf '%s\n' '.agent/' >> "$exclude"
+  mkdir -p "$POOL_DIR/.agent/tasks/old-archived" \
+    "$POOL_DIR/.agent/tasks/old-unarchived" \
+    "$POOL_DIR/.agent/tasks/$id" \
+    "$PROJECT_DIR/.agent/archive/old-archived"
+  printf 'old archived\n' > "$POOL_DIR/.agent/tasks/old-archived/plan.md"
+  printf 'old archived\n' > "$PROJECT_DIR/.agent/archive/old-archived/plan.md"
+  printf 'keep unarchived\n' > "$POOL_DIR/.agent/tasks/old-unarchived/plan.md"
+  printf 'current\n' > "$POOL_DIR/.agent/tasks/$id/plan.md"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should allow unarchived prior task scratch"
+  assert_contains "$out" 'preserved old-unarchived (prior task scratch)' \
+    "spawn did not report unarchived prior task scratch"
+  launch_brief="/tmp/fm-$id/launch-brief.md"
+  assert_present "$launch_brief" \
+    "spawn did not create the worker's contamination warning brief"
+  assert_grep 'WARNING: This pooled worktree contains pre-existing gitignored local state' \
+    "$launch_brief" "worker brief omitted the scratch warning"
+  assert_present "$POOL_DIR/.agent/tasks/old-unarchived/plan.md" \
+    "spawn deleted unarchived prior task scratch"
+  pass "spawn reports and preserves unarchived pooled scratch"
+}
+
+test_live_claim_refusal_preserves_leased_slot() {
+  local rec id out status exclude stash_before stash_after treehouse_log claimed_head
+  id='pool-live-claim-refusal-r6'
+  rec=$(make_case live-claim-refusal "$id")
+  read_case_record "$rec"
+
+  cat > "$FAKEBIN_DIR/treehouse" <<'SH'
+#!/usr/bin/env bash
+set -u
+printf '%s\n' "$*" >> "${FM_FAKE_TREEHOUSE_LOG:-/dev/null}"
+exit 0
+SH
+  chmod +x "$FAKEBIN_DIR/treehouse"
+
+  exclude=$(git -C "$POOL_DIR" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$exclude")"
+  printf '%s\n' '.env' '.agent/' >> "$exclude"
+  printf 'must survive refusal\n' > "$POOL_DIR/.env"
+  mkdir -p "$POOL_DIR/.agent/tasks/live-task"
+  printf 'live scratch\n' > "$POOL_DIR/.agent/tasks/live-task/notes.txt"
+  printf 'local committed work\n' > "$POOL_DIR/live-task.txt"
+  git -C "$POOL_DIR" add live-task.txt
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm live-task-work
+  claimed_head=$(git -C "$POOL_DIR" rev-parse HEAD)
+  printf 'stash work\n' > "$POOL_DIR/README.md"
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    stash push --quiet -m live-slot-state
+  stash_before=$(git -C "$POOL_DIR" stash list)
+  printf 'worktree=%s\n' "$POOL_DIR" > "$HOME_DIR/state/live-task.meta"
+
+  out=$(FM_FAKE_TREEHOUSE_LOG="$CASE_DIR/treehouse.log" run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn succeeded despite a live task claim"
+  assert_contains "$out" 'WORKTREE LEASE REFUSED' \
+    "spawn did not report the live task claim"
+  assert_present "$POOL_DIR/.env" "refusal deleted the pooled credential file"
+  assert_present "$POOL_DIR/.agent/tasks/live-task/notes.txt" \
+    "refusal deleted the live task scratch"
+  stash_after=$(git -C "$POOL_DIR" stash list)
+  [ "$stash_after" = "$stash_before" ] || fail "refusal changed the pooled stash"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$claimed_head" ] \
+    || fail "refusal reset committed work from the live task"
+  assert_grep 'local committed work' "$POOL_DIR/live-task.txt" \
+    "refusal removed committed work from the live task"
+  treehouse_log=$(cat "$CASE_DIR/treehouse.log" 2>/dev/null || true)
+  assert_not_contains "$treehouse_log" 'return --force' \
+    "refusal force-returned the live task's pooled worktree"
+  pass "a live pooled-worktree claim refuses without destructive cleanup"
+}
+
+test_unreadable_live_meta_refuses_without_reset() {
+  local rec id out status claimed_head
+  id='pool-unreadable-meta-r7'
+  rec=$(make_case unreadable-meta "$id")
+  read_case_record "$rec"
+
+  printf 'local committed work\n' > "$POOL_DIR/live-task.txt"
+  git -C "$POOL_DIR" add live-task.txt
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm live-task-work
+  claimed_head=$(git -C "$POOL_DIR" rev-parse HEAD)
+  printf 'worktree=%s\n' "$POOL_DIR" > "$HOME_DIR/state/live-task.meta"
+  chmod 000 "$HOME_DIR/state/live-task.meta"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  chmod 644 "$HOME_DIR/state/live-task.meta" || true
+  [ "$status" -ne 0 ] || fail "spawn succeeded despite unreadable live task metadata"
+  assert_contains "$out" 'WORKTREE LEASE REFUSED' \
+    "spawn did not refuse unreadable live metadata"
+  assert_contains "$out" 'could not read task metadata' \
+    "spawn did not name the inspect failure"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$claimed_head" ] \
+    || fail "unreadable metadata spawn reset committed work from the live task"
+  assert_grep 'local committed work' "$POOL_DIR/live-task.txt" \
+    "unreadable metadata spawn removed committed work from the live task"
+  pass "unreadable live metadata refuses without resetting committed work"
+}
+
+test_symlink_live_claim_refuses_without_reset() {
+  local rec id out status claimed_head
+  id='pool-symlink-claim-r8'
+  rec=$(make_case symlink-claim "$id")
+  read_case_record "$rec"
+
+  printf 'local committed work\n' > "$POOL_DIR/live-task.txt"
+  git -C "$POOL_DIR" add live-task.txt
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    commit -qm live-task-work
+  claimed_head=$(git -C "$POOL_DIR" rev-parse HEAD)
+  ln -s "$POOL_DIR" "$CASE_DIR/pool-link"
+  printf 'worktree=%s\n' "$CASE_DIR/pool-link" > "$HOME_DIR/state/live-task.meta"
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn succeeded despite a symlink live worktree claim"
+  assert_contains "$out" 'WORKTREE LEASE REFUSED' \
+    "spawn did not refuse a symlink live worktree claim"
+  assert_contains "$out" 'currently leased by task live-task' \
+    "spawn did not identify the owning task for a symlink claim"
+  [ "$(git -C "$POOL_DIR" rev-parse HEAD)" = "$claimed_head" ] \
+    || fail "symlink-claim spawn reset committed work from the live task"
+  assert_grep 'local committed work' "$POOL_DIR/live-task.txt" \
+    "symlink-claim spawn removed committed work from the live task"
+  pass "a symlink live worktree claim refuses without resetting committed work"
+}
+
+test_spawn_reports_contaminated_pool_and_warns_worker() {
+  local rec id exclude out status launch_brief
+  id='pool-contaminated-lease-r2'
+  rec=$(make_case contaminated-lease "$id")
+  read_case_record "$rec"
+
+  exclude=$(git -C "$POOL_DIR" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$exclude")"
+  printf '%s\n' '.env' '.secrets/' '.agent/' >> "$exclude"
+  printf 'REDIS_PASSWORD=leaked\n' > "$POOL_DIR/.env"
+  mkdir -p "$POOL_DIR/.secrets"
+  printf 'preserve this credential\n' > "$POOL_DIR/.secrets/redis_password.txt"
+  printf 'stash this work\n' > "$POOL_DIR/README.md"
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    stash push --quiet -m leaked-slot-state
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  expect_code 0 "$status" "spawn should allow non-authoritative local state"
+  assert_contains "$out" 'WORKTREE NOTICE' \
+    "spawn did not surface the contaminated worktree"
+  assert_contains "$out" "spawned $id" \
+    "spawn did not launch from a worktree with report-only state"
+  launch_brief="/tmp/fm-$id/launch-brief.md"
+  assert_present "$launch_brief" \
+    "spawn did not create the worker's contamination warning brief"
+  assert_grep 'WARNING: This pooled worktree contains pre-existing gitignored local state' \
+    "$launch_brief" "worker brief omitted the contamination warning"
+  assert_present "$POOL_DIR/.env" \
+    "spawn deleted the contaminated env file"
+  assert_present "$POOL_DIR/.secrets/redis_password.txt" \
+    "spawn deleted credential material"
+  [ "$(git -C "$POOL_DIR" stash list | wc -l)" -eq 1 ] \
+    || fail "spawn deleted a stash while preparing the contaminated lease"
+  rm -rf "/tmp/fm-$id"
+  pass "spawn reports inherited local state and warns the worker before launch"
+}
+
 test_stale_pool_base_refreshes_before_branching
 test_non_main_default_branch_refreshes_before_branching
 test_direct_pr_and_scout_refresh_before_launch
@@ -436,5 +645,11 @@ test_unpushed_submodule_commit_is_still_uncommitted_work
 test_work_inside_submodule_is_still_uncommitted_work
 test_stale_pin_carrying_real_work_is_not_called_stale
 test_stale_pin_beside_other_dirt_reports_one_verdict
+test_leased_pool_preserves_archived_prior_scratch
+test_spawn_preserves_unarchived_pool_without_mutation
+test_live_claim_refusal_preserves_leased_slot
+test_unreadable_live_meta_refuses_without_reset
+test_symlink_live_claim_refuses_without_reset
+test_spawn_reports_contaminated_pool_and_warns_worker
 
 echo "# all fm-spawn-pool-base-freshen tests passed"

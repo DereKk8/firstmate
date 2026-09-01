@@ -138,6 +138,14 @@
 #   origin, resolves the current remote default branch, and resets to its tip.
 #   An unreachable origin, unresolved default branch, or non-clean worktree
 #   refuses the spawn rather than risking a PR based on stale history.
+#   Before that refresh for a new lease, bin/fm-worktree-task-scratch.sh
+#   prepare-lease inspects the slot and never deletes. A root .env, .secrets, or
+#   stash ref is reported and preserved without blocking the lease. A live
+#   metadata claim, or any task record that cannot be inspected, refuses.
+#   Prior-task scratch is reported and preserved. Recorded worktree= paths are
+#   the canonical physical directory. Archived leftover .agent/tasks directories
+#   are removed only later by fm-archive-task.sh after a matching archive copy.
+#   Relaunches keep their recorded worktree untouched.
 #   A slot whose only deviation is a stale submodule gitlink is refused by that
 #   same clean check, but is reported as a stale checkout naming each submodule
 #   and both pins; nothing is converged or removed, and no remedy is suggested.
@@ -727,6 +735,9 @@ RELAUNCH_REPLACEMENT_STATE=
 RELAUNCH_REPLACEMENT_WT=
 CONFIG_INHERIT_LOCK=
 CONFIG_INHERIT_LOCK_HELD=0
+LEASE_OUTPUT=
+LEASE_NOTICE=
+LAUNCH_BRIEF=
 
 spawn_fresh_commit_rollback() {
   if fm_backlog_atomic_transition rollback "$STATE/$ID.meta" \
@@ -1257,8 +1268,8 @@ launch_template() {
     # per-task pointer), so the template is identical for ship/scout/secondmate.
     grok) printf '%s' 'grok --always-approve __MODELFLAG____EFFORTFLAG__"$(__OPINPUT__ encode launch-brief < __BRIEF__)"' ;;
     # Cursor Agent CLI. --trust suppresses the workspace-trust prompt, which
-    # --yolo does NOT cover and which would otherwise block every spawn, since
-    # each task gets a fresh worktree path cursor has never seen. --yolo is the
+    # --yolo does NOT cover and which would otherwise block every spawn when the
+    # pooled task path is not trusted yet. --yolo is the
     # --force alias whose TUI label is "Run Everything". --workspace pins the
     # exact worktree. -w/--worktree is deliberately never passed: it allocates a
     # SECOND worktree under ~/.cursor/worktrees and would break firstmate's
@@ -2450,7 +2461,7 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
       p_real=$(real_path_or_raw "$p")
       if [ "$p_real" != "$PROJ_ABS_REAL" ]; then
         if [ -n "$candidate" ] && [ "$p_real" = "$candidate" ]; then
-          WT="$p"
+          WT="$p_real"
           break
         fi
         candidate="$p_real"
@@ -2468,6 +2479,23 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   fi
 
   validate_spawn_worktree "treehouse get" "$T"
+fi
+if [ "$KIND" != secondmate ]; then
+  LEASE_OUTPUT=$("$SCRIPT_DIR/fm-worktree-task-scratch.sh" prepare-lease \
+    --worktree "$WT" \
+    --keep "$ID" \
+    --project "$PROJ_ABS" \
+    --state "$STATE" 2>&1) || {
+    printf '%s\n' "$LEASE_OUTPUT" >&2
+    echo "error: could not prepare task scratch in worktree '$WT'; refusing to launch" >&2
+    exit 1
+  }
+  if [ -n "$LEASE_OUTPUT" ]; then
+    printf '%s\n' "$LEASE_OUTPUT" >&2
+  fi
+  if printf '%s\n' "$LEASE_OUTPUT" | grep -Eq 'WORKTREE NOTICE:|worktree-task-scratch:'; then
+    LEASE_NOTICE='WARNING: This pooled worktree contains pre-existing gitignored local state such as .env, .secrets, or git stash refs or task scratch. Lease preflight preserved it. Treat it as inherited state and do not attribute failures to this branch without checking it first.'
+  fi
 fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
@@ -2948,7 +2976,18 @@ fi
 "$SCRIPT_DIR/fm-home-summary-refresh.sh" --best-effort || true
 [ "$BACKEND" = orca ] && ORCA_ABORT_CLEANUP=0
 
-sq_brief=$(shell_quote "$BRIEF")
+LAUNCH_BRIEF="$BRIEF_REAL"
+if [ -n "$LEASE_NOTICE" ]; then
+  LAUNCH_BRIEF="$TASK_TMP/launch-brief.md"
+  {
+    printf '%s\n\n' "$LEASE_NOTICE"
+    cat "$BRIEF_REAL"
+  } > "$LAUNCH_BRIEF" || {
+    echo "error: could not prepare the contamination warning for the worker; refusing to launch" >&2
+    exit 1
+  }
+fi
+sq_brief=$(shell_quote "$LAUNCH_BRIEF")
 sq_turnend=$(shell_quote "$TURNEND")
 sq_piext=$(shell_quote "$STATE/$ID.pi-ext.ts")
 sq_piturnend=$(shell_quote "$PROJ_ABS/.pi/extensions/fm-primary-turnend-guard.ts")
@@ -3068,7 +3107,7 @@ if [ "$HARNESS" = kimi ]; then
     kimi_spawn_fail "kimi did not show a verified ready signal before brief delivery"
     exit 1
   fi
-  KIMI_POINTER="Read the brief at $BRIEF_REAL and follow it exactly."
+  KIMI_POINTER="Read the brief at $LAUNCH_BRIEF and follow it exactly."
   KIMI_SUBMIT_RETRIES=${FM_KIMI_SUBMIT_RETRIES:-3}
   KIMI_SUBMIT_SLEEP=${FM_KIMI_SUBMIT_SLEEP:-${FM_KIMI_POLL_INTERVAL:-0.5}}
   KIMI_SUBMIT_SETTLE=${FM_KIMI_SUBMIT_SETTLE:-0}

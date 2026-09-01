@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Copy one task's artifacts from its recorded worktree into the product archive.
-# The command is standalone and does not commit, push, or call another helper.
+# After that local copy succeeds, bin/fm-worktree-task-scratch.sh removes the
+# named source directory so a later pool lease does not inherit it. A missing
+# source is treated as complete when the local archive already exists.
 # Usage: archive-task <task-id> [--force]
 set -eu
 
@@ -52,7 +54,24 @@ fi
 WT=$(cd -- "$WT" && pwd -P) || refuse "could not resolve recorded worktree"
 [ "$WT" != "$PROJ" ] || refuse "recorded worktree and product repository are the same path: $WT"
 SOURCE="$WT/.agent/tasks/$ID"
-[ -d "$SOURCE" ] && [ ! -L "$SOURCE" ] || refuse "task artifact directory is missing or unsafe: $SOURCE"
+if [ ! -d "$SOURCE" ] || [ -L "$SOURCE" ]; then
+  if path_present "$DEST"; then
+    printf 'archived task %s already present at %s; worktree source %s is gone - nothing further to archive\n' \
+      "$ID" "$DEST" "$SOURCE"
+    exit 0
+  fi
+  refuse "task artifact directory is missing or unsafe: $SOURCE"
+fi
+OTHER_TASKS=
+for candidate in "$WT/.agent/tasks"/*; do
+  [ -d "$candidate" ] && [ ! -L "$candidate" ] || continue
+  candidate_id=${candidate##*/}
+  [ "$candidate_id" = "$ID" ] || OTHER_TASKS="${OTHER_TASKS:+$OTHER_TASKS }$candidate_id"
+done
+if [ -n "$OTHER_TASKS" ]; then
+  printf 'archive: found other task directories in %s; archiving only %s: %s\n' \
+    "$WT/.agent/tasks" "$ID" "$OTHER_TASKS"
+fi
 
 AGENT_DIR="$PROJ/.agent"
 ARCHIVE_ROOT="$AGENT_DIR/archive"
@@ -65,6 +84,16 @@ if path_present "$ARCHIVE_ROOT"; then
   [ -d "$ARCHIVE_ROOT" ] && [ ! -L "$ARCHIVE_ROOT" ] || refuse "product archive directory is unsafe: $ARCHIVE_ROOT"
 else
   mkdir -- "$ARCHIVE_ROOT" || refuse "could not create product archive directory: $ARCHIVE_ROOT"
+fi
+if [ "$FORCE" = 0 ] && path_present "$DEST" \
+   && [ -d "$DEST" ] && [ ! -L "$DEST" ] \
+   && diff -qr -- "$SOURCE" "$DEST" >/dev/null 2>&1; then
+  if "$SCRIPT_DIR/fm-worktree-task-scratch.sh" remove-archived \
+      --worktree "$WT" --task "$ID" --archive "$DEST"; then
+    printf 'archived task %s already present at %s; removed its remaining worktree source\n' \
+      "$ID" "$DEST"
+    exit 0
+  fi
 fi
 if path_present "$DEST" && [ "$FORCE" -eq 0 ]; then
   refuse "archive destination already exists: $DEST (rerun with --force to overwrite)"
@@ -87,5 +116,9 @@ if ! mv -- "$STAGE/$ID" "$DEST"; then
     mv -- "$OLD/$ID" "$DEST" || true
   fi
   refuse "could not publish archive destination: $DEST"
+fi
+if ! "$SCRIPT_DIR/fm-worktree-task-scratch.sh" remove-archived \
+    --worktree "$WT" --task "$ID" --archive "$DEST"; then
+  printf 'warning: archived task %s but could not remove the worktree source at %s\n' "$ID" "$SOURCE" >&2
 fi
 printf 'archived task %s from %s into %s\n' "$ID" "$SOURCE" "$DEST"
