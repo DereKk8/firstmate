@@ -1812,8 +1812,6 @@ if [ "$KIND" = ship ]; then
   fi
 fi
 
-BRIEF_DIR_REAL=$(cd "$(dirname "$BRIEF")" && pwd -P)
-BRIEF_REAL="$BRIEF_DIR_REAL/$(basename "$BRIEF")"
 
 # PROJ_ABS can still carry a symlinked path component (e.g. macOS's /tmp ->
 # /private/tmp) when it came from the ship/scout branch's logical `pwd` above.
