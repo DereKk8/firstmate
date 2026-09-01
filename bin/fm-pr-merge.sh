@@ -6,8 +6,11 @@
 # request is addressed through glab by the project URL rebuilt from the parsed
 # host and path, so any instance works and no host is hardcoded.
 #
-# Merge method on GitHub defaults to --squash when the caller passes none of
+# Merge method on GitHub defaults to --merge when the caller passes none of
 # --squash, --merge, --rebase, or --method after the optional -- separator.
+# That default is this fork's policy, not upstream's: a merge commit keeps
+# both parents, so later currency checks can tell landed history from
+# commits that are actually missing. Upstream still defaults to --squash.
 # The gh-axi merge abstraction always performs the merge; the outcome read that
 # follows it never becomes a prerequisite for reaching that abstraction. After
 # gh-axi returns success, GitHub's live state is read back and accepted only
@@ -633,7 +636,7 @@ case "$PROVIDER" in
     merge_output=
     merge_args=()
     if ! caller_has_merge_method "$@"; then
-      merge_args=(--squash)
+      merge_args=(--merge)
     fi
     if caller_requested_auto_merge "$@"; then
       FM_PR_GITHUB_AUTO_REQUESTED=true
