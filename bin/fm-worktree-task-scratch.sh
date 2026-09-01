@@ -171,7 +171,7 @@ paths_overlap() {
 
 remove_archived() {
   local worktree_in=$1 task=$2 archive_in=$3
-  local worktree archive source
+  local worktree archive source archive_entry
   path_safe_id "$task" || {
     echo "error: invalid task id: $task" >&2
     exit 2
@@ -199,6 +199,10 @@ remove_archived() {
   }
   if paths_overlap "$source" "$archive"; then
     refuse "refusing to remove source that overlaps the archive: $source"
+    return 1
+  fi
+  if ! archive_entry=$(find "$archive" -mindepth 1 -print -quit 2>/dev/null) || [ -z "$archive_entry" ]; then
+    refuse "archive does not match source; refusing to remove: $source"
     return 1
   fi
   if ! diff -qr -- "$source" "$archive" >/dev/null 2>&1; then

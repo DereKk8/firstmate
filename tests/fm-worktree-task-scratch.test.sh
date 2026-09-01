@@ -289,6 +289,23 @@ test_remove_archived_refuses_empty_archive() {
   pass "remove-archived refuses an empty archive without deleting the source"
 }
 
+test_remove_archived_refuses_empty_archive_when_source_empty() {
+  local case_dir rc
+  case_dir=$(make_case remove-empty-source-and-archive)
+  mkdir -p "$case_dir/wt/.agent/tasks/current-task" "$case_dir/project/.agent/archive/current-task"
+
+  set +e
+  run_remove "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "remove-archived should refuse empty source and archive"
+  assert_grep "archive does not match source" "$case_dir/err" \
+    "empty archive refusal was not clear when the source was also empty"
+  assert_present "$case_dir/wt/.agent/tasks/current-task" \
+    "remove-archived deleted an empty source whose archive was empty"
+  pass "remove-archived preserves an empty source when its archive is empty"
+}
+
 test_remove_archived_refuses_mismatched_archive() {
   local case_dir rc
   case_dir=$(make_case remove-mismatch-archive)
@@ -505,6 +522,7 @@ test_prepare_lease_refuses_malformed_relaunch_metadata_without_mutation
 test_prepare_lease_refuses_live_worktree_without_mutation
 test_remove_archived_deletes_only_after_archive_exists
 test_remove_archived_refuses_empty_archive
+test_remove_archived_refuses_empty_archive_when_source_empty
 test_remove_archived_refuses_mismatched_archive
 test_remove_archived_is_idempotent_when_source_already_gone
 test_prepare_lease_refuses_primary_checkout
