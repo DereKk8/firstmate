@@ -2481,11 +2481,14 @@ elif [ "$KIND" != secondmate ] && [ "$BACKEND" != orca ]; then
   validate_spawn_worktree "treehouse get" "$T"
 fi
 if [ "$KIND" != secondmate ]; then
+  LEASE_RELAUNCH_ARGS=()
+  [ "$RELAUNCH" -eq 1 ] && LEASE_RELAUNCH_ARGS=(--relaunch)
   LEASE_OUTPUT=$("$SCRIPT_DIR/fm-worktree-task-scratch.sh" prepare-lease \
     --worktree "$WT" \
     --keep "$ID" \
     --project "$PROJ_ABS" \
-    --state "$STATE" 2>&1) || {
+    --state "$STATE" \
+    "${LEASE_RELAUNCH_ARGS[@]}" 2>&1) || {
     printf '%s\n' "$LEASE_OUTPUT" >&2
     echo "error: could not prepare task scratch in worktree '$WT'; refusing to launch" >&2
     exit 1

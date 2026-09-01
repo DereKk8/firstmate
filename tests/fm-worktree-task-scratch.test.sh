@@ -157,10 +157,10 @@ test_prepare_lease_allows_legitimate_env() {
   pass "prepare-lease allows a normal checkout with legitimate local env state"
 }
 
-test_prepare_lease_inspects_existing_task_metadata() {
+test_prepare_lease_refuses_fresh_reuse_of_retained_claim() {
   local case_dir rc
   case_dir=$(make_case retained-meta)
-  printf 'LOCAL_SETTING=expected\n' > "$case_dir/wt/.env"
+  write_task_dir "$case_dir/wt" current-task committed
   fm_write_meta "$case_dir/state/current-task.meta" \
     "worktree=$case_dir/wt" \
     "project=$case_dir/project" \
@@ -170,12 +170,31 @@ test_prepare_lease_inspects_existing_task_metadata() {
   run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
   rc=$?
   set -e
-  expect_code 0 "$rc" "prepare-lease should inspect a retained task metadata retry"
-  assert_grep 'preserved: .env (not a lease blocker)' "$case_dir/err" \
-    "retained metadata retry skipped lease inspection"
-  assert_present "$case_dir/wt/.env" \
-    "retained metadata retry deleted inherited local state"
-  pass "prepare-lease inspects retained task metadata retries"
+  expect_code 1 "$rc" "fresh prepare-lease should refuse a retained task claim"
+  assert_grep 'currently leased by task current-task' "$case_dir/err" \
+    "fresh prepare-lease ignored the retained task claim"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "fresh prepare-lease removed the retained task scratch"
+  pass "prepare-lease refuses fresh reuse of a retained claim"
+}
+
+test_prepare_lease_allows_relaunch_of_retained_claim() {
+  local case_dir rc
+  case_dir=$(make_case relaunch-retained)
+  write_task_dir "$case_dir/wt" current-task committed
+  fm_write_meta "$case_dir/state/current-task.meta" \
+    "worktree=$case_dir/wt" \
+    "project=$case_dir/project" \
+    'kind=ship'
+
+  set +e
+  run_prepare "$case_dir" --relaunch >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "relaunch prepare-lease should reuse its retained claim"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "relaunch prepare-lease removed the retained task scratch"
+  pass "prepare-lease allows relaunch of its retained claim"
 }
 
 test_prepare_lease_refuses_live_worktree_without_mutation() {
@@ -330,6 +349,46 @@ test_prepare_lease_refuses_unreadable_live_metadata_without_mutation() {
   pass "prepare-lease refuses unreadable live metadata without mutation"
 }
 
+test_prepare_lease_refuses_ambiguous_metadata_without_mutation() {
+  local case_dir rc
+  case_dir=$(make_case ambiguous-meta)
+  write_task_dir "$case_dir/wt" current-task current
+  fm_write_meta "$case_dir/state/broken-task.meta" \
+    "worktree=$case_dir/wt" \
+    "worktree=$case_dir/project" \
+    'kind=ship'
+
+  set +e
+  run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "prepare-lease should refuse ambiguous metadata"
+  assert_grep 'could not parse task metadata' "$case_dir/err" \
+    "ambiguous metadata did not refuse the lease"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "ambiguous metadata refusal deleted task scratch"
+  pass "prepare-lease refuses ambiguous metadata"
+}
+
+test_prepare_lease_refuses_missing_claim_metadata_without_mutation() {
+  local case_dir rc
+  case_dir=$(make_case missing-claim-meta)
+  write_task_dir "$case_dir/wt" current-task current
+  fm_write_meta "$case_dir/state/broken-task.meta" \
+    'kind=ship'
+
+  set +e
+  run_prepare "$case_dir" >"$case_dir/out" 2>"$case_dir/err"
+  rc=$?
+  set -e
+  expect_code 1 "$rc" "prepare-lease should refuse metadata without a worktree claim"
+  assert_grep 'could not parse task metadata' "$case_dir/err" \
+    "missing worktree metadata did not refuse the lease"
+  assert_present "$case_dir/wt/.agent/tasks/current-task/plan.md" \
+    "missing claim refusal deleted task scratch"
+  pass "prepare-lease refuses metadata without a claim"
+}
+
 test_prepare_lease_refuses_symlink_worktree_claim_without_mutation() {
   local case_dir rc
   case_dir=$(make_case symlink-claim)
@@ -359,7 +418,8 @@ test_prepare_lease_preserves_archived_leftover
 test_prepare_lease_preserves_unarchived_worktree_without_mutation
 test_prepare_lease_reports_contaminated_worktree_without_mutation
 test_prepare_lease_allows_legitimate_env
-test_prepare_lease_inspects_existing_task_metadata
+test_prepare_lease_refuses_fresh_reuse_of_retained_claim
+test_prepare_lease_allows_relaunch_of_retained_claim
 test_prepare_lease_refuses_live_worktree_without_mutation
 test_remove_archived_deletes_only_after_archive_exists
 test_remove_archived_refuses_empty_archive
@@ -367,6 +427,8 @@ test_remove_archived_refuses_mismatched_archive
 test_remove_archived_is_idempotent_when_source_already_gone
 test_prepare_lease_refuses_primary_checkout
 test_prepare_lease_refuses_unreadable_live_metadata_without_mutation
+test_prepare_lease_refuses_ambiguous_metadata_without_mutation
+test_prepare_lease_refuses_missing_claim_metadata_without_mutation
 test_prepare_lease_refuses_symlink_worktree_claim_without_mutation
 
 echo "# all fm-worktree-task-scratch tests passed"

@@ -22,7 +22,8 @@
 #     as canonical physical directories, including when a recorded path is a
 #     symlink. Every task directory except the explicitly retained --keep id is
 #     reported and preserved. The command refuses when worktree and project
-#     resolve to the same path.
+#     resolve to the same path. --relaunch allows the retained task to re-lease
+#     its own worktree without treating its existing claim as a conflict.
 #
 # Neither mode deletes a directory it cannot prove is an equal archive copy.
 # Credential material and stash refs are never deleted or moved by this command.
@@ -81,14 +82,16 @@ tasks_tree_is_real() {
 }
 
 live_task_for_worktree() {
-  local state=$1 worktree=$2 keep=$3 meta claim claim_real task_id
+  local state=$1 worktree=$2 keep=$3 relaunch=$4 meta claim claim_real task_id parsed
   LIVE_TASK_ID=
   LIVE_INSPECT_ERROR=
   for meta in "$state"/*.meta; do
     [ -e "$meta" ] || [ -L "$meta" ] || continue
     task_id=${meta##*/}
     task_id=${task_id%.meta}
-    [ "$task_id" = "$keep" ] && continue
+    if [ "$task_id" = "$keep" ] && [ "$relaunch" -eq 1 ]; then
+      continue
+    fi
     if [ -L "$meta" ] && [ ! -f "$meta" ]; then
       LIVE_INSPECT_ERROR="task metadata is not a readable regular file: $meta"
       return 0
@@ -97,12 +100,35 @@ live_task_for_worktree() {
       LIVE_INSPECT_ERROR="task metadata is not a readable regular file: $meta"
       return 0
     fi
-    claim=
-    if ! claim=$(sed -n 's/^worktree=//p' "$meta" 2>/dev/null); then
+    if [ ! -r "$meta" ]; then
       LIVE_INSPECT_ERROR="could not read task metadata: $meta"
       return 0
     fi
-    claim=${claim%%$'\n'*}
+    case "$(stat -c %A "$meta" 2>/dev/null || true)" in
+      *r*) ;;
+      *)
+        LIVE_INSPECT_ERROR="could not read task metadata: $meta"
+        return 0
+        ;;
+    esac
+    if ! parsed=$(awk '
+      BEGIN { claims = 0; kind = ""; invalid = 0 }
+      !/^[A-Za-z_][A-Za-z0-9_]*=.*$/ { invalid = 1; next }
+      {
+        key = $0; sub(/=.*/, "", key)
+        value = $0; sub(/^[^=]*=/, "", value)
+        if (key == "worktree") { claims += 1; claim = value }
+        if (key == "kind") { kind = value }
+      }
+      END {
+        if (invalid || claims > 1 || (claims == 0 && kind != "secondmate")) exit 1
+        printf "%d\t%s\n", claims, claim
+      }
+    ' "$meta" 2>/dev/null); then
+      LIVE_INSPECT_ERROR="could not parse task metadata: $meta"
+      return 0
+    fi
+    claim=${parsed#*$'\t'}
     [ -n "$claim" ] || continue
     if claim_real=$(canonicalize_dir "$claim"); then
       if [ "$claim_real" = "$worktree" ]; then
@@ -176,7 +202,7 @@ remove_archived() {
 }
 
 prepare_lease() {
-  local worktree_in=$1 keep=$2 project_in=$3 state_in=$4
+  local worktree_in=$1 keep=$2 project_in=$3 state_in=$4 relaunch=$5
   local worktree project state tasks_dir candidate candidate_id stash_refs stash_count
   local contamination=0 live_task='' env_present=0 secrets_present=0
   path_safe_id "$keep" || {
@@ -228,7 +254,7 @@ prepare_lease() {
       printf '  preserved: %s git stash ref(s) (not a lease blocker)\n' "$stash_count" >&2
     fi
   fi
-  if live_task_for_worktree "$state" "$worktree" "$keep"; then
+  if live_task_for_worktree "$state" "$worktree" "$keep" "$relaunch"; then
     if [ -n "${LIVE_INSPECT_ERROR:-}" ]; then
       printf 'WORKTREE LEASE REFUSED: %s\n' "$LIVE_INSPECT_ERROR" >&2
       printf '  no worker was started; inspect the slot before leasing it again\n' >&2
@@ -276,6 +302,7 @@ KEEP=
 PROJECT=
 STATE=
 ARCHIVE=
+RELAUNCH=0
 
 case "${1:-}" in
   -h|--help)
@@ -324,6 +351,10 @@ while [ "$#" -gt 0 ]; do
       ARCHIVE=$2
       shift 2
       ;;
+    --relaunch)
+      RELAUNCH=1
+      shift
+      ;;
     --help|-h)
       usage
       exit 0
@@ -360,6 +391,6 @@ case "$CMD" in
       echo 'error: prepare-lease does not accept --task or --archive' >&2
       exit 2
     }
-    prepare_lease "$WORKTREE" "$KEEP" "$PROJECT" "$STATE"
+    prepare_lease "$WORKTREE" "$KEEP" "$PROJECT" "$STATE" "$RELAUNCH"
     ;;
 esac
