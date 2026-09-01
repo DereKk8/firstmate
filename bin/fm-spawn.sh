@@ -140,10 +140,11 @@
 #   comparison.
 #   An unreachable origin, unresolved default branch, or non-clean worktree
 #   refuses the spawn rather than risking a PR based on stale history.
-#   After that refresh, and on relaunch into the recorded worktree,
-#   bin/fm-worktree-task-scratch.sh drops leftover .agent/tasks directories
-#   that are archived and not still live, while keeping the current task's
-#   own directory and anything it cannot prove is archived.
+#   After that refresh for a new lease, bin/fm-worktree-task-scratch.sh removes
+#   only archived leftover .agent/tasks directories. It refuses a worktree with
+#   gitignored credentials, stash refs, or any live metadata claim, preserving
+#   the slot and reporting the contamination before a worker starts. Relaunches
+#   keep their recorded worktree untouched.
 # Batch dispatch: pass one or more `id=repo` pairs instead of a single <id> <project>, e.g.
 #     fm-spawn.sh fix-a-k3=projects/foo add-b-q7=projects/bar [--scout]
 #   Each pair re-execs this script in single-task mode, so the single path stays the only
@@ -2343,7 +2344,8 @@ fi
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ]; then
   freshen_spawn_worktree_base "$WT" || exit 1
 fi
-if [ "$KIND" != secondmate ]; then
+if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" != secondmate ] \
+   && [ ! -e "$STATE/$ID.meta" ] && [ ! -L "$STATE/$ID.meta" ]; then
   "$SCRIPT_DIR/fm-worktree-task-scratch.sh" prepare-lease \
     --worktree "$WT" \
     --keep "$ID" \

@@ -105,6 +105,7 @@ test_stale_pool_base_refreshes_before_branching() {
   fi
 
   id='pool-current-base-repeat-r1'
+  rm -f "$HOME_DIR/state/pool-current-base-r1.meta"
   mkdir -p "$HOME_DIR/data/$id"
   printf 'brief for %s\n' "$id" > "$HOME_DIR/data/$id/brief.md"
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
@@ -267,10 +268,6 @@ test_leased_pool_strips_archived_prior_scratch() {
   printf 'keep unarchived\n' > "$POOL_DIR/.agent/tasks/old-unarchived/plan.md"
   printf 'keep live\n' > "$POOL_DIR/.agent/tasks/still-live/plan.md"
   printf 'current\n' > "$POOL_DIR/.agent/tasks/$id/plan.md"
-  fm_write_meta "$HOME_DIR/state/still-live.meta" \
-    "worktree=$POOL_DIR" \
-    "project=$PROJECT_DIR" \
-    'kind=ship'
 
   out=$(run_spawn "$id" --mode no-mistakes --yolo off)
   status=$?
@@ -283,7 +280,41 @@ test_leased_pool_strips_archived_prior_scratch() {
     "spawn deleted a still-live task directory"
   assert_present "$POOL_DIR/.agent/tasks/$id/plan.md" \
     "spawn deleted the current task directory"
-  pass "a leased pooled worktree drops archived leftovers and preserves unarchived or live scratch"
+  pass "a leased pooled worktree drops archived leftovers and preserves unarchived scratch"
+}
+
+test_spawn_refuses_contaminated_pool_without_launching() {
+  local rec id exclude out status
+  id='pool-contaminated-lease-r2'
+  rec=$(make_case contaminated-lease "$id")
+  read_case_record "$rec"
+
+  exclude=$(git -C "$POOL_DIR" rev-parse --git-path info/exclude)
+  mkdir -p "$(dirname "$exclude")"
+  printf '%s\n' '.env' '.secrets/' '.agent/' >> "$exclude"
+  printf 'REDIS_PASSWORD=leaked\n' > "$POOL_DIR/.env"
+  mkdir -p "$POOL_DIR/.secrets"
+  printf 'preserve this credential\n' > "$POOL_DIR/.secrets/redis_password.txt"
+  printf 'stash this work\n' > "$POOL_DIR/README.md"
+  git -C "$POOL_DIR" -c user.name='Firstmate Tests' -c user.email='tests@example.invalid' \
+    stash push --quiet -m leaked-slot-state
+
+  out=$(run_spawn "$id" --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn launched a worker from a contaminated pooled worktree"
+  assert_contains "$out" 'CONTAMINATED WORKTREE' \
+    "spawn did not surface the contaminated worktree"
+  assert_contains "$out" 'no worker was started' \
+    "spawn did not make the contamination visible before launch"
+  assert_present "$POOL_DIR/.env" \
+    "spawn deleted the contaminated env file while refusing the lease"
+  assert_present "$POOL_DIR/.secrets/redis_password.txt" \
+    "spawn deleted credential material while refusing the lease"
+  [ "$(git -C "$POOL_DIR" stash list | wc -l)" -eq 1 ] \
+    || fail "spawn deleted a stash while refusing the contaminated lease"
+  assert_absent "$HOME_DIR/state/$id.meta" \
+    "spawn published task metadata despite refusing the contaminated lease"
+  pass "spawn refuses a contaminated pooled worktree before any worker starts"
 }
 
 test_stale_pool_base_refreshes_before_branching
@@ -294,5 +325,6 @@ test_unresolved_remote_default_refuses_pool
 test_unreachable_origin_refuses_stale_pool_base
 test_no_origin_launches_from_local_head
 test_leased_pool_strips_archived_prior_scratch
+test_spawn_refuses_contaminated_pool_without_launching
 
 echo "# all fm-spawn-pool-base-freshen tests passed"

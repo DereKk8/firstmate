@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Clean leftover .agent/tasks directories from a pooled task worktree.
+# Prepare pooled worktree leases and remove archived task scratch.
 #
-# A treehouse or Orca slot can outlive the task that last used it. Archiving
-# copies artifacts and git-based pool return leaves gitignored .agent/ scratch
-# in place, so the next lease otherwise inherits every earlier task directory.
-# This command is the single owner of the proof required before any of that
-# scratch may be deleted.
+# A treehouse or Orca slot can outlive the task that last used it. Git-based
+# pool return leaves gitignored task scratch, credentials, and stash refs in
+# place, so the next lease otherwise inherits another task's state. This
+# command is the single owner of the proof required before any scratch may be
+# deleted.
 #
 # Usage:
 #   fm-worktree-task-scratch.sh remove-archived --worktree <path> --task <id> --archive <path>
@@ -14,15 +14,17 @@
 #     source is success. A missing or unsafe archive is a loud refusal and
 #     leaves the source untouched.
 #   fm-worktree-task-scratch.sh prepare-lease --worktree <path> --keep <id> --project <path> --state <path>
-#     Walk .agent/tasks in a newly leased worktree. The --keep id is never
-#     removed. Every other directory is removed only when the product-local
-#     archive at <project>/.agent/archive/<id> is a real directory and
-#     <state>/<id>.meta is absent. Unarchived, still-live, unsafe, or
-#     unremovable directories are preserved and reported. The command refuses
-#     when worktree and project resolve to the same path.
+#     Inspect a newly leased worktree before launch. A root .env, .secrets
+#     directory, stash ref, or metadata claim for the worktree preserves every
+#     file and refuses the lease with a visible contamination report. Otherwise
+#     the --keep id is never removed and every other task directory is removed
+#     only when the product-local archive at <project>/.agent/archive/<id> is a
+#     real directory. The command refuses when worktree and project resolve to
+#     the same path.
 #
-# Neither mode deletes a directory it cannot prove is archived. Still-live
-# metadata wins even when an archive entry also exists.
+# Neither mode deletes a directory it cannot prove is archived. A contaminated
+# or currently leased worktree is preserved in full; credential material and
+# stash refs are never deleted or moved by this command.
 set -u
 
 usage() {
@@ -76,6 +78,24 @@ archive_is_proven() {
   is_real_dir "$project/.agent" \
     && is_real_dir "$project/.agent/archive" \
     && is_real_dir "$project/.agent/archive/$id"
+}
+
+live_task_for_worktree() {
+  local state=$1 worktree=$2 meta claim claim_real
+  LIVE_TASK_ID=
+  for meta in "$state"/*.meta; do
+    [ -e "$meta" ] || [ -L "$meta" ] || continue
+    [ -f "$meta" ] && [ ! -L "$meta" ] || continue
+    claim=$(sed -n 's/^worktree=//p' "$meta" | head -n 1)
+    [ -n "$claim" ] || continue
+    claim_real=$(resolve_real_dir "$claim" 2>/dev/null || true)
+    if [ "$claim_real" = "$worktree" ]; then
+      LIVE_TASK_ID=${meta##*/}
+      LIVE_TASK_ID=${LIVE_TASK_ID%.meta}
+      return 0
+    fi
+  done
+  return 1
 }
 
 paths_overlap() {
@@ -132,7 +152,8 @@ remove_archived() {
 
 prepare_lease() {
   local worktree_in=$1 keep=$2 project_in=$3 state_in=$4
-  local worktree project state tasks_dir candidate candidate_id
+  local worktree project state tasks_dir candidate candidate_id stash_refs stash_count
+  local contamination=0 live_task='' env_present=0 secrets_present=0
   path_safe_id "$keep" || {
     echo "error: invalid keep id: $keep" >&2
     exit 2
@@ -151,6 +172,42 @@ prepare_lease() {
   }
   if [ "$worktree" = "$project" ]; then
     refuse "refusing to clean task scratch when worktree and project are the same path: $worktree"
+    return 1
+  fi
+
+  if path_present "$worktree/.env"; then
+    contamination=1
+    env_present=1
+  fi
+  if path_present "$worktree/.secrets"; then
+    contamination=1
+    secrets_present=1
+  fi
+  if ! git -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
+    refuse "could not inspect stash refs in worktree: $worktree"
+    return 1
+  fi
+  if ! stash_refs=$(git -C "$worktree" stash list --format='%gd' 2>/dev/null); then
+    refuse "could not inspect stash refs in worktree: $worktree"
+    return 1
+  fi
+  stash_count=$(printf '%s\n' "$stash_refs" | awk 'NF { count += 1 } END { print count + 0 }')
+  if [ "$stash_count" -gt 0 ]; then
+    contamination=1
+  fi
+  if live_task_for_worktree "$state" "$worktree"; then
+    live_task=$LIVE_TASK_ID
+  fi
+
+  if [ "$contamination" -eq 1 ] || [ -n "$live_task" ]; then
+    printf 'CONTAMINATED WORKTREE: refusing to lease %s\n' "$worktree" >&2
+    [ -z "$live_task" ] || printf '  preserved: currently leased by task %s\n' "$live_task" >&2
+    [ "$env_present" -eq 0 ] || printf '  preserved: credential file %s/.env\n' "$worktree" >&2
+    [ "$secrets_present" -eq 0 ] || printf '  preserved: credential directory %s/.secrets\n' "$worktree" >&2
+    if [ "$stash_count" -gt 0 ]; then
+      printf '  preserved: %s git stash ref(s)\n' "$stash_count" >&2
+    fi
+    printf '  no worker was started; inspect the slot before leasing it again\n' >&2
     return 1
   fi
 
@@ -175,10 +232,6 @@ prepare_lease() {
     fi
     if ! path_safe_id "$candidate_id"; then
       printf 'worktree-task-scratch: preserved %s (unsafe id)\n' "$candidate_id"
-      continue
-    fi
-    if path_present "$state/$candidate_id.meta"; then
-      printf 'worktree-task-scratch: preserved %s (still live)\n' "$candidate_id"
       continue
     fi
     if ! archive_is_proven "$project" "$candidate_id"; then
