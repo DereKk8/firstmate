@@ -1,0 +1,9 @@
+ok - archive happy path copies locally, mirrors, commits, and pushes
+ok - backup push failure is reported without losing the local archive
+ok - missing recorded worktree is refused without archiving
+ok - missing named task artifact directory is refused
+ok - existing local archive refuses without explicit overwrite
+ok - --force replaces an existing same-task archive entry and its mirror
+ok - a retry after the worktree is gone succeeds idempotently when the archive exists
+ok - a retry after the worktree source is gone succeeds idempotently when the archive exists
+ok - multiple task directories are reported while only the named task is archived

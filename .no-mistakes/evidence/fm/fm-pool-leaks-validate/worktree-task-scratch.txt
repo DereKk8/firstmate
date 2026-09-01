@@ -1,0 +1,10 @@
+ok - prepare-lease preserves an independently archived leftover
+ok - prepare-lease preserves all task scratch when one prior task is unarchived
+ok - prepare-lease reports but preserves credential and stash state
+ok - prepare-lease allows a normal checkout with legitimate local env state
+ok - prepare-lease inspects retained task metadata retries
+ok - prepare-lease preserves a live task's complete worktree
+ok - remove-archived refuses without an archive and deletes only after one exists
+ok - remove-archived succeeds when the source is already gone
+ok - prepare-lease refuses to clean the product repository itself
+# all fm-worktree-task-scratch tests passed
