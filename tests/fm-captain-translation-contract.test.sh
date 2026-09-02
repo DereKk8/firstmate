@@ -124,7 +124,7 @@ test_outward_facing_skill_points_reference_section_9_owner() {
     "captain-hold relay does not reference section 9"
   assert_grep "using \`AGENTS.md\` section 9; do not mention metadata, harness, window, or worktree" "$RECOVERY" \
     "stuck-worker failure does not reference section 9"
-  assert_grep "under \`AGENTS.md\` section 9 that the requested worker runtime is not verified yet" "$HARNESS" \
+  assert_grep "under \`../../../AGENTS.md\` section 9 that the requested worker runtime is not verified yet" "$HARNESS" \
     "runtime fallback does not reference section 9"
   assert_grep "use firstmate's own verified runtime for current work" "$HARNESS" \
     "runtime fallback does not require the current-work fallback"

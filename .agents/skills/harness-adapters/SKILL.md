@@ -25,7 +25,7 @@ Operational paths keep the context named by their owner: `config/` and active-ho
 ## Non-negotiable safety
 
 Never dispatch a crewmate or secondmate on an unverified adapter.
-If `config/crew-harness` or `config/secondmate-harness` names an unverified adapter, tell the captain under `AGENTS.md` section 9 that the requested worker runtime is not verified yet, use firstmate's own verified runtime for current work, and ask only whether to verify the requested runtime before future use.
+If `config/crew-harness` or `config/secondmate-harness` names an unverified adapter, tell the captain under `../../../AGENTS.md` section 9 that the requested worker runtime is not verified yet, use firstmate's own verified runtime for current work, and ask only whether to verify the requested runtime before future use.
 Do not pause current work for that future-verification choice, and never launch an unverified adapter.
 
 On `unknown`, ask the captain instead of guessing.

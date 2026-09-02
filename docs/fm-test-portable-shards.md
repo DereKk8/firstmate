@@ -1,7 +1,7 @@
 # Firstmate portable test shards
 
 `bin/fm-test-run.sh` owns portable lane composition and execution.
-`bin/fm-test-isolation-proof.sh` owns the portable parallel candidate set.
+`bin/fm-test-isolation-proof.sh` owns the proven-isolated candidate set.
 
 ## Verification inputs
 
