@@ -297,6 +297,10 @@
       "audience": "maintainer-architecture"
     },
     {
+      "path": "integration-report.md",
+      "audience": "maintainer-verification"
+    },
+    {
       "path": "docs/architecture.md",
       "audience": "maintainer-architecture"
     },
