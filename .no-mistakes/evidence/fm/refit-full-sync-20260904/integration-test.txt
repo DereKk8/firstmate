@@ -1,0 +1,6 @@
+Targeted integration validation
+
+- `bin/fm-test-run.sh tests/fm-secondmate-restart.test.sh tests/fm-remote-secondmate-parent-binding.test.sh tests/fm-captain-hold-lifecycle.test.sh`: all selected tests exited 0.
+- End-to-end parent-channel check: multiline note normalized to one status line and retry deduplicated (`local_lines=1`).
+- Merge ancestry: `dceeeda0bc4e53c083265dddbad43a4a4c23eb38 df67bd1fcd7a488a3b825596023a33104aff85c3 8f7b79c77c2198a71a01082215227a64500015e3`.
+- `integration-report.md`: present and non-empty.
