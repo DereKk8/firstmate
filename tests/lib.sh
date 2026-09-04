@@ -97,8 +97,11 @@ fm_test_cleanup() {
 }
 
 fm_test_tmproot() {
-  local prefix=${1:-fm-test} root
-  root=$(mktemp -d "${TMPDIR:-/tmp}/${prefix}.XXXXXX") || return 1
+  local prefix=${1:-fm-test} root tmp_base
+  tmp_base=${TMPDIR:-/tmp}
+  tmp_base=${tmp_base%/}
+  root=$(mktemp -d "$tmp_base/${prefix}.XXXXXX") || return 1
+  root=$(cd -P -- "$root" && pwd -P) || return 1
   if ! printf '%s\n%s\n' "$$" "$FM_TEST_OWNER_IDENTITY" > "$root/.fm-test-fixture" ||
     ! printf '%s\n' "$root" >> "$FM_TEST_CLEANUP_REGISTRY"; then
     rm -rf "$root"
@@ -157,9 +160,11 @@ fi
 #
 # fm_fakebin <dir> creates <dir>/fakebin and echoes it; prepend it to PATH to
 # shadow real tools with stubs. fm_fake_exit0 drops trivial exit-0 stubs for the
-# named tools into a fakebin dir. fm_fake_version_tool drops a stub for a tool
-# whose installed version bootstrap gates, so a fixture cannot be reported as an
-# unparseable build simply for answering `--version` with nothing.
+# named tools into a fakebin dir. fm_fake_crash_injector drops the shim a fake
+# uses to crash the process under test deterministically. fm_fake_version_tool
+# drops a stub for a tool whose installed version bootstrap gates, so a fixture
+# cannot be reported as an unparseable build simply for answering `--version`
+# with nothing.
 
 fm_fakebin() {
   local dir=$1 fakebin="$1/fakebin"
@@ -177,6 +182,42 @@ exit 0
 SH
     chmod +x "$fakebin/$tool"
   done
+}
+
+# fm_fake_crash_injector <fakebin>
+# Drops an `fm-crash-inject <pid>` shim that a PATH fake calls to simulate a
+# hard crash of the process under test. It SIGKILLs <pid> and then returns only
+# once that process is observably gone, so the fake never resumes work while its
+# victim could still be running. Sleeping a fixed interval instead makes the
+# injection a wall-clock bet that a loaded host loses: the fake wakes up and
+# completes the very operation the case needs left unfinished. Exits non-zero
+# with a diagnostic if the target outlives the signal, so a broken injection
+# fails loudly rather than silently changing what the case measures.
+fm_fake_crash_injector() {
+  local fakebin=$1
+  cat > "$fakebin/fm-crash-inject" <<'SH'
+#!/usr/bin/env bash
+set -u
+target=${1:?fm-crash-inject: <pid> required}
+case "$target" in
+  ''|*[!0-9]*)
+    echo "fm-crash-inject: '$target' is not a pid" >&2
+    exit 1
+    ;;
+esac
+kill -KILL "$target" 2>/dev/null || true
+waited=0
+while [ "$waited" -lt 600 ]; do
+  case "$(ps -o state= -p "$target" 2>/dev/null | tr -d '[:space:]')" in
+    ''|Z*) exit 0 ;;
+  esac
+  waited=$((waited + 1))
+  sleep 0.05
+done
+echo "fm-crash-inject: pid $target still running 30s after SIGKILL" >&2
+exit 1
+SH
+  chmod +x "$fakebin/fm-crash-inject"
 }
 
 # fm_fake_version_tool <fakebin> <tool> <override-env-var> <default-version>

@@ -111,11 +111,17 @@ exit 0
 SH
   # Default hermetic no-mistakes stub: `axi status` answers FM_FAKE_AXI_STATUS
   # verbatim (empty by default, i.e. no active run - the pre-teardown run-abort
-  # step is then a no-op), and `axi abort` appends one line to
-  # FM_FAKE_NM_ABORT_LOG when set. This keeps every case hermetic - without it,
-  # `command -v no-mistakes` would fall through to whatever real binary
-  # happens to be on the test runner's own PATH. Tests exercising the run-abort
-  # path override FM_FAKE_AXI_STATUS/FM_FAKE_NM_ABORT_LOG before run_teardown.
+  # step is then a no-op), `axi abort` appends one line to
+  # FM_FAKE_NM_ABORT_LOG when set, the top-level `runs` listing answers
+  # FM_FAKE_NM_RUNS_LIST verbatim (the real `no-mistakes runs --limit N` is
+  # plain text with no run id and no quoting - see the ledger fixtures below),
+  # and `runs` appends its own invocation to FM_FAKE_NM_RUNS_LOG when set, so
+  # a test can prove whether the ledger fallback ever engaged.
+  # This keeps every case hermetic - without it, `command -v no-mistakes`
+  # would fall through to whatever real binary happens to be on the test
+  # runner's own PATH. Tests exercising the run-abort path override
+  # FM_FAKE_AXI_STATUS/FM_FAKE_NM_ABORT_LOG/FM_FAKE_NM_RUNS_LIST before
+  # run_teardown.
   cat > "$fakebin/no-mistakes" <<'SH'
 #!/usr/bin/env bash
 case "${1:-}" in
@@ -149,6 +155,9 @@ case "${1:-}" in
         exit 0 ;;
     esac
     ;;
+  runs)
+    [ -z "${FM_FAKE_NM_RUNS_LOG:-}" ] || printf 'runs %s\n' "$*" >> "$FM_FAKE_NM_RUNS_LOG"
+    printf '%s\n' "${FM_FAKE_NM_RUNS_LIST:-}" ;;
 esac
 exit 0
 SH
@@ -569,6 +578,9 @@ test_local_only_fork_remote_allows() {
   write_meta "$case_dir" local-only ship
   wt_commit "$case_dir" "fix the thing"
   add_fork_with_pushed_branch "$case_dir"
+  # The supervision branch's bounded per-task outcome cache is a footprint of
+  # the retired task, not a record anything reads after it is gone.
+  printf 'fm-branch-outcome-index-v1\t5\t0\t-\n' > "$case_dir/state/.task-x1.branch-outcome-index"
 
   set +e
   run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
@@ -577,6 +589,21 @@ test_local_only_fork_remote_allows() {
 
   expect_code 0 "$rc" "fork-allow: teardown should succeed when HEAD is on a fork remote"
   ! grep -q REFUSED "$case_dir/stderr" || fail "fork-allow: teardown printed a REFUSED line"
+  [ ! -e "$case_dir/state/.task-x1.branch-outcome-index" ] \
+    || fail "fork-allow: teardown left the task's branch outcome index behind"
+  # The supervision branch reports the teardown it just performed AFTER the
+  # task's records are gone (bin/fm-branch-prompt.sh); that report must be
+  # stored, must publish its ready sequence, and must not recreate the index.
+  post_seq=$(FM_STATE_OVERRIDE="$case_dir/state" "$ROOT/bin/fm-branch-outcome.sh" append \
+    --task task-x1 --verdict captain --summary 'PR merged and cleaned up') \
+    || fail "fork-allow: post-teardown branch report was refused"
+  [ "$post_seq" = 1 ] || fail "fork-allow: post-teardown branch report got seq $post_seq, expected 1"
+  grep -q '"task":"task-x1"' "$case_dir/state/branch-outcomes.jsonl" \
+    || fail "fork-allow: post-teardown branch report was not stored"
+  [ ! -e "$case_dir/state/.task-x1.branch-outcome-index" ] \
+    || fail "fork-allow: post-teardown branch report recreated the retired task index"
+  [ "$(cat "$case_dir/state/.branch-outcome-index-ready")" = 1 ] \
+    || fail "fork-allow: post-teardown branch report did not publish its ready sequence"
   jq -e --arg id task-x1 '
     .schema == "fm-secondmate-home-summary.v1"
     and all(.endpoints[]; .id != $id)
@@ -1319,6 +1346,139 @@ test_local_only_force_overrides_unpushed() {
   pass "local-only worktree with unpushed work is torn down under --force (escape hatch)"
 }
 
+# Mark the case's home as a secondmate home bound to a parent: teardown and
+# fm-pr-check run with FM_HOME="$case_dir/home" so the parent-channel
+# publishers resolve that binding while the task state stays in $case_dir/state.
+configure_secondmate_home() {  # <case-dir> <local|remote> [<parent-home>]
+  local case_dir=$1 route=$2 parent=${3:-} home="$1/home"
+  mkdir -p "$home"
+  printf 'mate-x\n' > "$home/.fm-secondmate-home"
+  {
+    printf 'schema=fm-secondmate-parent.v1\nroute=%s\n' "$route"
+    [ "$route" != local ] || printf 'parent_home=%s\n' "$parent"
+  } > "$home/.fm-secondmate-parent"
+  if [ "$route" = local ]; then
+    # A local parent registers the mate; teardown resolves that registration.
+    mkdir -p "$parent/state" "$parent/data"
+    fm_write_secondmate_meta "$parent/state/mate-x.meta" "$home"
+    printf -- '- mate-x - fixture scope (home: %s; scope: fixture; projects: alpha; added 2026-07-14)\n' \
+      "$home" > "$parent/data/secondmates.md"
+  fi
+}
+
+# Registering a PR inside a secondmate home publishes the child's ready line
+# with the canonical URL on the parent channel from fm-pr-check itself, once;
+# a main home publishes nothing.
+test_secondmate_pr_registration_publishes_ready_line() {
+  local case_dir pr_head channel url
+  url=https://github.com/example/repo/pull/7
+  case_dir=$(make_case mate-pr-ready)
+  configure_secondmate_home "$case_dir" local "$case_dir/parent"
+  mkdir -p "$case_dir/parent/state"
+  channel="$case_dir/parent/state/mate-x.status"
+  write_meta "$case_dir" no-mistakes ship
+  wt_commit_file "$case_dir" feature.txt hello "add feature"
+  pr_head=$(git -C "$case_dir/wt" rev-parse HEAD)
+  add_gh_pr_merged_for_head "$case_dir" "$pr_head"
+
+  FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$case_dir/state" \
+    PATH="$case_dir/fakebin:$PATH" "$PR_CHECK" task-x1 "$url" > "$case_dir/pr-check.out" 2> "$case_dir/pr-check.err" \
+    || fail "mate-pr-ready: fm-pr-check failed: $(cat "$case_dir/pr-check.err")"
+  grep -q '^armed:' "$case_dir/pr-check.out" || fail "mate-pr-ready: poll was not armed"
+  assert_grep "done [key=child-pr-task-x1]: child task-x1 PR ready: $url mode=no-mistakes" "$channel" \
+    "mate-pr-ready: the ready line did not reach the parent channel"
+  ! grep -q '^actionable:' "$case_dir/pr-check.err" \
+    || fail "mate-pr-ready: registration reported a channel problem: $(cat "$case_dir/pr-check.err")"
+  FM_HOME="$case_dir/home" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$case_dir/state" \
+    PATH="$case_dir/fakebin:$PATH" "$PR_CHECK" task-x1 "$url" >/dev/null 2>&1 \
+    || fail "mate-pr-ready: re-registration failed"
+  [ "$(grep -c 'child-pr-task-x1' "$channel")" -eq 1 ] \
+    || fail "mate-pr-ready: re-registration duplicated the ready line"
+
+  case_dir=$(make_case main-pr-ready)
+  write_meta "$case_dir" no-mistakes ship
+  wt_commit_file "$case_dir" feature.txt hello "add feature"
+  add_gh_pr_merged_for_head "$case_dir" "$(git -C "$case_dir/wt" rev-parse HEAD)"
+  FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$case_dir/state" \
+    PATH="$case_dir/fakebin:$PATH" "$PR_CHECK" task-x1 "$url" >/dev/null 2> "$case_dir/pr-check.err" \
+    || fail "main-pr-ready: fm-pr-check failed"
+  ! grep -q '^actionable:' "$case_dir/pr-check.err" \
+    || fail "main-pr-ready: a main home reported a channel problem"
+  [ ! -e "$case_dir/state/parent-replies.status" ] || fail "main-pr-ready: a main home wrote a parent reply"
+  pass "fm-pr-check publishes the PR-ready line on a secondmate's parent channel once"
+}
+
+# Tearing a child down inside a secondmate home delivers the child's final
+# ledger line to the parent before the record goes, and refuses (retaining
+# every record) while the parent channel cannot be written; a rerun after the
+# repair delivers and completes.
+test_secondmate_home_teardown_delivers_final_line_or_refuses() {
+  local case_dir rc channel wt_head err seq generation
+
+  case_dir=$(make_case mate-teardown-delivers)
+  configure_secondmate_home "$case_dir" local "$case_dir/parent"
+  mkdir -p "$case_dir/parent/state"
+  channel="$case_dir/parent/state/mate-x.status"
+  write_meta "$case_dir" local-only ship
+  wt_commit "$case_dir" "merged work"
+  wt_head=$(git -C "$case_dir/wt" rev-parse HEAD)
+  git -C "$case_dir/project" update-ref refs/heads/main "$wt_head"
+  printf 'working: shipping\ndone: PR https://github.com/example/repo/pull/9 checks green\n' \
+    > "$case_dir/state/task-x1.status"
+  set +e
+  FM_HOME="$case_dir/home" run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "mate-teardown-delivers: teardown should succeed: $(cat "$case_dir/stderr")"
+  grep -Eq '^done \[key=child-outcome-task-x1-done-[0-9a-f]{8}\]: child task-x1 done: PR https://github.com/example/repo/pull/9 checks green pr=https://github.com/example/repo/pull/9 mode=local-only$' "$channel" \
+    || fail "mate-teardown-delivers: the final ledger line did not reach the parent: $(cat "$channel" 2>/dev/null)"
+  [ ! -e "$case_dir/state/task-x1.meta" ] || fail "mate-teardown-delivers: teardown left the task record"
+
+  case_dir=$(make_case mate-teardown-refuses)
+  configure_secondmate_home "$case_dir" local "$case_dir/parent"
+  # The channel path is occupied by a directory, so no line can be appended.
+  mkdir -p "$case_dir/parent/state/mate-x.status"
+  channel="$case_dir/parent/state/mate-x.status"
+  write_meta "$case_dir" local-only ship
+  mkdir -p "$case_dir/tasktmp"
+  printf '!\n' > "$case_dir/state/task-x1.grok-turnend-token"
+  printf '!\n' > "$case_dir/state/task-x1.kimi-turnend-token"
+  printf 'tasktmp=%s\n' "$case_dir/tasktmp" >> "$case_dir/state/task-x1.meta"
+  wt_commit "$case_dir" "merged work"
+  wt_head=$(git -C "$case_dir/wt" rev-parse HEAD)
+  git -C "$case_dir/project" update-ref refs/heads/main "$wt_head"
+  printf 'done: PR https://github.com/example/repo/pull/9 checks green\n' > "$case_dir/state/task-x1.status"
+  set +e
+  FM_HOME="$case_dir/home" run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr"
+  rc=$?
+  set -e
+  [ "$rc" -ne 0 ] || fail "mate-teardown-refuses: teardown proceeded with an undelivered final line"
+  grep -q 'has not reached the parent channel' "$case_dir/stderr" \
+    || fail "mate-teardown-refuses: refusal did not name the parent channel: $(cat "$case_dir/stderr")"
+  [ -f "$case_dir/state/task-x1.meta" ] && [ -f "$case_dir/state/task-x1.status" ] \
+    || fail "mate-teardown-refuses: refusal did not retain the task records"
+  [ -f "$case_dir/state/task-x1.grok-turnend-token" ] \
+    && [ -f "$case_dir/state/task-x1.kimi-turnend-token" ] \
+    && [ -d "$case_dir/tasktmp" ] \
+    || fail "mate-teardown-refuses: refusal removed endpoint records before parent delivery"
+  rmdir "$channel"
+  err=$(FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
+    "$ROOT/bin/fm-wake-drain.sh" 2>&1 >/dev/null)
+  seq=$(printf '%s\n' "$err" | sed -n 's/^WAKE_ACK_REQUIRED:.*--ack-through \([0-9][0-9]*\) --recovery-generation .*/\1/p')
+  generation=$(printf '%s\n' "$err" | sed -n 's/^WAKE_ACK_REQUIRED:.*--recovery-generation \([A-Za-z0-9._-][A-Za-z0-9._-]*\)$/\1/p')
+  [ -z "$seq" ] || FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
+    "$ROOT/bin/fm-wake-drain.sh" --ack-through "$seq" --recovery-generation "$generation" >/dev/null
+  set +e
+  FM_HOME="$case_dir/home" run_teardown "$case_dir" > "$case_dir/stdout2" 2> "$case_dir/stderr2"
+  rc=$?
+  set -e
+  expect_code 0 "$rc" "mate-teardown-refuses: rerun after repair should succeed: $(cat "$case_dir/stderr2")"
+  grep -Eq '^done \[key=child-outcome-task-x1-done-[0-9a-f]{8}\]: child task-x1 done: PR https://github.com/example/repo/pull/9 checks green' "$channel" \
+    || fail "mate-teardown-refuses: the rerun did not deliver the final line"
+  [ ! -e "$case_dir/state/task-x1.meta" ] || fail "mate-teardown-refuses: rerun left the task record"
+  pass "a secondmate home's teardown delivers the child's final line or refuses until it can"
+}
+
 test_teardown_missing_busy_sidecar_completes() {
   local case_dir gen rc
   case_dir=$(make_case missing-busy-sidecar)
@@ -2051,6 +2211,36 @@ steps[1]{step,status,findings,summary}:
 EOF
 }
 
+# One row of the real `no-mistakes runs` ledger: plain text, newest-first,
+# no run id, no quoting - "<status> <branch> <short-sha> <date> <time> [<pr-url>]"
+# (the same shape tests/fm-crew-state.test.sh's runs-list fixtures pin).
+ledger_row() {  # <status> <branch> <short-sha> <date> <time> [pr-url]
+  printf '  %-10s %-24s %-8s  %s %s' "$1" "$2" "$3" "$4" "$5"
+  [ -z "${6:-}" ] || printf '  %s' "$6"
+  printf '\n'
+}
+
+# Commit <n> pipeline fix rounds on top of the task branch in a separate
+# clone of origin that the task copy NEVER fetches from, mirroring how the
+# no-mistakes daemon commits fix rounds in its own gate-repo clone. Echoes
+# the newest short sha, which is genuinely absent from the task worktree's
+# object store. Args: case_dir [rounds]
+make_unfetched_pipeline_heads() {
+  local case_dir=$1 rounds=${2:-1} i
+  git clone -q "$case_dir/origin.git" "$case_dir/pipeline-clone"
+  git -C "$case_dir/pipeline-clone" checkout -q fm/task-x1
+  for i in $(seq 1 "$rounds"); do
+    git -C "$case_dir/pipeline-clone" -c user.email=t@t -c user.name=t \
+      commit -q --allow-empty -m "pipeline fix round $i"
+  done
+  git -C "$case_dir/pipeline-clone" rev-parse --short=7 HEAD
+}
+
+assert_head_absent_from_worktree() {  # <worktree> <short-sha> <label>
+  [ -z "$(git -C "$1" rev-parse --verify --quiet "${2}^{commit}" 2>/dev/null)" ] \
+    || fail "$3: fixture broke - the pipeline head resolved in the task copy"
+}
+
 # Land a shippable commit on the task branch and push it to origin, the same
 # "definitely landed, teardown must ALLOW" shape test_no_mistakes_origin_remote_allows
 # uses, so these new cases exercise the abort/reap steps on a real successful
@@ -2082,6 +2272,410 @@ test_parked_own_run_is_aborted_before_teardown() {
   assert_grep "parked at a gate; aborting" "$case_dir/stderr" \
     "parked-run-abort: teardown did not report aborting the parked run before removing the worker"
   pass "a task's own parked no-mistakes run is aborted, not orphaned, before the worker is removed"
+}
+
+# The pipeline advanced the parked run past the submitted head in its own
+# repo, so the run head object does not exist in the task copy at all and the
+# strict object-local identity rule cannot bind the run. The daemon's own
+# runs ledger is what still proves the run is this task's continuation: its
+# newest fm/task-x1 row is active at the unfetched head, anchored by the
+# immediately older fm/task-x1 row ending exactly at this worktree's HEAD.
+# Teardown must conclude the run instead of orphaning a parked gate wait that
+# would otherwise hold a fleet slot forever (observed 2026-09-03). Foreign
+# branches' rows interleaved in the ledger must not matter.
+test_parked_run_advanced_past_unfetched_head_is_still_aborted() {
+  local case_dir rc advanced_short anchor_short
+  case_dir=$(make_case parked-run-pipeline-advanced-unfetched)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-pipeline-advanced-unfetched"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/other-task aaaaaaa 2026-09-03 22:10)
+$(ledger_row running fm/task-x1 "$advanced_short" 2026-09-03 07:55)
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-09-02 06:36)
+$(ledger_row completed fm/third-task bbbbbbb 2026-09-01 11:00)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-pipeline-advanced-unfetched: teardown should still succeed"
+  assert_grep "abort --run 01RUN" "$case_dir/nm-abort.log" \
+    "parked-run-pipeline-advanced-unfetched: teardown did not abort the parked run the ledger proves is this task's continuation"
+  assert_grep "parked at a gate; aborting" "$case_dir/stderr" \
+    "parked-run-pipeline-advanced-unfetched: teardown did not report aborting the parked run"
+  pass "a parked run the pipeline advanced past the task copy is still concluded from the runs ledger, not orphaned"
+}
+
+test_parked_run_with_mismatched_ledger_head_is_never_aborted() {
+  local case_dir rc advanced_short anchor_short
+  case_dir=$(make_case parked-run-mismatched-ledger-head)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-mismatched-ledger-head"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/task-x1 deadbee 2026-09-03 07:55)
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-09-02 06:36)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-mismatched-ledger-head: teardown should still succeed"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-mismatched-ledger-head: teardown aborted a ledger run with a different head"
+  pass "a ledger row for a different head never authorizes a parked-run abort"
+}
+
+test_parked_run_with_malformed_ledger_row_is_never_aborted() {
+  local case_dir rc advanced_short anchor_short
+  case_dir=$(make_case parked-run-malformed-ledger-row)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-malformed-ledger-row"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+running fm/task-x1 $advanced_short
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-09-02 06:36)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-malformed-ledger-row: teardown should still succeed"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-malformed-ledger-row: teardown aborted from a malformed ledger row"
+  pass "a malformed ledger row never authorizes a parked-run abort"
+}
+
+test_parked_run_with_impossible_ledger_date_is_never_aborted() {
+  local case_dir rc advanced_short anchor_short
+  case_dir=$(make_case parked-run-impossible-ledger-date)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-impossible-ledger-date"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/task-x1 "$advanced_short" 2026-02-31 07:55)
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-02-28 06:36)
+EOF
+)" \
+  FM_FAKE_NM_RUNS_LOG="$case_dir/nm-runs.log" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-impossible-ledger-date: teardown should still succeed"
+  assert_present "$case_dir/nm-runs.log" \
+    "parked-run-impossible-ledger-date: fixture broke - the ledger fallback never engaged"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-impossible-ledger-date: teardown aborted from an impossible ledger date"
+  pass "an impossible ledger date never authorizes a parked-run abort"
+}
+
+test_terminal_status_with_gate_never_queries_or_aborts_ledger_fallback() {
+  local case_dir rc advanced_short anchor_short terminal_status
+  case_dir=$(make_case parked-run-terminal-status-gate)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-terminal-status-gate"
+  terminal_status=$(parked_axi_status_toon fm/task-x1 "$advanced_short")
+  terminal_status=${terminal_status/status: awaiting_approval/status: completed}
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$terminal_status" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/task-x1 "$advanced_short" 2026-09-03 07:55)
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-09-02 06:36)
+EOF
+)" \
+  FM_FAKE_NM_RUNS_LOG="$case_dir/nm-runs.log" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-terminal-status-gate: teardown should still succeed"
+  assert_absent "$case_dir/nm-runs.log" \
+    "parked-run-terminal-status-gate: terminal status queried the ledger fallback"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-terminal-status-gate: terminal status with a stale gate aborted"
+  pass "a terminal status with a stale gate never reaches ledger cleanup"
+}
+
+# Counterfactual twin of the unfetched defect above: the SAME parked-run shape
+# with the pipeline's advanced fix head FETCHED into the task copy (objects
+# only - no ref moves) resolves through the strict object-local rule alone,
+# because a fix round's commits descend from this worktree's submitted HEAD.
+# With an EMPTY ledger, teardown must still abort - and must never query the
+# ledger at all - proving the fallback stays dormant whenever the run head's
+# object is present locally (no ledger dependency on the strict-rule path).
+test_parked_run_advanced_head_locally_fetched_is_still_aborted() {
+  local case_dir rc advanced_short
+  case_dir=$(make_case parked-run-advanced-fetched)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  # The one changed condition vs the defect case: fetch the fix commits into
+  # the project clone's object store (shared with the task worktree) without
+  # moving any ref, so fm_nm_resolve_commit sees the head again.
+  git -C "$case_dir/project" fetch -q "$case_dir/pipeline-clone" fm/task-x1
+  [ -n "$(git -C "$case_dir/wt" rev-parse --verify --quiet "${advanced_short}^{commit}" 2>/dev/null)" ] \
+    || fail "parked-run-advanced-fetched: fixture broke - the pipeline head never reached the task copy"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="" \
+  FM_FAKE_NM_RUNS_LOG="$case_dir/nm-runs.log" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-advanced-fetched: teardown should still succeed"
+  assert_grep "abort --run 01RUN" "$case_dir/nm-abort.log" \
+    "parked-run-advanced-fetched: teardown did not abort the parked run the strict object-local rule binds"
+  assert_absent "$case_dir/nm-runs.log" \
+    "parked-run-advanced-fetched: the ledger fallback fired even though the advanced head resolves locally"
+  pass "an advanced head present locally aborts through the strict rule alone - the ledger fallback stays dormant"
+}
+
+# No anchor: the unresolvable active row is the branch's ONLY row, so nothing
+# proves the run ever touched this worktree's head - a branch-name coincidence
+# or an arbitrary daemon-side run must not be concluded.
+test_parked_advanced_run_without_anchor_is_never_aborted() {
+  local case_dir rc advanced_short
+  case_dir=$(make_case parked-run-advanced-no-anchor)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-advanced-no-anchor"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/other-task aaaaaaa 2026-09-03 22:10)
+$(ledger_row running fm/task-x1 "$advanced_short" 2026-09-03 07:55)
+$(ledger_row completed fm/third-task bbbbbbb 2026-09-01 11:00)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-advanced-no-anchor: teardown should still succeed"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-advanced-no-anchor: teardown aborted an unanchored run it cannot prove is its own"
+  pass "an unresolvable active row with no same-branch anchor is never concluded (conservative refusal)"
+}
+
+# The anchor row resolves but to an OLDER commit: the worktree advanced past
+# it since the run was submitted, so exact-equality fails and the run is not
+# provably this worktree's submission. Ancestor-only anchors must never bind.
+test_parked_advanced_run_ancestor_anchor_is_never_aborted() {
+  local case_dir rc advanced_short parent_short
+  case_dir=$(make_case parked-run-advanced-ancestor-anchor)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  parent_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD~1)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-advanced-ancestor-anchor"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/task-x1 "$advanced_short" 2026-09-03 07:55)
+$(ledger_row failed fm/task-x1 "$parent_short" 2026-09-02 06:36)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-advanced-ancestor-anchor: teardown should still succeed"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-advanced-ancestor-anchor: teardown aborted on an ancestor-only anchor"
+  pass "an ancestor-only anchor never binds an advanced parked run to this task"
+}
+
+# The branch's newest same-branch row is TERMINAL at an unfetched head: a
+# finished run is history, never the branch's current run, and the anchored
+# older row never answers for it. Teardown must not conclude a run from a
+# stale terminal row.
+test_parked_terminal_unfetched_row_is_never_aborted() {
+  local case_dir rc advanced_short anchor_short
+  case_dir=$(make_case parked-run-terminal-unfetched)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-terminal-unfetched"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row failed fm/task-x1 "$advanced_short" 2026-09-03 08:20)
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-09-02 06:36)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-terminal-unfetched: teardown should still succeed"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-terminal-unfetched: teardown concluded a run from a terminal unfetched row"
+  pass "a terminal unfetched-head row is stale history and never concludes a run"
+}
+
+# The crafted d15 boundary, tightened deliberately: the axi-reported head is
+# unresolvable and the branch's newest ledger row is TERMINAL at exactly this
+# worktree's head - a perfectly anchored, already-finished run. A finished run
+# is history, so the ledger fallback authorizes cleanup only when its proved
+# answer is the explicitly active word (`running`): a terminal newest row,
+# even anchored at this head, never authorizes an abort. The runs log proves
+# the fallback actually engaged, so the refusal is this tightened boundary
+# and not an earlier guard.
+test_parked_run_terminal_newest_row_at_own_head_is_never_aborted() {
+  local case_dir rc advanced_short anchor_short
+  case_dir=$(make_case parked-run-terminal-newest-at-head)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-terminal-newest-at-head"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/other-task aaaaaaa 2026-09-03 22:10)
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-09-03 06:36)
+EOF
+)" \
+  FM_FAKE_NM_RUNS_LOG="$case_dir/nm-runs.log" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-terminal-newest-at-head: teardown should still succeed"
+  assert_present "$case_dir/nm-runs.log" \
+    "parked-run-terminal-newest-at-head: fixture broke - the ledger fallback never engaged"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-terminal-newest-at-head: teardown aborted a run whose newest anchored ledger row is terminal"
+  pass "a terminal newest row anchored at this worktree's head never authorizes an abort"
+}
+
+# The branch's newest row resolves in this copy to a head that DIVERGED from
+# this worktree's HEAD (the branch was rewritten or moved on by a newer run
+# from another worktree of the same project): not equal, not a descendant,
+# so the shared rule answers nothing and every older row - including this
+# task's parked run - stays stale history. Neither this task's run nor the
+# unrelated newer run may be concluded here.
+test_parked_run_behind_diverged_newer_row_is_never_aborted() {
+  local case_dir rc advanced_short diverged_short
+  case_dir=$(make_case parked-run-behind-newer-row)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-behind-newer-row"
+  # A newer fm/task-x1 head that THIS copy resolves but that diverged from
+  # the worktree's HEAD: rewritten from origin/main and pushed over the
+  # branch (the fixture origin allows the non-fast-forward rewrite), then
+  # fetched into the project clone (shared object store).
+  git -C "$case_dir/origin.git" config receive.denyNonFastForwards false
+  git clone -q "$case_dir/origin.git" "$case_dir/newer-clone"
+  git -C "$case_dir/newer-clone" checkout -q origin/main
+  git -C "$case_dir/newer-clone" -c user.email=t@t -c user.name=t \
+    commit -q --allow-empty -m "newer run's diverged work"
+  git -C "$case_dir/newer-clone" push -q --force origin HEAD:fm/task-x1
+  git -C "$case_dir/project" fetch -q origin
+  diverged_short=$(git -C "$case_dir/wt" rev-parse --short=7 origin/fm/task-x1)
+  git -C "$case_dir/wt" merge-base --is-ancestor HEAD "$diverged_short" \
+    && fail "parked-run-behind-newer-row: fixture broke - the newer row is a descendant, not diverged"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/task-x1 "$diverged_short" 2026-09-03 09:00)
+$(ledger_row failed fm/task-x1 "$advanced_short" 2026-09-03 07:55)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-behind-newer-row: teardown should still succeed"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-behind-newer-row: teardown concluded this task from another run's ledger row"
+  pass "a resolvable diverged newer same-branch row makes every older row stale history; no run is concluded"
+}
+
+# Two consecutive unresolvable running rows for the branch: the ledger cannot
+# prove which row is current or where the submission boundary is. Ambiguity
+# must refuse, never guess.
+test_parked_advanced_run_ambiguous_rows_are_never_aborted() {
+  local case_dir rc advanced_short anchor_short
+  case_dir=$(make_case parked-run-advanced-ambiguous)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir" 2)
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-advanced-ambiguous"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(parked_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/task-x1 "$advanced_short" 2026-09-03 08:30)
+$(ledger_row failed fm/other-task ccccccc 2026-09-03 08:10)
+$(ledger_row running fm/task-x1 ddddddd 2026-09-03 07:55)
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-09-02 06:36)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-advanced-ambiguous: teardown should still succeed"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-advanced-ambiguous: teardown guessed through ambiguous ledger rows"
+  pass "consecutive unresolvable rows are ambiguous and never conclude a run"
+}
+
+# The ledger proves the continuation, but the run is NOT parked at a gate -
+# it is autonomously running/fixing against the daemon's own clone. Teardown
+# must leave that work alone even when the attribution proof would bind it.
+test_ledger_proven_continuation_never_aborts_active_run() {
+  local case_dir rc advanced_short anchor_short
+  case_dir=$(make_case parked-run-ledger-active)
+  write_meta "$case_dir" no-mistakes ship
+  land_shippable_commit "$case_dir"
+  anchor_short=$(git -C "$case_dir/wt" rev-parse --short=7 HEAD)
+  advanced_short=$(make_unfetched_pipeline_heads "$case_dir")
+  assert_head_absent_from_worktree "$case_dir/wt" "$advanced_short" "parked-run-ledger-active"
+
+  rc=0
+  FM_FAKE_AXI_STATUS="$(running_axi_status_toon fm/task-x1 "$advanced_short")" \
+  FM_FAKE_NM_RUNS_LIST="$(cat <<EOF
+$(ledger_row running fm/task-x1 "$advanced_short" 2026-09-03 07:55)
+$(ledger_row failed fm/task-x1 "$anchor_short" 2026-09-02 06:36)
+EOF
+)" \
+  FM_FAKE_NM_ABORT_LOG="$case_dir/nm-abort.log" \
+    run_teardown "$case_dir" > "$case_dir/stdout" 2> "$case_dir/stderr" || rc=$?
+
+  expect_code 0 "$rc" "parked-run-ledger-active: teardown should still succeed"
+  assert_absent "$case_dir/nm-abort.log" \
+    "parked-run-ledger-active: teardown aborted an actively running run the ledger happened to bind"
+  pass "a ledger-proven continuation is still left alone while the run is autonomously active"
 }
 
 test_mismatched_run_after_abort_refuses_unconfirmed() {
@@ -2613,6 +3207,8 @@ test_local_only_merged_to_local_main_allows
 test_no_mistakes_origin_remote_allows
 test_no_mistakes_truly_unpushed_refuses
 test_local_only_force_overrides_unpushed
+test_secondmate_pr_registration_publishes_ready_line
+test_secondmate_home_teardown_delivers_final_line_or_refuses
 test_teardown_missing_busy_sidecar_completes
 test_herdr_teardown_clears_escalation_marker
 test_herdr_flat_teardown_refuses_orphaning_records_then_retry_completes
@@ -2647,6 +3243,19 @@ test_persistent_index_lock_exhausts_retries_and_refuses_loudly
 test_empty_retry_wait_uses_default_without_aborting
 test_fractional_legacy_retry_wait_refuses_without_arithmetic_error
 test_parked_own_run_is_aborted_before_teardown
+test_parked_run_advanced_past_unfetched_head_is_still_aborted
+test_parked_run_with_mismatched_ledger_head_is_never_aborted
+test_parked_run_with_malformed_ledger_row_is_never_aborted
+test_parked_run_with_impossible_ledger_date_is_never_aborted
+test_terminal_status_with_gate_never_queries_or_aborts_ledger_fallback
+test_parked_run_advanced_head_locally_fetched_is_still_aborted
+test_parked_advanced_run_without_anchor_is_never_aborted
+test_parked_advanced_run_ancestor_anchor_is_never_aborted
+test_parked_terminal_unfetched_row_is_never_aborted
+test_parked_run_terminal_newest_row_at_own_head_is_never_aborted
+test_parked_run_behind_diverged_newer_row_is_never_aborted
+test_parked_advanced_run_ambiguous_rows_are_never_aborted
+test_ledger_proven_continuation_never_aborts_active_run
 test_parked_own_run_refuses_when_abort_is_unconfirmed
 test_mismatched_run_after_abort_refuses_unconfirmed
 test_empty_status_after_abort_refuses_unconfirmed
