@@ -201,6 +201,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/harness-adapters/references/harness/gemini.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/harness-adapters/references/harness/grok.md",
       "audience": "agent-runtime"
     },
@@ -291,6 +295,10 @@
     {
       "path": "docs/agent-control.md",
       "audience": "maintainer-architecture"
+    },
+    {
+      "path": "integration-report.md",
+      "audience": "maintainer-verification"
     },
     {
       "path": "docs/architecture.md",
@@ -389,6 +397,10 @@
       "audience": "operator-current"
     },
     {
+      "path": "docs/secondmate-parent-channel.md",
+      "audience": "maintainer-architecture"
+    },
+    {
       "path": "docs/scripts.md",
       "audience": "operator-current"
     },
@@ -458,6 +470,10 @@
     },
     {
       "path": "docs/verification/public-followup.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/verification/secondmate-parent-channel.md",
       "audience": "maintainer-verification"
     },
     {
