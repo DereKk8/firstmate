@@ -45,7 +45,14 @@ make_case() { # <name> -> pipe-delimited record
   local name=$1 dir home proj wt fakebin id
   dir="$TMP_ROOT/$name"; home="$dir/home"; proj="$dir/project"; wt="$dir/wt"; id="$name-z1"
   mkdir -p "$home/data/$id" "$home/state" "$home/config" "$dir/state"
-  printf 'brief\n' > "$home/data/$id/brief.md"
+  cat > "$home/data/$id/brief.md" <<'EOF'
+# Task
+## Captain's intent
+brief
+
+## Firstmate spec
+spec
+EOF
   printf 'codex\n' > "$home/config/crew-harness"
   fm_git_worktree "$proj" "$wt" "wt-$name"
   fakebin=$(make_fakebin "$dir")
