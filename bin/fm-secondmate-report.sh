@@ -90,15 +90,20 @@ fi
 
 token=$(fm_pending_reply_corr_token "$CORR")
 if [ "$DOC_MODE" = 1 ]; then
-  DOC_PATH=$1
+  DOC_PATH=$(fm_parent_channel_clean_note "$1")
   shift
-  NOTE=$*
+  NOTE=$(fm_parent_channel_clean_note "$*")
   if [ -n "$NOTE" ]; then
-    printf '%s [%s]: %s (%s via-helper)\n' "$VERB" "$token" "$NOTE" "$DOC_PATH" >> "$DESTINATION"
+    LINE=$(printf '%s [%s]: %s (%s via-helper)' "$VERB" "$token" "$NOTE" "$DOC_PATH")
   else
-    printf '%s [%s]: %s (via-helper)\n' "$VERB" "$token" "$DOC_PATH" >> "$DESTINATION"
+    LINE=$(printf '%s [%s]: %s (via-helper)' "$VERB" "$token" "$DOC_PATH")
   fi
 else
-  NOTE=$*
-  printf '%s [%s]: %s (via-helper)\n' "$VERB" "$token" "$NOTE" >> "$DESTINATION"
+  NOTE=$(fm_parent_channel_clean_note "$*")
+  LINE=$(printf '%s [%s]: %s (via-helper)' "$VERB" "$token" "$NOTE")
+fi
+
+if ! fm_parent_channel_report "$HOME_DIR" "$STATE_DIR" "$LINE"; then
+  echo "error: cannot append report to parent channel '$DESTINATION'" >&2
+  exit 1
 fi
