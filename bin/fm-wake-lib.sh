@@ -1191,7 +1191,7 @@ fm_treehouse_project_lock_path() {  # <project-dir>
       *://*|*:* ) ;;
       *) [ ! -d "$project/$origin" ] || origin=$(CDPATH='' cd -- "$project/$origin" 2>/dev/null && pwd -P) || return 1 ;;
     esac
-    identity=$origin
+    identity=$(printf '%s\n' "$origin" | sed -e 's,^https://,,g' -e 's,^http://,,g' -e 's,^ssh://,,g' -e 's,^git@,,g' -e 's,\.git$,,g' -e 's,:,/,g')
   else
     top=$(git -C "$project" rev-parse --show-toplevel 2>/dev/null) || return 1
     top=$(CDPATH='' cd -- "$top" 2>/dev/null && pwd -P) || return 1

@@ -469,8 +469,8 @@ function runGuard(stopHookActive: boolean): Promise<{ code: number; stderr: stri
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    child.on("error", () => resolveResult({ code: 0, stderr: "" }));
-    child.on("close", (code) => resolveResult({ code: code ?? 0, stderr }));
+    child.on("error", () => resolveResult({ code: 2, stderr: "failed to spawn guard script" }));
+    child.on("close", (code) => resolveResult({ code: code ?? 2, stderr }));
     child.stdin.end(JSON.stringify({ stop_hook_active: stopHookActive }));
   });
 }
@@ -491,8 +491,8 @@ function runChecker(script: string, command: string): Promise<{ code: number; st
     child.stderr.on("data", (chunk) => {
       stderr += chunk.toString();
     });
-    child.on("error", () => resolveResult({ code: 0, stderr: "" }));
-    child.on("close", (code) => resolveResult({ code: code ?? 0, stderr }));
+    child.on("error", () => resolveResult({ code: 2, stderr: "failed to spawn guard script" }));
+    child.on("close", (code) => resolveResult({ code: code ?? 2, stderr }));
   });
 }
 

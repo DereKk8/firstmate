@@ -834,16 +834,18 @@ command_hold() {
   # snapshot may see the harmless stamp by itself, but can never see a newly
   # held task without the timestamp that defines this hold lifecycle's age.
   show=$(task_show "$id") || fail "task $id disappeared before recording its hold-set stamp"
-  write_hold_set_stamp "$id" "$(show_field "$show" body)" "$hold_set" "$preserve_hold_set"
+  local original_body
+  original_body="$(show_field "$show" body)"
+  write_hold_set_stamp "$id" "$original_body" "$hold_set" "$preserve_hold_set"
   show=$(task_show "$id") || fail "task $id disappeared while recording its hold-set stamp"
   [ -n "$(body_hold_set_timestamp "$(show_field_value "$show" body)")" ] \
     || fail "task $id did not retain its hold-set stamp"
   if [ -n "$until" ]; then
     tasks_axi hold "$id" --reason "$reason" --kind captain --until "$until" >/dev/null \
-      || fail "could not hold task $id for the captain"
+      || { tasks_axi edit "$id" --body "$original_body" >/dev/null; fail "could not hold task $id for the captain"; }
   else
     tasks_axi hold "$id" --reason "$reason" --kind captain >/dev/null \
-      || fail "could not hold task $id for the captain"
+      || { tasks_axi edit "$id" --body "$original_body" >/dev/null; fail "could not hold task $id for the captain"; }
   fi
   show=$(task_show "$id") || fail "task $id disappeared while holding it"
   hold_kind=$(show_field_value "$show" hold_kind)

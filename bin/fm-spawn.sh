@@ -390,7 +390,7 @@ if [ "$LAUNCH_ENV_ENABLED" = 1 ]; then
     echo "error: config/launch-env-allowlist must be a readable regular file" >&2
     exit 1
   fi
-  if ! LAUNCH_ENV_NAMES=$(jq -Rrs '
+  if ! LAUNCH_ENV_NAMES=$(jq -r -R -s '
     split("\n") | map(select(. != "" and (startswith("#") | not))) |
     if all(.[]; test("^[A-Za-z_][A-Za-z0-9_]*$")) then .[]
     else error("expected environment names only") end

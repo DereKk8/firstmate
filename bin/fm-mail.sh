@@ -505,6 +505,10 @@ mail_poll() {
   # Under `set -o pipefail`, `printf | head -n1` can EPIPE a multi-row list and abort the poll.
   first_line="${list%%$'\n'*}"
   generation="${first_line#*$'\t'}"
+  if [ -z "$generation" ]; then
+    fm_mail_log "error: empty or malformed generation in poll response"
+    return 1
+  fi
   if [ "$list" = "$first_line" ]; then
     list=""
   else

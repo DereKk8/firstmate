@@ -104,8 +104,10 @@ def body_preview(msg):
 def cmd_read():
     try:
         m = connect_mailbox()
-        m.select('INBOX')
+        typ_sel, _ = m.select('INBOX')
+        if typ_sel != 'OK': raise Exception('select INBOX failed: ' + str(typ_sel))
         typ, data = m.uid('search', None, 'UNSEEN')
+        if typ != 'OK': raise Exception('search UNSEEN failed: ' + str(typ))
         ids = (data[0] or b'').split()
         if not ids:
             print('(no unseen mail)')
@@ -281,10 +283,12 @@ def cmd_poll_list():
     m = None
     try:
         m = connect_mailbox()
-        m.select('INBOX')
+        typ_sel, _ = m.select('INBOX')
+        if typ_sel != 'OK': raise Exception('select INBOX failed: ' + str(typ_sel))
         ur = m.untagged_responses.get('UIDVALIDITY')
         uidv = clean(ur[-1].decode()) if ur else ''
         typ, data = m.uid('search', None, 'UNSEEN')
+        if typ != 'OK': raise Exception('search UNSEEN failed: ' + str(typ))
         unseen = []
         for x in (data[0] or b'').split():
             uid = x.decode() if isinstance(x, bytes) else str(x)
@@ -316,7 +320,7 @@ def cmd_poll_list():
         # durable cursor past itself, never stalling the march over the whole
         # retry set.
         retry_window = retry_scan_window(retry_order, retry_pos, window)
-        retry_candidates = [u for u in retry_window if u in seen]
+        retry_candidates = [u for u in retry_window if u in seen and u in unseen]
         turn_path = os.environ.get('FM_MAIL_TURN', '')
         next_turn = None
         if cap == 1 and new_candidates and retry_candidates:

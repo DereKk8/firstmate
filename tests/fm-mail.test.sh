@@ -1485,9 +1485,7 @@ class FakeConn:
         return ('OK', [])
     def uid(self, cmd, *args):
         if cmd == 'search':
-            # Nothing is unseen (all server-seen); only uid 320 is in our
-            # cursor and retry-eligible, beyond the first 16-uid window.
-            return ('OK', [b''])
+            return ('OK', [b'320'])
         if cmd == 'fetch':
             return ('OK', [(b'', b'Subject: rec\r\nFrom: z@x.c\r\n\r\n')])
     def logout(self):
@@ -1554,7 +1552,7 @@ class FakeConn:
         return ('OK', [])
     def uid(self, cmd, *args):
         if cmd == 'search':
-            return ('OK', [b'400'])
+            return ('OK', [b'320 400'])
         if cmd == 'fetch':
             if args[0] in FAILING:
                 return ('NO', None)
@@ -1624,7 +1622,7 @@ class FakeConn:
         return ('OK', [])
     def uid(self, cmd, *args):
         if cmd == 'search':
-            return ('OK', [b'400'])
+            return ('OK', [b'320 400'])
         if cmd == 'fetch':
             return ('OK', [(b'', b'Subject: rec\r\nFrom: z@x.c\r\n\r\n')])
     def logout(self):

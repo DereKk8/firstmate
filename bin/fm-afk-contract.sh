@@ -651,7 +651,7 @@ fm_afk_contract_parse_inputs() {  # <args...>; sets WORDS, the CLAUSE_* arrays, 
     [ -f "$words_file" ] || { fm_afk_contract_log "words file not found: $words_file"; return 2; }
     # Command substitution strips trailing newlines; the sentinel keeps the
     # file's bytes verbatim, trailing newlines included.
-    WORDS=$(cat "$words_file"; printf x) || return 1
+    WORDS=$(cat "$words_file" || exit $?; printf x) || return 1
     WORDS=${WORDS%x}
   fi
   return 0
