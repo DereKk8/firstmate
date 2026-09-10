@@ -12,7 +12,7 @@ case_dir="$TMP_ROOT/fast-forward"
 home="$case_dir/home"
 project="$case_dir/project"
 root="$case_dir/root"
-mkdir -p "$home/state" "$root/bin"
+mkdir -p "$home/state" "$home/data" "$root/bin"
 cat > "$root/bin/fm-guard.sh" <<'SH'
 #!/usr/bin/env bash
 exit 0

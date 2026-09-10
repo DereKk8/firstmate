@@ -1,7 +1,7 @@
 ---
 name: cardio
 description: >-
-  Authorize a batch of dispatchable pending work, launch what the captain picks, and hand off to away-mode. Use when the user invokes /cardio (e.g. "/cardio", "/cardio back in 45", "going for a run, cardio it"), or otherwise says they want to greenlight a batch of queued work and then step away for a stretch (a workout, an errand, a deep-work block - not morning-specific). A thin front-end over /afk: it does not reimplement the away-mode daemon, watcher, or escalation logic.
+  Authorize a batch of dispatchable pending work, launch what the captain picks, and hand off to away-mode. Use when the user invokes /cardio (e.g. "/cardio", "/cardio back in 45", "going for a run, cardio it"), or otherwise says they want to greenlight a batch of queued work and then step away for a stretch (a workout, an errand, a deep-work block - not morning-specific). A thin front-end over /afk: it does not reimplement the away posture, watcher, or escalation logic.
 user-invocable: true
 metadata:
   internal: true
@@ -16,7 +16,7 @@ straight off to `/afk` for the away stretch itself.
 
 `/cardio` owns exactly one thing: turning a backlog scan plus a captain
 decision into dispatched tasks. Everything about *how firstmate behaves while
-the captain is away* - the daemon, the sentinel marker, escalation
+the captain is away* - the away posture, sentinel marker, escalation
 classification, the busy/composer guards, exit-on-return - belongs to `/afk`
 and is not reimplemented here.
 

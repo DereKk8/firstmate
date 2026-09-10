@@ -45,7 +45,7 @@ Each review is pinned to an immutable source commit and merge base, and each sou
 
 ## Compatibility evidence
 
-The contract is plain Markdown and is harness-agnostic across Claude, Codex, OpenCode, Pi, `pi-signed`, Grok, and Kimi.
+The contract is plain Markdown and is harness-agnostic across Claude, Codex, OpenCode, Pi, `pi-signed`, Grok, Kimi, Cursor, and omp.
 It adds no runtime-backend behavior and uses the ordinary scout path across tmux, Herdr, Zellij, Orca, and cmux.
 The source artifact pinning cases cover no-mistakes, direct-PR, and local-only delivery modes.
 No project repository, public `skills/` entry, external global skill, GitHub issue, delivery-path owner, lifecycle script, or metadata schema is changed by this feature.
