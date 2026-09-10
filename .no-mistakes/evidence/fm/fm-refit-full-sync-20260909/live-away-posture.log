@@ -1,0 +1,38 @@
+COMMAND=propose
+Away posture read-back (proposed, not yet confirmed):
+  entered: 2026-09-10T13:34:30Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  reach: hold-for-return only. No phone channel is configured; anything that needs you waits for your return.
+  your words (verbatim):
+    sync after checks
+  accepted clauses:
+    1. merge the sync PR when CI is green
+  refused clauses:
+    (none)
+  everything else waits for your return: no red merge without its named check, no discard without a named object and condition, never credentials, legal, financial, or attended prompts, nothing by analogy, and every clause expires at return.
+  hard rule: forbidden, destructive, irreversible, and security-sensitive actions are never pre-authorizable regardless of clause text; no recorded clause is authority by itself.
+  recorded clauses are held for the return brief and are not executed by this release.
+Say go to confirm; restate any refused clause first if you want it recorded.
+COMMAND=confirm
+Away posture confirmed at 2026-09-10T13:34:30Z: hold-for-return only. No phone channel is configured; anything that needs you waits for your return. 1 mandate clause(s) recorded, 0 refused, and 0 flagged as naming a never-set concept; recorded clauses are held for the return brief and are not executed by this release; forbidden, destructive, irreversible, and security-sensitive actions are never pre-authorizable regardless of clause text, and no recorded clause is authority by itself. Expected return: not given. Spend cap: 4 concurrent workers.
+COMMAND=readback
+Away posture (confirmed):
+  entered: 2026-09-10T13:34:30Z
+  expected return: not given
+  spend cap: 4 concurrent workers
+  reach: hold-for-return only. No phone channel is configured; anything that needs you waits for your return.
+  your words (verbatim):
+    sync after checks
+  accepted clauses:
+    1. merge the sync PR when CI is green
+  refused clauses:
+    (none)
+  everything else waits for your return: no red merge without its named check, no discard without a named object and condition, never credentials, legal, financial, or attended prompts, nothing by analogy, and every clause expires at return.
+  hard rule: forbidden, destructive, irreversible, and security-sensitive actions are never pre-authorizable regardless of clause text; no recorded clause is authority by itself.
+  recorded clauses are held for the return brief and are not executed by this release.
+COMMAND=validate
+STATE_FILES
+.afk-contract
+
+EXIT_CODE=0

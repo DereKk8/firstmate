@@ -1,0 +1,10 @@
+COMMAND=status
+mail account: validation@example.invalid
+imap: imap.example.invalid:993 smtp: smtp.example.invalid:465
+cursor: (none)
+COMMAND=missing-config
+fm-mail: missing required $FM_HOME/.env value: FM_MAIL_USER
+fm-mail: add FM_MAIL_USER (and the other three FM_MAIL_* values) to /tmp/fm-live-mail-status.XQaD9n/.env
+MISSING_CONFIG_EXIT_CODE=1
+
+EXIT_CODE=0

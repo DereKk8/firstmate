@@ -1,0 +1,11 @@
+ok - omp omp/18.1.16: both tracked .omp/extensions loaded by auto-discovery with no -e and no trust dialog
+not ok - omp did not finish the first turn: 
+# rpc frame types seen:
+      2 "type":"response"
+      1 "type":"ready"
+      1 "type":"extension_ui_request"
+      1 "type":"available_commands_update"
+# guard spy log:
+# last stderr lines:
+
+EXIT_CODE=1

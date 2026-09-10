@@ -1,0 +1,15 @@
+COMMAND=register
+registered: live-event (lavish)
+COMMAND=start
+not-autohandled: live-event (left for the handler; still unacknowledged)
+captured: /tmp/fm-live-procevent.S8EMxv/state/procevent-inbox/live-event.1.result
+COMMAND=list
+SOURCE                       ADAPTER      OWNER      PENDING
+live-event                   lavish       none       1
+WAKE_QUEUE
+1789047838	1	check	procevent:live-event:1	check: procevent lavish live-event 1
+CAPTURE
+live-event.1.adapter
+live-event.1.result
+
+EXIT_CODE=0

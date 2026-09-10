@@ -1,0 +1,59 @@
+ok - fm-mail: missing required configuration fails cleanly naming the variable
+ok - fm-mail: environment values override the .env file
+ok - fm-mail: status succeeds without network and prints configuration
+ok - fm-mail: --help prints usage for every subcommand
+ok - fm-mail: unknown subcommand prints usage and exits non-zero
+ok - fm-mail: status never prints the password
+ok - fm-mail: send passes body not empty through stdin
+ok - fm-mail: poll propagates errors instead of swallowing them
+ok - fm-mail: poll surfaces each new uid exactly once
+ok - fm-mail: generation change prevents a reused uid from being suppressed
+ok - fm-mail: poll heals a wake whose cursor record was interrupted
+ok - fm-mail: a poll interrupted before evidence writes does not duplicate on recovery
+ok - fm-mail: the poll lock serializes overlapping polls so mail wakes exactly once
+ok - fm-mail: journal recovers a wake the drain already acknowledged
+ok - fm-mail: an acknowledged wake whose cursor record was lost is recovered from the journal
+ok - fm-mail: a legacy generation-less wake never marks a reused uid surfaced
+ok - fm-mail: a missing wake library fails the poll instead of suppressing mail
+ok - fm-mail: a wake with no durable record is rolled back, not left ackable
+ok - fm-mail: a rollback failure never releases a wake the drain could acknowledge without a durable record
+ok - fm-mail: per-poll wake cap bounds the durable queue without missing mail
+ok - fm-mail: poll sanitizes tabs and newlines in header fields
+ok - fm-mail: bounded fetch makes progress through a large backlog without re-surfacing mail
+ok - fm-mail: an unfetchable uid is surfaced degraded and cannot starve later mail
+ok - fm-mail: a transient fetch failure recovers real metadata on a later poll
+ok - fm-mail: the retry-scan cursor advances past persistent failures
+ok - fm-mail: retry-scan position does not advance past an unpublished wake
+ok - fm-mail: retry budget advances the scan by examined candidates, not the window
+ok - fm-mail: a retry window of unseen uids never stalls the cursor
+ok - fm-mail: an unfetchable retry window still advances while new mail fills out
+ok - fm-mail: an unseen retry window still advances while new mail fills out
+ok - fm-mail: hung logout cannot advance the retry-scan position
+ok - fm-mail: poll_list logs out when IMAP work fails after login
+ok - fm-mail: retry-scan position is not saved when a row is emitted
+ok - fm-mail: small retry window rotates past an unfetchable prefix
+ok - fm-mail: cap-one turn is not saved before emit/flush
+ok - fm-mail: a failed retry-pos write does not spend the cap-one retry turn
+ok - fm-mail: the reserved retry budget survives a new-mail flood
+ok - fm-mail: a retry uid whose degraded wake never recorded is re-surfaced, not dropped
+ok - fm-mail: a cap of one never suppresses new mail while retries exist
+ok - fm-mail: a single contended slot alternates between new mail and retry recovery
+ok - fm-mail: a zero retry budget leaves the retry-scan position unchanged
+ok - fm-mail: a failed retry write fails the poll instead of losing recovery
+ok - fm-mail: a journal write failure never cursor-records a suppressed mail
+ok - fm-mail: a failed retry clear fails the poll; the published wake stays and the retry entry remains
+ok - fm-mail: a failed stale-retry clear fails the poll instead of silently leaving a duplicate-wake entry
+ok - tests/lib: assert_equals fails on mismatch so cursor assertions cannot false-pass
+ok - fm-mail: a failed poll_list fails closed, wakes nothing, and releases the lock
+ok - fm-mail: a recovered wake that cannot append restores the retry instead of stranding the metadata
+ok - fm-mail: a death between retry remove and wake publish cannot strand recovered metadata
+ok - fm-mail: a raised FETCH surfaces that uid degraded and advances
+ok - fm-mail: the journal survives when the heal cannot commit a uid
+ok - fm-mail: heal failure with unseen mail fails the poll instead of re-waking
+ok - fm-mail: an empty plain-text alternative falls back to the html preview
+ok - fm-mail: body_preview does not crash on a None payload
+ok - fm-mail: read tolerates a None payload without crashing
+ok - fm-mail: read does not silently hide an unfetchable uid
+ok - fm-mail: a non-numeric port fails cleanly in bash
+
+EXIT_CODE=0

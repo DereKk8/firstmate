@@ -1,0 +1,13 @@
+ok - fm-spawn: rovo launches bare, waits for readiness, and delivers its brief pointer
+ok - fm-spawn: rovo omits efficiencyLevel for xhigh but keeps its allowedExternalPaths grant, recording xhigh in task metadata
+ok - fm-spawn: rovo's supported effort values merge into the same --config-override as its allowedExternalPaths grant
+ok - fm-spawn: rovo never sends the brief pointer before an observable ready signal, and tears down the created endpoint on failure
+ok - fm-spawn: rovo treats a silent pointer drop as a failed spawn, and tears down the created endpoint
+ok - fm-spawn: missing rovo executable refuses before pane creation
+ok - fm-spawn: rovo cannot be launched as a secondmate
+ok - fm-harness: rovo's markers outrank an inherited CLAUDECODE, and markerless ancestry still resolves rovo
+ok - fm-control-lib: rovo's lifecycle table matches its verified facts
+ok - busy detection: rovo's rendered busy line classifies through its own isolated fallback
+ok - busy detection: a rovo busy marker scrolled out of the tail classifies unknown, never idle
+
+EXIT_CODE=0

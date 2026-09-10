@@ -1,0 +1,3 @@
+ok - the liveness beacon stays fresh while the watcher absorbs benign wakes (fm-guard never false-alarms)
+TEST=watch beacon isolated
+RC=0

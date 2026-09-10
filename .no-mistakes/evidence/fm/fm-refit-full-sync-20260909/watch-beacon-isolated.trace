@@ -1,0 +1,8 @@
++ source /dev/stdin
+++ set -u
++++ dirname /dev/stdin
+++ . /dev/wake-helpers.sh
+/dev/stdin: line 21: /dev/wake-helpers.sh: No such file or directory
+/dev/stdin: line 23: ROOT: unbound variable
+TEST=watch beacon isolated
+RC=127

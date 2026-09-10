@@ -1,0 +1,8 @@
+COMMAND=guard while away
+fm-afk-return: away mode is still active; run bin/fm-afk-return.sh before ordinary captain work
+GUARD_EXIT_CODE=3
+STATE_FILES
+.afk
+.afk-contract
+
+EXIT_CODE=0

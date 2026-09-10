@@ -1,0 +1,3 @@
+ok - local-only landing fast-forwards and preserves worker commit history
+
+EXIT_CODE=0

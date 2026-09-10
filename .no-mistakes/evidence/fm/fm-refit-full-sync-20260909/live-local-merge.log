@@ -1,0 +1,17 @@
+COMMAND=bin/fm-merge-local.sh live-local
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair missing watcher supervision with a foreground checkpoint: bin/fm-watch-checkpoint.sh --seconds 180.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+merged fm/live-local into local main (41e00c9 -> 3c0285a) in /tmp/fm-live-local-merge.IJcqFQ/project
+OBSERVED_MAIN_LOG
+3c0285a landed local change
+41e00c9 base
+OBSERVED_FILE
+landed
+OBSERVED_STATUS
+
+EXIT_CODE=0

@@ -1,0 +1,30 @@
+ok - a routed handoff wakes once and a successful rerun stays idempotent
+ok - a failed receiver wake is loud and retries from an already-present handoff
+ok - a failed advisory doorbell leaves the inbox delivery successful and idempotent
+ok - concurrent reconciliation treats enqueue as delivery despite a failed advisory ring
+tests/fm-backlog-handoff.test.sh: line 263: 1552914 Killed                     FM_REAL_TASKS_AXI="$real_tasks" PATH="$fakebin:$PATH" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design crash-item > "$TMP_ROOT/move-crash.out" 2>&1
+ok - a post-move crash preserves wake intent for an idempotent retry
+tests/fm-backlog-handoff.test.sh: line 339: 1559623 Killed                     FM_REAL_TASKS_AXI="$real_tasks" PATH="$fakebin:$PATH" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design pre-move-crash > "$TMP_ROOT/pre-move-crash.out" 2>&1
+ok - a pre-move crash wakes only after retry makes the item durable
+tests/fm-backlog-handoff.test.sh: line 414: 1566795 Killed                     PATH="$fakebin:$PATH" FM_REAL_RM="$real_rm" FM_CONFIRM_CRASH_ONCE="$TMP_ROOT/confirm-crash.once" FM_CONFIRM_WAKE_MARKER="$home/state/.backlog-handoff-design.wake-pending" FM_HOME="$home" "$ROOT/bin/fm-backlog-handoff.sh" design confirm-crash > "$TMP_ROOT/confirm-crash.out" 2>&1
+ok - a post-confirmation crash reconciles once without suppressing a later handoff wake
+ok - an unresolved delivery attempt refuses an immediate duplicate wake
+ok - concurrent local handoffs serialize each durable move with its wake
+ok - local teardown waits for the routed move and receiver wake
+ok - failed local home removal preserves its wake and a retry retires both
+ok - body followed by another item moves intact with no source orphans
+ok - body followed by section heading moves intact; section stays
+ok - multi-paragraph body with internal blank lines moves whole and is idempotent
+ok - body as last lines of the file moves intact
+ok - EOF body before a seeded destination section keeps its boundary
+ok - untouched EOF line preserves its original terminator
+ok - body-carrying handoff is idempotent: re-run changes nothing
+ok - noncanonical one-space and tab continuations refuse without changes
+ok - indented ## Intent / ## Acceptance are body, not section boundaries
+ok - registry home parses when summary has parentheses before (home: ...)
+ok - registry entry without (home: ...) fails cleanly with has no home
+ok - handoff reports a moved item whose public commitment still binds this home
+ok - handoff says nothing about public commitments in a relay-free home
+ALL TESTS PASSED
+TEST=tests/fm-backlog-handoff.test.sh
+RC=0

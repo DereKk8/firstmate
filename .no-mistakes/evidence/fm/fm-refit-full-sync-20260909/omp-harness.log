@@ -1,0 +1,13 @@
+ok - fm-harness: omp detects by its anchored name; the marker is a precedence override that needs real omp ancestry
+ok - session lock and tmux liveness: omp is anchored, decoys stay out
+ok - fm-spawn: the omp launch line clears markers, pins posture, and wires the state-resident extension
+ok - fm-spawn: omp model validation is scoped to providers the listing can prove
+ok - fm-spawn: a real omp secondmate launch relies on auto-discovery while crewmates load one -e
+ok - fm-spawn: the config/secondmate-harness model pin is validated against the omp catalog before launch
+ok - omp extension: agent_start busy, willContinue stays busy, plain agent_end idle, turn_end a notification
+ok - control, composer, and supervision-model tables carry omp's verified values
+ok - fm-wake-lib: the omp ownership proof is keyed on its own extensions and gates the hand-off tolerance
+ok - .omp turn-end guard: digest delivery, seatbelt block, one compelled continuation, flagged stop stands down
+ok - .omp watch extension: fm_watch_arm_omp arms once, repeats as a no-op, and delivers an actionable close as one follow-up
+
+EXIT_CODE=0

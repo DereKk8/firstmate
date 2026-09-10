@@ -1,0 +1,3 @@
+not ok - FM_ROVO_SIGNALS_LIVE=1 but no real rovo executable is installed
+
+EXIT_CODE=1

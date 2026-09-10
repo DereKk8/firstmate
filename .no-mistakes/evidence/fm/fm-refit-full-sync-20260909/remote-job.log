@@ -1,0 +1,28 @@
+ok - default queue and execution bounds independently cover long polls
+ok - operator PATH excludes a symlinked local bin
+ok - operator PATH honors nvm defaults with a deterministic fallback
+ok - operator PATH resolves the authorized Nix profile bin link
+ok - operator PATH orders discovered tool installs deterministically
+ok - the worker preserves bounded argv and stdin in an empty environment
+ok - active jobs keep the worker ready for concurrent requests
+ok - ensure replaces a live worker after its code changes
+ok - worker identity binds the canonical configured code root
+ok - stale ownership is reclaimed without signaling a reused pid
+ok - the worker enforces the job timeout and publishes its result
+ok - the worker expires queued jobs before they can mutate
+ok - queued jobs receive a fresh bounded execution window
+ok - a queued short command preempts a running long poll instead of waiting its window
+ok - a poll re-armed after preemption reads the same cursor with nothing lost
+ok - sibling polls never preempt each other into a re-arm churn loop
+ok - worker shutdown terminates the active command tree before replacement
+ok - Linux supervision recovers crashes and stops orphaned commands
+ok - pre-execution validation obeys the job timeout
+ok - the worker drains bounded output without changing command results
+ok - the worker refuses symlinked job fields before command execution
+ok - failed shutdown quarantines ownership against replacement workers
+ok - quarantine recovery refuses unverifiable supervisors and ignores reused pids
+ok - a repeatedly signalled shutdown still releases ownership for the next worker
+ok - barely healthy worker failures remain bounded by the restart guard
+ALL TESTS PASSED
+TEST=tests/fm-remote-job.test.sh
+RC=0

@@ -1,0 +1,3 @@
+ok - omp omp/18.1.16: both tracked .omp/extensions loaded by auto-discovery with no -e and no trust dialog
+TEST=tests/fm-omp-primary-live-e2e.test.sh
+RC=143
