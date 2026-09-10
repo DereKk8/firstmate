@@ -48,6 +48,7 @@ Hold-for-return is the default and the only reach profile this release records: 
    The daemon is **presence-gated**: it injects escalations only while `state/.afk` exists, and stays quiet otherwise.
 5. **Do not separately arm `fm-watch.sh` where the daemon runs.** The daemon manages the watcher as its child; the singleton lock no-ops a stray arm harmlessly.
    On Pi nothing changes about arming: the supervision session's own cycle continues.
+   On daemon-backed harnesses, **Acknowledge** in `AGENTS.md` section 9 language with the plain-English example: "Captain, away mode is active; I will batch routine updates and surface only decisions, failures, credentials, or review-ready work until you return."
 
 ## While away
 
