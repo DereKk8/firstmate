@@ -1,0 +1,23 @@
+=== adversarial: bare merge content must not silently pass ===
+=== adversarial: preserve fork skills not clobbered by upstream-only tree ===
+skills only on fork parent (p1) not in upstream tip (p2):
+fork-only skill paths retained in merge:
+RETAINED .agents/skills/cardio/SKILL.md
+RETAINED .agents/skills/explain/explainer-brief.md
+RETAINED .agents/skills/explain/SKILL.md
+RETAINED .agents/skills/refactor-review/SKILL.md
+RETAINED .agents/skills/refit/SKILL.md
+RETAINED .agents/skills/reset-window/SKILL.md
+--- upstream skills retained ---
+TOOK .agents/skills/harness-adapters/references/harness/agy.md
+TOOK .agents/skills/quiet/SKILL.md
+--- quiet skill from upstream retained? ---
+yes
+feat(afk): add quiet supervision mode for a present captain (#4337)
+--- fork-only bin helpers ---
+also-upstream bin/fm-tasks-axi.sh
+in-merge bin/fm-tasks-axi.sh
+also-upstream bin/fm-review-diff.sh
+in-merge bin/fm-review-diff.sh
+fork-only bin/fm-merge-content-check.sh
+in-merge bin/fm-merge-content-check.sh

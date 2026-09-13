@@ -1,0 +1,65 @@
+=== omp fail: inspect test and env ===
+  done
+  printf '%s' "$dir"
+}
+
+# --- 1. Detection --------------------------------------------------------------
+
+test_detection_anchored_name_and_marker_precedence() {
+  local bin out
+  bin=$(make_named_shells "$TMP_ROOT/named")
+  # shellcheck disable=SC2016 # the quoted body expands inside the named shell
+  out=$(env -u CLAUDECODE -u FM_OMP_HARNESS -u PI_CODING_AGENT -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
+    "$bin/omp" -c '"$1"; :' _ "$HARNESS")
+  [ "$out" = omp ] || fail "a process named omp must detect as omp, got '$out'"
+  for decoy in ompd comp; do
+    # shellcheck disable=SC2016 # the quoted body expands inside the named shell
+    out=$(env -u CLAUDECODE -u FM_OMP_HARNESS -u PI_CODING_AGENT -u CURSOR_AGENT -u CURSOR_INVOKED_AS \
+      "$bin/$decoy" -c '"$1"; :' _ "$HARNESS")
+    [ "$out" != omp ] || fail "'$decoy' merely contains omp and must not detect as omp"
+  done
+  # The marker beats an inherited CLAUDECODE only under a real omp ancestor.
+  # shellcheck disable=SC2016 # the quoted body expands inside the named shell
+  out=$(env -u PI_CODING_AGENT -u CURSOR_AGENT -u CURSOR_INVOKED_AS CLAUDECODE=1 FM_OMP_HARNESS=omp \
+    "$bin/omp" -c '"$1"; :' _ "$HARNESS")
+  [ "$out" = omp ] || fail "FM_OMP_HARNESS under an omp ancestor must outrank an inherited CLAUDECODE, got '$out'"
+  # ...and is inert when it leaks into a worker with no omp ancestor.
+  # shellcheck disable=SC2016 # the quoted body expands inside the named shell
+  out=$(env -u PI_CODING_AGENT -u CURSOR_AGENT -u CURSOR_INVOKED_AS CLAUDECODE=1 FM_OMP_HARNESS=omp \
+    bash -c '"$1"; :' _ "$HARNESS")
+  [ "$out" = claude ] || fail "a leaked FM_OMP_HARNESS without an omp ancestor must not relabel a claude worker, got '$out'"
+  pass "fm-harness: omp detects by its anchored name; the marker is a precedence override that needs real omp ancestry"
+}
+
+test_lock_identity_and_liveness_classification() {
+  fm_harness_process_matches omp '' || fail "session-lock identity must accept the exact omp name"
+  fm_harness_process_matches /usr/local/bin/omp 'omp --cwd /x' || fail "session-lock identity must accept an omp path"
+  ! fm_harness_process_matches ompd '' || fail "session-lock identity must not accept ompd"
+  ! fm_harness_process_matches comp '' || fail "session-lock identity must not accept comp"
+  # shellcheck source=bin/fm-backend.sh
+  . "$ROOT/bin/fm-backend.sh"
+  fm_backend_source tmux || fail "fm_backend_source tmux failed"
+  [ "$(fm_agent_process_classify_name omp)" = agent ] || fail "tmux liveness must classify omp as an agent"
+--- env markers ---
+PI_CODING_AGENT=true
+NOTION_API_TOKEN=ntn_A72916832749swpgxCPjZafZUD5zH6Lv5WZrCWqe3xff83
+PI_REASONING_LEVEL=medium
+PI_PROVIDER=xai
+PI_MODEL=grok-4.5
+CONTEXT7_API_KEY=ctx7sk-a83fc883-1abe-4001-81d5-6da9148885c2
+PI_SESSION_ID=01a09bab-e23c-74e6-a96f-366599038b7d
+CLAUDE_DO_NOT_TRACK=1
+PATH=/home/derekk/.pi/agent/bin:/home/derekk/.local/bin:/home/derekk/.local/share/mise/installs/pi/latest/pi:/home/derekk/.local/share/mise/installs/aqua-modem-dev-hunk/latest/hunkdiff-linux-x64:/home/derekk/.local/share/mise/installs/bun/latest/bin:/home/derekk/.local/share/mise/installs/claude/latest:/home/derekk/.local/share/mise/installs/codex/latest/bin:/home/derekk/.local/share/mise/installs/gemini/latest/node_modules/.bin:/home/derekk/.local/share/mise/installs/gh/latest/gh_2.100.0_linux_amd64/bin:/home/derekk/.local/share/mise/installs/github-can1357-oh-my-pi/latest:/home/derekk/.local/share/mise/installs/node/26.8.1/bin:/home/derekk/.local/share/mise/installs/opencode/latest:/home/derekk/.local/share/mise/shims:/home/derekk/.nix-profile/bin:/nix/var/nix/profiles/default/bin:/home/derekk/go/bin:/home/derekk/.cargo/bin:/home/derekk/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl
+GIT_TERMINAL_PROMPT=0
+--- process tree sample ---
+    PID    PPID COMMAND         COMMAND
+3581495 3447691 bash            /bin/bash -c cd /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G && EVID=/home/derekk/.no-mistakes/evidence/01M2DT6R8KQJ8B7RRC8JY4YD0G && {   echo '=== omp fail: inspect test and env ==='   sed -n '60,100p' tests/fm-omp-harness.test.sh   echo '--- env markers ---'   env | rg -i 'FM_|CLAUDE|OMP|PI_|AGY' | head -40   echo '--- process tree sample ---'   ps -o pid,ppid,comm,args -p $$ 2>/dev/null   ps -o pid,ppid,comm,args --ppid $PPID 2>/dev/null | head -10   # walk parents   p=$$; for i in 1 2 3 4 5 6 7 8; do     ps -o pid=,ppid=,comm=,args= -p $p 2>/dev/null     p=$(ps -o ppid= -p $p 2>/dev/null | tr -d ' ')     [ -n "$p" ] && [ "$p" != 0 ] || break   done } | tee "$EVID/08-omp-env-context.txt"
+    PID    PPID COMMAND         COMMAND
+3581495 3447691 bash            /bin/bash -c cd /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G && EVID=/home/derekk/.no-mistakes/evidence/01M2DT6R8KQJ8B7RRC8JY4YD0G && {   echo '=== omp fail: inspect test and env ==='   sed -n '60,100p' tests/fm-omp-harness.test.sh   echo '--- env markers ---'   env | rg -i 'FM_|CLAUDE|OMP|PI_|AGY' | head -40   echo '--- process tree sample ---'   ps -o pid,ppid,comm,args -p $$ 2>/dev/null   ps -o pid,ppid,comm,args --ppid $PPID 2>/dev/null | head -10   # walk parents   p=$$; for i in 1 2 3 4 5 6 7 8; do     ps -o pid=,ppid=,comm=,args= -p $p 2>/dev/null     p=$(ps -o ppid= -p $p 2>/dev/null | tr -d ' ')     [ -n "$p" ] && [ "$p" != 0 ] || break   done } | tee "$EVID/08-omp-env-context.txt"
+3581496 3447691 bash            /bin/bash -c cd /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G && EVID=/home/derekk/.no-mistakes/evidence/01M2DT6R8KQJ8B7RRC8JY4YD0G && {   echo '=== agy missing executable test body ==='   sed -n '800,870p' tests/fm-agy-harness.test.sh   echo '--- which agy ---'   command -v agy || echo 'agy not on PATH'   type agy 2>&1 || true   ls "$(dirname "$(command -v agy 2>/dev/null)" 2>/dev/null)" 2>/dev/null | head   # Run just that test function by extracting approach   # Create isolated PATH without agy and see spawn behavior   bash -c '     set -e     ROOT=$(pwd)     source tests/lib.sh     # try to run the specific assertion path manually if possible   ' 2>&1 | head -5   # Direct: look at how spawn checks for executable   rg -n "command -v|missing|agy" bin/fm-spawn.sh 2>/dev/null | head -30   rg -n "agy" bin/fm-harness.sh | head -20 } | tee "$EVID/09-agy-missing-detail.txt"
+3581497 3447691 bash            /bin/bash -c cd /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G && EVID=/home/derekk/.no-mistakes/evidence/01M2DT6R8KQJ8B7RRC8JY4YD0G && {   echo '=== live quiet mode via fm-afk-launch / fm_afk_mode ==='   TMP=$(mktemp -d /tmp/fm-quiet-live.XXXXXX)   mkdir -p "$TMP/state"   export FM_HOME="$TMP"   export FM_ROOT_OVERRIDE="$(pwd)"   # source and call fm_afk_mode   bash -c '     set -e     source bin/fm-wake-lib.sh     # no flag     echo "no-flag: $(fm_afk_mode "'"$TMP"'/state")"     # write away     printf "away\n" > "'"$TMP"'/state/.afk"     echo "away-flag: $(fm_afk_mode "'"$TMP"'/state")"     # write quiet     printf "quiet\n" > "'"$TMP"'/state/.afk"     echo "quiet-flag: $(fm_afk_mode "'"$TMP"'/state")"     # garbage     printf "nope\n" > "'"$TMP"'/state/.afk"     echo "garbage-flag: $(fm_afk_mode "'"$TMP"'/state")"   '   echo '--- try fm-afk-launch help ---'   bin/fm-afk-launch.sh --help 2>&1 | head -25 || true   bin/fm-afk-launch.sh 2>&1 | head -25 || true   # Check if there are afk quiet tests   ls tests/*afk* tests/*quiet* 2>/dev/null   echo '--- run quiet-related afk tests if any ---'   rg -l "quiet" tests/fm-afk*.test.sh 2>/dev/null   for t in tests/fm-afk-contract.test.sh tests/fm-afk-launch.test.sh tests/fm-wake-lib.test.sh; do     [ -f "$t" ] || continue     if rg -q quiet "$t"; then       echo "RUN $t (has quiet)"       bash "$t" 2>&1 | tail -40       echo exit=$?     fi   done   rm -rf "$TMP" } | tee "$EVID/10-quiet-mode-live.txt"
+3581495 3447691 bash            /bin/bash -c cd /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G && EVID=/home/derekk/.no-mistakes/evidence/01M2DT6R8KQJ8B7RRC8JY4YD0G && {   echo '=== omp fail: inspect test and env ==='   sed -n '60,100p' tests/fm-omp-harness.test.sh   echo '--- env markers ---'   env | rg -i 'FM_|CLAUDE|OMP|PI_|AGY' | head -40   echo '--- process tree sample ---'   ps -o pid,ppid,comm,args -p $$ 2>/dev/null   ps -o pid,ppid,comm,args --ppid $PPID 2>/dev/null | head -10   # walk parents   p=$$; for i in 1 2 3 4 5 6 7 8; do     ps -o pid=,ppid=,comm=,args= -p $p 2>/dev/null     p=$(ps -o ppid= -p $p 2>/dev/null | tr -d ' ')     [ -n "$p" ] && [ "$p" != 0 ] || break   done } | tee "$EVID/08-omp-env-context.txt"
+3447691    1911 pi              /home/derekk/.local/share/mise/installs/pi/latest/pi/pi --no-context-files --model xai/grok-4.5 --mode json --no-session
+   1911    1787 no-mistakes     /home/derekk/.no-mistakes/bin/no-mistakes daemon run --root /home/derekk/.no-mistakes
+   1787       1 systemd         /usr/lib/systemd/systemd --user --deserialize=10
+      1       0 systemd         /sbin/init splash

@@ -1,0 +1,11 @@
+=== PR against main ===
+could not determine current branch: failed to run git: not on any branch
+[]
+--- branch tracking ---
+## HEAD (no branch)
+* (no branch)                         9e2b158 Merge remote-tracking branch 'upstream/main' into fm/fm-refit-upstream-sync-sonnet-r2
+  fm/fm-refit-full-sync-20260909      2159ed8 no-mistakes(ci): Fixed both portable serial failures: restored the AFK section 9 acknowledgement reference and normalized the bootstrap quota-array ownership pointer. Targeted tests, lint, docs checks, syntax, and diff validation pass
+  fm/fm-refit-upstream-sync-sonnet-r2 9e2b158 Merge remote-tracking branch 'upstream/main' into fm/fm-refit-upstream-sync-sonnet-r2
+  pr-92                               2159ed8 no-mistakes(ci): Fixed both portable serial failures: restored the AFK section 9 acknowledgement reference and normalized the bootstrap quota-array ownership pointer. Targeted tests, lint, docs checks, syntax, and diff validation pass
+--- content-check with allowances for known supersessions (product gate path) ===
+exit=0

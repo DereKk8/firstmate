@@ -1,0 +1,48 @@
+=== quiet mode focused tests ===
+tests/fm-afk-return.test.sh:309:test_return_is_mode_agnostic_for_quiet_mode() {
+tests/fm-afk-return.test.sh:310:  # kunchenguid/firstmate#2356's /quiet off calls this exact script, unchanged
+tests/fm-afk-return.test.sh:312:  # "quiet", since return_guard/return_reconcile only ever test presence.
+tests/fm-afk-return.test.sh:314:  dir="$TMP_ROOT/quiet-mode-return"
+tests/fm-afk-return.test.sh:316:  printf 'quiet\n%s\n' "$(date +%s)" > "$dir/home/state/.afk"
+tests/fm-afk-return.test.sh:319:  out=$(run_return "$dir" begin) || fail "return did not succeed cleanly against a quiet-mode flag: $out"
+tests/fm-afk-return.test.sh:320:  assert_contains "$out" 'catch-up clear' "quiet-mode return did not announce ordinary work may proceed"
+tests/fm-afk-return.test.sh:321:  [ ! -e "$dir/home/state/.afk" ] || fail "quiet-mode return left the mode flag behind"
+tests/fm-afk-return.test.sh:322:  [ "$(wc -l < "$dir/home/stop.log" | tr -d ' ')" -eq 1 ] || fail "quiet-mode return did not stop the daemon exactly once"
+tests/fm-afk-return.test.sh:323:  pass "/quiet off's return path behaves identically for a quiet-content flag as for a legacy away-content one"
+tests/fm-afk-return.test.sh:792:test_return_is_mode_agnostic_for_quiet_mode
+tests/fm-afk-launch.test.sh:284:# UNIT 2a: away/quiet mode plumbing (kunchenguid/firstmate#2356). fm_afk_mode
+tests/fm-afk-launch.test.sh:299:  FM_HOME="$st" FM_STATE_OVERRIDE="$st/state" FM_AFK_MODE=quiet \
+tests/fm-afk-launch.test.sh:302:  if [ "$out" = quiet ]; then
+tests/fm-afk-launch.test.sh:303:    pass "mode: a fresh entry with FM_AFK_MODE=quiet writes quiet"
+tests/fm-afk-launch.test.sh:305:    fail "mode: explicit FM_AFK_MODE=quiet fresh entry wrote '$out' instead of quiet"
+tests/fm-afk-launch.test.sh:325:unit_mode_refresh_preserves_quiet() {
+tests/fm-afk-launch.test.sh:329:  printf 'quiet\n%s\n' "$(date '+%s')" > "$st/state/.afk"
+tests/fm-afk-launch.test.sh:338:  # silently clobber quiet back to away if it were not preserve-on-refresh.
+tests/fm-afk-launch.test.sh:341:  if [ "$out" = quiet ]; then
+tests/fm-afk-launch.test.sh:342:    pass "mode: a bare refresh (FM_AFK_MODE unset) of an already-running quiet daemon preserves quiet, never resets to away"
+tests/fm-afk-launch.test.sh:344:    fail "mode: refresh incorrectly changed quiet mode to '$out'"
+tests/fm-afk-launch.test.sh:1198:unit_mode_refresh_preserves_quiet
+ok - return catch-up owns live blocker remediation, reports itself to Bearings as content, preserves evidence once, and clears idempotently
+ok - tmux and Herdr blockers require the same explicit durable reclassification before ordinary work
+ok - needs-decision remains reportable without masquerading as a firstmate-actionable blocker
+ok - AFK return re-drains published wakes until handling acknowledges
+ok - away-mode re-entry fails closed while the prior return catch-up is pending
+ok - /quiet off's return path behaves identically for a quiet-content flag as for a legacy away-content one
+ok - check retries recorded terminal teardown and keeps catch-up gated until success
+ok - an unreadable superseded mandate stays required until its record validates
+ok - the retained contract epoch requires its final archive on every check
+ok - the return brief renders health, mandate, waiting, could-not-fix, handled, and cost from durable records, and the gate shrinks to what the away session could not fix
+ok - a refreshed posture keeps its original window, superseded mandate, and earlier outcomes
+ok - a malformed posture record stays live and gates return catch-up
+ok - an epochless malformed record remains required until restored valid
+ok - an unreadable outcome store gates catch-up until a successful reread
+ok - an unavailable held listing gates catch-up until a successful reread
+ok - an unreadable status stays private and gates until a successful reread
+ok - the read-only guard treats the away-posture record as active away mode without the legacy flag
+ok - the return brief leads with supervisor health and names every detected gap
+ok - the return brief does not report an already-acked watcher-down marker as an open gap
+ok - a return with only the legacy away flag still renders the brief and measures the window from the flag
+exit=0
+--- agent-process-lib tests if any ---
+bash: tests/fm-backend-tmux.test.sh: No such file or directory
+tmux_exit=0

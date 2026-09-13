@@ -1,0 +1,71 @@
+=== quiet mode unit portion of afk-launch ===
+ok - clear-stale: removes escalations buffer, sidecar, and wedge marker
+ok - clear-stale: leaves the durable wake-queue intact (no pending work dropped)
+ok - propose: the read-back lists accepted and refused clauses and writes only a proposal
+ok - confirm: records the posture, announces hold-for-return only, and launches no daemon
+ok - propose: refuses while the prior return catch-up is pending
+ok - pi: start refuses to launch the daemon and writes no state
+ok - pi: start-native refuses to prepare a daemon
+ok - pi-signed: start refuses to launch the daemon and writes no state
+ok - pi-signed: start-native refuses to prepare a daemon
+not ok - daemon entry: pending proposal was promoted or refusal was unclear (rc=1): fm-afk-launch: the away daemon is no longer launched on pi; the away-posture record is the posture there (run bin/fm-afk-launch.sh confirm and stop)
+not ok - daemon entry: rejected an explicitly confirmed record
+ok - failed start: preserves the pre-confirmed posture record
+not ok - stop archive: native entry failed
+ok - stop: clears the away flag and archives the posture record under its entry time
+ok - launcher paths: relative home and state ignore CDPATH before daemon command construction
+ok - launcher paths: absolute symlink spellings are preserved
+ok - launcher paths: unresolved relative FM_HOME fails loudly
+ok - launcher paths: unresolved relative FM_STATE_OVERRIDE fails loudly
+ok - refresh: daemon already alive - stale artifacts preserved (current session's buffer kept)
+ok - mode: a fresh entry with FM_AFK_MODE=quiet writes quiet
+ok - mode: a fresh entry with FM_AFK_MODE unset defaults to away
+ok - mode: a bare refresh (FM_AFK_MODE unset) of an already-running quiet daemon preserves quiet, never resets to away
+ok - mode: an empty (legacy pre-mode) flag reads as away
+ok - mode: a bare-epoch-timestamp (legacy pre-mode) flag reads as away
+ok - mode: unrecognized content falls back to away
+ok - mode: a missing flag reads as away
+ok - stop-ordering: daemon SIGTERM'd while .afk still present (flush is not a no-op)
+ok - stop-ordering: .afk cleared last
+ok - stop-ordering: daemon-terminal record removed
+ok - stop identity: stale lock cannot signal an unrelated live process
+ok - failed start: away flag and delivery artifacts roll back
+not ok - concurrent start: leaked or lost daemon terminal (count 0, record )
+ok - launcher lock: incomplete publication receives initialization grace
+ok - launcher signal: TERM exits and releases the lifecycle lock
+ok - herdr create: malformed response recovers durable exact ownership
+ok - herdr create error: unconfirmed exact id is persisted for reconciliation
+ok - herdr run failure: unconfirmed exact id remains reconcilable
+ok - record failure: newly created terminal is closed by exact id
+ok - readiness failure: exact terminal and durable record roll back
+ok - readiness failure: unconfirmed terminal retains its reconciliation id
+---
+/home/derekk/.local/share/mise/installs/node/26.8.1/bin/tasks-axi
+fm-tasks-axi: data directory cannot be resolved: /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G/data
+exit=0
+usage: fm-review-diff.sh <task-id> [--stat]
+exit=1
+error: no meta for task nosuch at /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G/state/nosuch.meta
+exit=0
+99:test_return_gate_owns_remediation_and_reports_catchup_to_bearings() {
+787:test_return_gate_owns_remediation_and_reports_catchup_to_bearings
+bin/fm-agent-process-lib.sh:21:# fm_agent_process_classify_name: the single owner of the process-name
+bin/fm-agent-process-lib.sh:27:fm_agent_process_classify_name() {  # <path> [argv0] -> agent|shell|other
+bin/fm-agent-process-lib.sh:88:  by_name=$(fm_agent_process_classify_name "$name" "$argv0")
+bin/fm-agent-process-lib.sh:93:    by_argv0=$(fm_agent_process_classify_name "$argv0" "$argv0")
+bin/backends/tmux.sh:156:# (fm_agent_process_classify_name) is owned by bin/fm-agent-process-lib.sh,
+bin/backends/tmux.sh:291:    case "$(fm_agent_process_classify_name "$name")" in
+bin/backends/tmux.sh:303:    if [ "$(fm_agent_process_classify_name '' "$name")" = agent ]; then
+bin/backends/tmux.sh:340:  if [ "$(fm_agent_process_classify_name "$comm")" = agent ]; then
+bin/backends/tmux.sh:359:  case "$(fm_agent_process_classify_name "$comm")" in
+via shared: agent
+via shared agy: agent
+bash: line 8: type: fm_backend_tmux_classify_process_name: not found
+old tmux classify absent (expected)
+bash: line 9: type: fm_treehouse_pool_slot: not found
+342:     && fm_treehouse_pool_slot "$TEARDOWN_LOCK_PROJECT" "$TEARDOWN_LOCK_WT"; then
+941:   && fm_treehouse_pool_slot "$PROJ" "$WT"; then
+2100:  fm_treehouse_pool_slot "$PROJ" "$WT" || return 1
+2726:    if ! fm_treehouse_pool_slot "$project" "$worktree"; then
+2759:    if ! fm_treehouse_pool_slot "$project" "$worktree"; then
+3003:      if fm_treehouse_pool_slot "$child_proj" "$child_wt"; then

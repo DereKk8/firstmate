@@ -1,0 +1,81 @@
+=== merge-content-check test detail ===
+++++ dirname tests/lib.sh
++++ cd tests/..
++++ pwd
+++ ROOT=/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G
+++ FM_TEST_CLEANUP_DIRS=()
++++ mktemp /tmp/.fm-test-cleanup.3523807.XXXXXX
+++ FM_TEST_CLEANUP_REGISTRY=/tmp/.fm-test-cleanup.3523807.rVQrFG
++++ fm_test_pid_identity 3523807
++++ local pid=3523807
++++ FM_STATE_OVERRIDE=/tmp
++++ bash -c '. "$1"; fm_pid_identity "$2"' _ /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G/bin/fm-wake-lib.sh 3523807
+++ FM_TEST_OWNER_IDENTITY='linux-starttime=1414956 cmdline-hex=62617368002d780074657374732f666d2d6d657267652d636f6e74656e742d636865636b2e746573742e736800'
++++ mktemp /tmp/.fm-test-procevent.3523807.XXXXXX
+++ FM_TEST_PROCEVENT_REGISTRY=/tmp/.fm-test-procevent.3523807.51F3mN
+++ FM_TEST_STUB_MAX_BLOCK_SECONDS=120
+++ export FM_TEST_STUB_MAX_BLOCK_SECONDS
+++ trap fm_test_cleanup EXIT
+++ trap 'fm_test_cleanup; exit 130' INT
+++ trap 'fm_test_cleanup; exit 143' TERM
+++ trap 'fm_test_cleanup; exit 129' HUP
+++ trap 'fm_test_cleanup; exit 131' QUIT
+++ FM_TEST_ORPHAN_MAX_AGE_SECONDS=3600
+++ '[' 0 '!=' 1 ']'
+++ fm_test_reap_orphans
+++ local marker dir mtime now owner_pid owner_identity current_identity
++++ date +%s
+++ now=1789318253
+++ for marker in "${TMPDIR:-/tmp}"/fm-*/.fm-test-fixture
+++ '[' -e '/tmp/fm-*/.fm-test-fixture' ']'
+++ continue
++ CHECK=/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G/bin/fm-merge-content-check.sh
++ test_help_exits_0
++ local out rc
+++ /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G/bin/fm-merge-content-check.sh --help
++ out=$'usage: fm-merge-content-check.sh <merge-commit> [--allow <path> --reason <text>]...\n       fm-merge-content-check.sh --help'
++ rc=0
++ '[' 0 -eq 0 ']'
++ assert_contains $'usage: fm-merge-content-check.sh <merge-commit> [--allow <path> --reason <text>]...\n       fm-merge-content-check.sh --help' usage: '--help must print usage'
++ case "$1" in
++ :
++ pass '--help exits 0 and prints usage'
++ printf 'ok - %s\n' '--help exits 0 and prints usage'
+ok - --help exits 0 and prints usage
++ test_no_args_is_usage_error
++ local rc
++ /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G/bin/fm-merge-content-check.sh
++ rc=2
++ '[' 2 -eq 2 ']'
++ pass 'no args exits 2'
++ printf 'ok - %s\n' 'no args exits 2'
+ok - no args exits 2
++ test_real_historical_defect_detected
++ local before after out rc
+++ git -C /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G status --porcelain
++ before=
+++ /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G/bin/fm-merge-content-check.sh 33708ef
++ out='error: 33708ef does not resolve to a commit'
++ rc=2
+++ git -C /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G status --porcelain
++ after=
++ '[' '' = '' ']'
++ '[' 2 -eq 1 ']'
++ fail 'known content-loss merge must exit 1, got 2'
++ printf 'not ok - %s\n' 'known content-loss merge must exit 1, got 2'
+not ok - known content-loss merge must exit 1, got 2
++ exit 1
++ fm_test_cleanup
++ local d
++ fm_test_reap_procevent_homes
++ local home claim_root $'seen=\n'
++ '[' -f /tmp/.fm-test-procevent.3523807.51F3mN ']'
++ IFS=$'\t'
++ read -r home claim_root
++ rm -f /tmp/.fm-test-procevent.3523807.51F3mN
++ for d in "${FM_TEST_CLEANUP_DIRS[@]:-}"
++ '[' -n '' ']'
++ '[' -f /tmp/.fm-test-cleanup.3523807.rVQrFG ']'
++ IFS=
++ read -r d
++ rm -f /tmp/.fm-test-cleanup.3523807.rVQrFG

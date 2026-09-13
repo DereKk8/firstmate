@@ -1,0 +1,42 @@
+exit=2
+fm-tasks-axi: data directory cannot be resolved: /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M2DT6R8KQJ8B7RRC8JY4YD0G/data
+bin: ~/.local/share/mise/installs/node/26.8.1/bin/tasks-axi
+description: "Agent ergonomic task & backlog manager for the current workspace. Prefer this over hand-editing backlog.md for task state, dependency, or hold changes."
+in_flight: 0 tasks
+queued: 0 tasks
+public_followups: 0 obligations
+done: 0 retained
+help[3]:
+  - Run `tasks-axi list` for the full backlog
+  - Run `tasks-axi ready` to see unblocked queued work
+  - "Run `tasks-axi add <id> \"<title>\" --start` to add and start a task"
+exit=0
+count: 0
+tasks: 0 tasks in this backlog
+help[2]:
+  - "Run `tasks-axi add <id> \"<title>\"` to add a task"
+  - Run `tasks-axi list --state done` to see completed work
+exit=0
+total 124
+drwxr-xr-x 1 derekk derekk 1042 Sep 13 11:56 .
+drwxr-xr-x 1 derekk derekk  832 Sep 13 11:48 ..
+-rw-r--r-- 1 derekk derekk 2310 Sep 13 11:49 01b-merge-ancestry.txt
+-rw-r--r-- 1 derekk derekk  658 Sep 13 11:49 01-upstream-currency.txt
+-rw-r--r-- 1 derekk derekk  976 Sep 13 11:49 02-merge-content-check.txt
+-rw-r--r-- 1 derekk derekk 4998 Sep 13 11:49 03-fork-features-present.txt
+-rw-r--r-- 1 derekk derekk 6033 Sep 13 11:50 04-focused-product-tests.txt
+-rw-r--r-- 1 derekk derekk 3497 Sep 13 11:50 05-merge-content-check-detail.txt
+-rw-r--r-- 1 derekk derekk 3432 Sep 13 11:52 06-harness-fail-detail.txt
+-rw-r--r-- 1 derekk derekk 8080 Sep 13 11:50 07-fork-helpers-live.txt
+-rw-r--r-- 1 derekk derekk 9184 Sep 13 11:52 08-omp-env-context.txt
+-rw-r--r-- 1 derekk derekk 7597 Sep 13 11:52 09-agy-missing-detail.txt
+-rw-r--r-- 1 derekk derekk 5594 Sep 13 11:53 10-quiet-mode-live.txt
+-rw-r--r-- 1 derekk derekk 5799 Sep 13 11:53 11-harness-isolation.txt
+-rw-r--r-- 1 derekk derekk 1658 Sep 13 11:53 12-agents-reconcile-and-classify.txt
+-rw-r--r-- 1 derekk derekk 1059 Sep 13 11:53 13-pr-and-content-allowances.txt
+-rw-r--r-- 1 derekk derekk 4805 Sep 13 11:54 14-pr-status.txt
+-rw-r--r-- 1 derekk derekk 4362 Sep 13 11:54 15-quiet-and-backend.txt
+-rw-r--r-- 1 derekk derekk 1798 Sep 13 11:54 16-content-check-adversarial.txt
+-rw-r--r-- 1 derekk derekk 4943 Sep 13 11:55 17-renames-and-helpers.txt
+-rw-r--r-- 1 derekk derekk  992 Sep 13 11:55 18-fork-vs-upstream-skills.txt
+-rw-r--r-- 1 derekk derekk  813 Sep 13 11:56 19-tasks-axi-exit.txt

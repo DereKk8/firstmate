@@ -1,0 +1,30 @@
+=== SCENARIO: upstream tip via merge second parent ===
+HEAD=9e2b1583e2c14794988993b86b1f6d4ea1881c43
+p1=22f49d6491de0c84d6f20feaf67ffb29a1a70fc3 Merge pull request #92 from DereKk8/fm/fm-refit-full-sync-20260909
+p2=b182d0f908b78d08c7ccb8dce3775bdca8c5d657 fix(bin): rebind fm-procevent-when trust bindings after a self-update (#4361)
+b182d0f is ancestor of HEAD: YES
+upstream commits integrated (p2 not in p1):
+38
+fork commits not in upstream tip:
+121
+--- commits only on fork side (sample) ---
+22f49d6 Merge pull request #92 from DereKk8/fm/fm-refit-full-sync-20260909
+2159ed8 no-mistakes(ci): Fixed both portable serial failures: restored the AFK section 9 acknowledgement reference and normalized the bootstrap quota-array ownership pointer. Targeted tests, lint, docs checks, syntax, and diff validation pass
+6c9e0f8 no-mistakes(document): Sync documentation for AFK and new harness support
+3aa1606 no-mistakes(test): Add missing data directory to local merge fixture
+96a34b7 Merge upstream/main into fork
+ae244c0 Merge pull request #91 from DereKk8/fm/refit-full-sync-20260904
+ae5eddc no-mistakes(document): Captain, corrected stale test documentation
+cb7371f docs: classify merge content findings
+97346f6 no-mistakes(ci): Captain, fixed the CI failures by removing the invalid commands.test override and updating the spawn fixture to the required brief format. Relevant tests pass
+c5f2a53 no-mistakes(document): Classify required integration report
+5cd6ad6 no-mistakes(review): Captain, harden reports and document integration decisions
+dceeeda Merge upstream/main into fork
+df67bd1 Merge pull request #90 from DereKk8/fm/fm-refit-full-sync-20260901
+8793942 no-mistakes(ci): Captain, updated the harness assertion to use the required skill-relative ../../../AGENTS.md path. The captain-translation contract test passes, and git diff validation is clean
+3f701c6 no-mistakes(document): Captain, document quota adapter and isolation ownership
+5ef28f2 Merge upstream/main to restore true upstream ancestry
+74ce26f Merge pull request #88 from DereKk8/fm/fm-merge-default-preserve-history
+374a405 fix: default the guarded PR merge to a merge commit
+12532a5 Merge pull request #87 from DereKk8/fm/fm-upstream-check-squash-blind
+3ee20f3 no-mistakes(document): Updated upstream currency documentation for captain

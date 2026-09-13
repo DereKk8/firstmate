@@ -1,0 +1,103 @@
+=== re-run omp with env -i minimal ===
+not ok - a leaked FM_OMP_HARNESS without an omp ancestor must not relabel a claude worker, got 'pi'
+exit=1
+=== re-run agy with PATH that has no system agy ===
+580:  IFS='|' read -r CASE_DIR HOME_DIR PROJ_DIR WT_DIR FAKEBIN_DIR <<EOF
+591:BASE_PATH=${FM_TEST_BASE_PATH:-$NODE_BIN_DIR:/usr/bin:/bin:/usr/sbin:/sbin}
+611:    PATH="$fakebin:$BASE_PATH" \
+620:  out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" \
+625:  assert_contains "$launch" "$FAKEBIN_DIR/agy" "agy launch did not pin the resolved absolute binary"
+646:  out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" \
+663:  out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" \
+678:    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
+693:    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
+713:    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
+736:  out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" \
+762:    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low)
+782:    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low)
+806:    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
+827:    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
+843:  rm "$FAKEBIN_DIR/agy"
+845:  out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+861:    FM_SPAWN_NO_GUARD=1 PATH="$FAKEBIN_DIR:$BASE_PATH" \
+874:  out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id" \
+#!/usr/bin/env bash
+# Behavior tests for the verified Antigravity CLI crewmate/scout adapter.
+#
+# The facts pinned here are the ones an agy release could silently change and
+# the ones a wrong guess would make dangerous:
+#   1. agy publishes no harness-identity marker of its own (a live 1.2.0 TUI
+#      carries no AGY_* variable; AGENT=1 there is inherited launcher state),
+#      so detection is ancestry alone on the anchored process name `agy`.
+#   2. The anchored match must never claim unrelated commands containing the
+#      fragment, and a structural agy ancestor now outranks a retained or
+#      inherited CLAUDECODE - tests/fm-harness-precedence.test.sh owns the
+#      general boundary.
+#   3. The launch carries the brief via --prompt-interactive with --model,
+#      --effort, and --dangerously-skip-permissions; a requested model a
+#      reachable `agy models` omits refuses loudly instead of wedging a pane,
+#      while a hung or unreachable listing is cut off and never blocks.
+#   4. A fresh worktree would park agy on its folder-trust dialog, so the spawn
+#      pre-registers the worktree in agy's own trustedWorkspaces store through
+#      bin/fm-agy-trust.sh (scope-refused for anything but a linked worktree
+#      of the project) and the post-launch gate is the backstop: it answers a
+#      dialog that renders anyway exactly once, never counts a busy turn as
+#      ready on an unregistered path until the dialog has been answered (the
+#      Herdr native-busy-before-dialog race), and fails the spawn with endpoint
+#      cleanup when the brief cannot be confirmed to run in the worktree.
+#   5. agy is a crewmate/scout adapter only: a secondmate launch is refused,
+#      and nothing is armed as busy wiring because no writer could clear it.
+#   6. The busy signature is the pinned `esc to cancel` status row alone; the
+#      free-floating `Generating...` word must never read busy on its own.
+#   7. Herdr's registry already tracks agy, and exit detection proves the
+#      agent at process level before trusting any registration (the shared
+#      post-#4115 contract in bin/backends/herdr.sh): a registered status plus
+#      a process view naming agy is live and refuses replacement, a registered
+#      status over a proven shell-only pane is the explicit stale-agent state,
+#      and nothing short of that shared proof flips an agy pane to agent-free.
+set -u
+
+# shellcheck source=tests/lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+# bin/fm-harness.sh checks verified ENV markers before ancestry. A suite run
+# from inside another harness inherits those markers, which outrank the fake
+# ancestry the detection cases set up. Drop the ambient markers so the asserted
+# verdict does not depend on which harness launched the suite.
+unset CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT CURSOR_AGENT CURSOR_INVOKED_AS \
+  ATLASSIAN_AGENT_TYPE ROVODEV_CLI GEMINI_CLI AGENT FM_OMP_HARNESS
+
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-control-lib.sh"
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-busy-lib.sh"
+# shellcheck source=/dev/null
+. "$ROOT/bin/fm-composer-lib.sh"
+
+HARNESS="$ROOT/bin/fm-harness.sh"
+SPAWN="$ROOT/bin/fm-spawn.sh"
+TRUST="$ROOT/bin/fm-agy-trust.sh"
+TMP_ROOT=$(fm_test_tmproot fm-agy-harness)
+
+# The store is agy's own persisted settings JSON, so trust is asserted against
+# the parsed trustedWorkspaces array and preservation against parsed values.
+agy_trusted_paths() {  # <store>
+  node -e 'const fs=require("node:fs");const j=fs.existsSync(process.argv[1])?JSON.parse(fs.readFileSync(process.argv[1],"utf8")):{};for(const p of (j.trustedWorkspaces||[]))console.log(p);' "$1"
+}
+
+agy_store_value() {  # <store> <key>
+  node -e 'const j=JSON.parse(require("node:fs").readFileSync(process.argv[1],"utf8"));console.log(JSON.stringify(j[process.argv[2]]));' "$1" "$2"
+}
+
+assert_agy_trusted() {  # <store> <path> <msg>
+  agy_trusted_paths "$1" | grep -Fqx "$2" || fail "$3"
+}
+
+assert_agy_not_trusted() {  # <store> <path> <msg>
+  agy_trusted_paths "$1" | grep -Fqx "$2" && fail "$3"
+  return 0
+}
+
+test_agy_ancestry_detects_the_native_command_name() {
+  local fakebin out
+  fakebin=$(fm_fakebin "$TMP_ROOT/anc-native")

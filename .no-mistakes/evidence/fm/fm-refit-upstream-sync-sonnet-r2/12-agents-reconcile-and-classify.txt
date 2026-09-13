@@ -1,0 +1,38 @@
+=== AGENTS.md reconciliation live checks ===
+425:## 8. Supervision protocol
+464:### Away-mode and quiet-mode stub
+574:## 12. Self-update and upstream sync
+--- fork reader callout ---
+README.md:75:Oh My Pi (`omp`), a Pi fork, is verified as a primary with the same extension-owned watcher model as Pi and a stronger turn-end guard: its blocking `session_stop` hook compels a continuation instead of requesting one.
+AGENTS.md:591:`/updatefirstmate` remains the separate faster operation that propagates this fork's main branch into running instances and is never absorbed by `/refit`.
+--- dual-touch docs ---
+PRESENT docs/trace-context.md (117 lines)
+PRESENT docs/documentation-audiences.json (548 lines)
+PRESENT docs/architecture.md (439 lines)
+--- bootstrap still executable ---
+#!/usr/bin/env bash
+# Bootstrap detection, best-effort fleet refresh/prune, and installs.
+# Usage: fm-bootstrap.sh
+#          Detect: prints one line per actionable problem, or an explicit
+#          BOOTSTRAP_INFO no-action fact for completed benign bootstrap work, and
+bootstrap syntax OK
+agent-process-lib syntax OK
+harness syntax OK
+classify omp -> agent
+classify agy -> agent
+classify pi -> agent
+classify pi-signed -> agent
+classify claude -> agent
+classify tmux -> other
+classify bash -> shell
+--- harness detect self ---
+pi
+--- pi-signed harness test if any ---
+tests/fm-pi-branch-extension.test.sh
+tests/fm-pi-branch-live-e2e.test.sh
+tests/fm-pi-branch-responsiveness-live-e2e.test.sh
+tests/fm-pi-codex-native.test.sh
+tests/fm-pi-primary-live-e2e.test.sh
+tests/fm-pi-primary-types.test.sh
+tests/fm-pi-watch-extension.test.sh
+tests/fm-pi-windows-shell-invocation.test.sh

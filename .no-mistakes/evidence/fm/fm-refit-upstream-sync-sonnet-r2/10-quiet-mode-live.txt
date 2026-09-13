@@ -1,0 +1,83 @@
+=== live quiet mode via fm-afk-launch / fm_afk_mode ===
+no-flag: away
+away-flag: away
+quiet-flag: quiet
+garbage-flag: away
+--- try fm-afk-launch help ---
+Usage:
+  fm-afk-launch.sh propose [--words-file <path> | --words <text>]
+                           [--action <verb> --object <text> --when <text> [--stop <text>]]...
+                           [--expected-return <UTC ISO 8601>] [--spend <n>]
+                           [--grant <task-id>]...
+                             Record the captain's away words and mandate
+                             clause fields into a proposal and print the
+                             read-back. Exit 3 when a clause was refused (its
+                             missing part is named in the read-back); the
+                             proposal still records it as refused.
+                             Repeatable --grant records captain-named task
+                             ids that may merge-when-green while away.
+  fm-afk-launch.sh confirm   Promote the required proposal and print the entry
+                             announcement. On Pi this is the whole entry.
+  fm-afk-launch.sh start     Capture the captain pane, then (unless the daemon
+                             is already running) launch the daemon in a fresh
+                             non-visible terminal for the detected backend and
+                             record it. Idempotent: an already-running daemon
+                             just refreshes state/.afk; a recorded-but-dead
+                             terminal is reconciled (closed by id) first.
+  fm-afk-launch.sh start-native
+                             Prepare lifecycle state for a harness-native
+                             background job and record that no terminal exists.
+  fm-afk-launch.sh stop      Correct-ordered exit: SIGTERM the daemon so its
+                             cleanup flushes WHILE state/.afk is still present,
+fm-afk-launch: the away daemon is no longer launched on pi; the away-posture record is the posture there (run bin/fm-afk-launch.sh confirm and stop)
+tests/fm-afk-contract.test.sh
+tests/fm-afk-inject-e2e.test.sh
+tests/fm-afk-inject-herdr-e2e.test.sh
+tests/fm-afk-launch.test.sh
+tests/fm-afk-pi-herdr-return-e2e.test.sh
+tests/fm-afk-return.test.sh
+--- run quiet-related afk tests if any ---
+tests/fm-afk-return.test.sh
+tests/fm-afk-launch.test.sh
+RUN tests/fm-afk-launch.test.sh (has quiet)
+fm-afk-launch: daemon terminal record is malformed; refusing to act on it
+ok - record read: malformed record fails closed without acting on a partial id
+fm-afk-launch: daemon terminal record is malformed; refusing to act on it
+fm-afk-launch: malformed daemon terminal record; refusing to stop away mode
+ok - stop: malformed terminal record preserves away state and fails closed
+fm-afk-launch: failed to create detached tmux daemon session 'fm-afk-daemon-1958195154-3593555-6416-1789318392'
+ok - tmux launch: planned exact target is recorded before creation and removed on failure
+fm-afk-launch: failed to create detached tmux daemon session 'fm-afk-daemon-1408365268-3593588-24503-1789318392'
+ok - tmux launch: unique names eliminate collision teardown
+ok - stop validation: malformed record causes no daemon or state side effects
+ok - launcher lock: incomplete metadata fails acquisition and releases lock
+fm-afk-launch: failed to clear away-mode flag
+fm-afk-launch: away mode stopped; terminal teardown or the record archive remains recorded for retry
+ok - stop state: away-flag removal failure is surfaced
+fm-afk-launch: away-mode daemon did not exit after SIGTERM; preserving lifecycle state
+ok - stop liveness: captured live daemon preserves lifecycle state after lock release
+fm-afk-launch: the away daemon is no longer launched on pi; the away-posture record is the posture there (run bin/fm-afk-launch.sh confirm and stop)
+fm-afk-launch: the away daemon is no longer launched on pi; the away-posture record is the posture there (run bin/fm-afk-launch.sh confirm and stop)
+ok - refresh record: malformed terminal identity fails closed
+fm-afk-launch: the away daemon is no longer launched on pi; the away-posture record is the posture there (run bin/fm-afk-launch.sh confirm and stop)
+ok - clear failure: native entry aborts and restores prior state
+fm-afk-launch: reconciling leaked daemon terminal tmux:exact-session
+fm-afk-launch: terminal close command failed, but exact absence was confirmed
+ok - confirmed absence: cleanup succeeds and removes the stale record
+fm-afk-launch: rollback restoration incomplete; backup retained at /tmp/fm-afk-restore-fail.H3h5PU/state/.afk-launch-backup.EJIp6o
+ok - rollback restore: incomplete restoration retains its recovery backup
+fm-afk-launch: the away daemon is no longer launched on pi; the away-posture record is the posture there (run bin/fm-afk-launch.sh confirm and stop)
+ok - flag failure: lifecycle aborts without active state
+ok - herdr e2e: captain tab pane count unchanged after start (no split)
+not ok - herdr e2e: no separate daemon workspace created
+not ok - herdr e2e: daemon pane shares the captain tab ()
+not ok - herdr e2e: daemon terminal not in the lab session ()
+ok - herdr e2e: captain tab pane count restored after stop
+ok - herdr e2e: daemon workspace removed by exact id on stop
+ok - herdr e2e: record + .afk cleared on stop
+ok - tmux e2e: captain window pane count unchanged after start (no split-window)
+not ok - tmux e2e: no separate daemon session ()
+ok - tmux e2e: captain window pane count unchanged after stop
+not ok - tmux e2e: daemon session leaked ()
+ok - tmux e2e: record + .afk cleared on stop
+exit=0

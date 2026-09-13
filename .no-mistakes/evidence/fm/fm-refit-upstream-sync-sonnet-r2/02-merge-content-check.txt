@@ -1,0 +1,12 @@
+=== SCENARIO: merge content check on 9e2b158 ===
+CONTENT-LOSS: AGENTS.md: heading '## 12. Self-update' present in b182d0f, absent from merge result
+CONTENT-LOSS: AGENTS.md: heading '### Away-mode stub' present in 22f49d6, absent from merge result
+CONTENT-LOSS: bin/backends/tmux.sh: function 'fm_backend_tmux_classify_process_name' present in 22f49d6, absent from merge result
+CONTENT-LOSS: bin/fm-teardown.sh: function 'is_treehouse_pool_slot' present in 22f49d6, absent from merge result
+CONTENT-LOSS: tests/fm-afk-return.test.sh: function 'test_return_gate_orders_catchup_before_bearings' present in 22f49d6, absent from merge result
+CONTENT-LOSS: tests/fm-pr-merge.test.sh: function 'test_github_fallback_view_refusal_says_the_queue_was_unobservable' present in 22f49d6, absent from merge result
+exit_code=1
+--- with no args usage ---
+usage: fm-merge-content-check.sh <merge-commit> [--allow <path> --reason <text>]...
+       fm-merge-content-check.sh --help
+usage_exit=0

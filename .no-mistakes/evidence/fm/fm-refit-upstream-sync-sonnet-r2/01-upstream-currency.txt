@@ -1,0 +1,20 @@
+=== SCENARIO: fork current with upstream ===
+fatal: 'upstream' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+fatal: 'upstream' does not appear to be a git repository
+fatal: Could not read from remote repository.
+
+Please make sure you have the correct access rights
+and the repository exists.
+left-right HEAD...upstream/main:
+is upstream/main ancestor of HEAD?
+NO
+merge parents:
+22f49d6491de0c84d6f20feaf67ffb29a1a70fc3
+b182d0f908b78d08c7ccb8dce3775bdca8c5d657
+HEAD^2 == upstream tip?
+b182d0f908b78d08c7ccb8dce3775bdca8c5d657
+upstream/main

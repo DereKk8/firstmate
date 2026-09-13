@@ -1,0 +1,44 @@
+=== SCENARIO: fork-only skills present on disk ===
+PRESENT skill:cardio -> SKILL.md 
+PRESENT skill:reset-window -> SKILL.md 
+PRESENT skill:refactor-review -> SKILL.md 
+PRESENT skill:quiet -> SKILL.md 
+PRESENT skill:stow -> SKILL.md 
+MISSING skill:pi-signed
+--- helpers ---
+PRESENT bin/fm-tasks-axi.sh mode=755
+PRESENT bin/fm-review-diff.sh mode=755
+PRESENT bin/fm-merge-content-check.sh mode=755
+PRESENT bin/fm-agent-process-lib.sh mode=644
+--- harness refs ---
+agy.md
+claude.md
+codex.md
+cursor.md
+gemini.md
+grok.md
+kimi.md
+muse.md
+omp.md
+opencode.md
+pi.md
+rovo.md
+--- AGENTS.md fork markers ---
+153:  .afk               durable away/quiet-mode daemon flag on the harnesses that still launch the daemon (never on Pi or pi-signed); present = sub-supervisor may inject escalations, first line `away` (default, set by /afk, cleared on user return) or `quiet` (set by /quiet, cleared only on explicit /quiet off) per the single owner fm_afk_mode() in bin/fm-wake-lib.sh
+220:The verified harnesses are `claude`, `codex`, `opencode`, `pi`, `pi-signed`, `grok`, `kimi`, `cursor`, and `omp`, plus `muse`, `gemini`, `rovo`, and `agy` for crewmates and scouts only; never dispatch on an unverified adapter.
+254:If `state/.afk` is present, load `/afk` in away mode or `/quiet` in quiet mode (`bin/fm-wake-lib.sh`'s `fm_afk_mode`); where its daemon runs, let the daemon own supervision rather than arming another cycle, and on Pi keep the ordinary supervision session, which runs in both postures.
+363:Never merge a red PR under either setting unless a current explicit captain instruction names the single GitHub check waived through `fm-pr-merge.sh --allow-red`; that attended-only waiver still requires every other check green.
+368:Always review the diff with `bin/fm-review-diff.sh <id>` rather than eyeballing a pooled clone, which can lag `origin`; its default-branch base and PR-head preference are defined in [docs/architecture.md](docs/architecture.md#delivery-modes-are-explicit-per-task).
+467:Invoke the `/quiet` skill instead when the captain says `/quiet` or asks for quiet mode, or `state/.afk` already exists in quiet mode (`fm_afk_mode` in `bin/fm-wake-lib.sh`).
+473:  The daemon is never launched on Pi or pi-signed, where the ordinary supervision session continues under the record.
+474:- A marked message while away or quiet mode is active is internal escalation and does not exit that mode.
+475:- A message beginning `/afk` refreshes away mode; a message beginning `/quiet` refreshes quiet mode.
+476:- Any other unmarked message means the captain returned in away mode (load `/afk`, run the return owner, and do not process that message as ordinary work until its durable catch-up gate clears), or, in quiet mode, is simply answered as ordinary work with the flag and daemon left untouched until an explicit `/quiet off`.
+477:- Away and quiet mode never expand approval authority for merges, ask-user findings, destructive actions, irreversible actions, or security-sensitive choices.
+480:When the captain invokes `/cardio`, load the `cardio` skill: it authorizes a batch of dispatchable queued work, dispatches what the captain picks, then hands off to `/afk` unchanged.
+481:When the captain invokes `/reset-window`, says context is full, or asks to wrap up the session, load the `reset-window` skill: it curates durable knowledge through `/stow` and appends the handoff the next session is guided from.
+539:A decision is simply a task held for the captain: create the task with `bin/fm-tasks-axi.sh add` when needed, then always hold it through `bin/fm-captain-hold.sh hold <id> --reason "<reason>"`, with `--until <date>` when the captain defers it.
+546:Use compatible `tasks-axi` when the configured backend selects it, always through `bin/fm-tasks-axi.sh` so the call reaches this home's backlog from any directory, and the documented manual path otherwise; keep only the configured recent Done entries.
+592:A full sync is complete only after the real merge commit passes `bin/fm-merge-content-check.sh`; every intentional named-content removal is recorded with its path-specific justification in the sync report.
+598:- `bootstrap-diagnostics` - load whenever the session-start digest's bootstrap or network-checks section prints an actionable diagnostic line (`MISSING:`, `MISSING_MANUAL:`, `PRESENTATION_UNAVAILABLE:`, `BACKEND_INVALID:`, `NEEDS_GH_AUTH`, `TANGLE:`, `STARTUP_MEMORY_BUDGET:`, `CREW_DISPATCH: invalid`, `FLEET_SYNC:`, `NETWORK_CHECKS:`, `HOME_SUMMARY:`, `BACKLOG_RECONCILE:`, `SECONDMATE_SYNC:`, `SECONDMATE_LIVENESS:`, `SECONDMATE_HANDOFF:`, `NUDGE_SECONDMATES:`, or `FMX:`), or when `BOOTSTRAP_INFO:` says an interrupted backlog cleanup may have left an endpoint or local copy; silence and other `BOOTSTRAP_INFO:` facts need no load.
+600:- `refactor-review` - load when the captain invokes `/refactor-review`, requests an architecture-refactoring review of a drafted change, or a preordered task reports `refactor-review-ready`; it is one-shot and never automatic.

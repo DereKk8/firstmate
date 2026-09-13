@@ -1,0 +1,123 @@
+=== agy missing executable test body ===
+  rec=$(make_agy_spawn_case nodialog "$id")
+  read_agy_spawn_record "$rec"
+  store="$HOME_DIR/.gemini/antigravity-cli/settings.json"
+  printf '%s\n' '{not json' > "$store"
+  rc=0
+  out=$(FM_FAKE_AGY_ASSUME_TRUSTED=1 run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" \
+    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
+  [ "$rc" -ne 0 ] || fail "a busy verdict on an unregistered path with no dialog must not pass the gate"
+  assert_contains "$out" "never showed its folder-trust dialog on an unregistered worktree" \
+    "the failure did not name the unconfirmed workspace"
+  assert_not_contains "$out" "spawned $id" "an unconfirmed workspace still reported a successful spawn"
+  [ "$(count_enter_sends "$CASE_DIR/tmux-calls.log")" -eq 1 ] \
+    || fail "the gate must not send Enter into a pane that shows no dialog"
+  assert_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "a failed agy readiness gate left its launched endpoint running"
+  assert_grep 'failed: agy never showed its folder-trust dialog' "$HOME_DIR/state/$id.status" \
+    "a failed agy readiness gate did not record the failure in the task status"
+  pass "fm-spawn: a busy verdict on an unregistered path without a dialog fails and closes the endpoint"
+}
+
+test_agy_pre_trusted_path_that_never_turns_busy_fails_the_spawn() {
+  local id rec out rc
+  id="agy-idle-z13-$$"
+  rec=$(make_agy_spawn_case idle "$id")
+  read_agy_spawn_record "$rec"
+  rc=0
+  out=$(FM_FAKE_AGY_IGNORE_TRUST=1 FM_FAKE_AGY_ANSWER=stuck run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" \
+    "$FAKEBIN_DIR" "$id" --model gemini-3.8-flash-low) || rc=$?
+  [ "$rc" -ne 0 ] || fail "a dialog that never turns into a busy turn must fail the spawn"
+  assert_contains "$out" "did not start processing its brief after the folder-trust dialog was answered" \
+    "a stuck trust dialog failed without its concrete reason"
+  [ "$(count_enter_sends "$CASE_DIR/tmux-calls.log")" -eq 2 ] \
+    || fail "the gate must answer the dialog exactly once and never hammer Enter"
+  assert_contains "$(cat "$CASE_DIR/tmux-calls.log")" "kill-window" \
+    "a failed agy readiness gate left its launched endpoint running"
+  pass "fm-spawn: an agy dialog that never turns busy fails the spawn and closes the endpoint"
+}
+
+test_agy_missing_binary_refuses_before_pane_creation() {
+  local id rec out rc
+  id="agy-missing-z5-$$"
+  rec=$(make_agy_spawn_case missing "$id")
+  read_agy_spawn_record "$rec"
+  rm "$FAKEBIN_DIR/agy"
+  rc=0
+  out=$(run_agy_spawn "$CASE_DIR" "$HOME_DIR" "$PROJ_DIR" "$WT_DIR" "$FAKEBIN_DIR" "$id") || rc=$?
+  [ "$rc" -ne 0 ] || fail "a missing agy executable should refuse the spawn"
+  assert_contains "$out" "agy executable not found on PATH" "missing agy diagnostic lacked its concrete reason"
+  [ -s "$CASE_DIR/launch.log" ] && fail "a missing agy executable created a launch command" || true
+  pass "fm-spawn: a missing agy executable refuses before pane creation"
+}
+
+test_agy_secondmate_is_refused() {
+  local id rec out rc
+  id="agy-secondmate-z6-$$"
+  rec=$(make_agy_spawn_case secondmate-refuse "$id")
+  read_agy_spawn_record "$rec"
+  rc=0
+  out=$(HOME="$HOME_DIR" FM_ROOT_OVERRIDE='' FM_HOME="$HOME_DIR" \
+    FM_STATE_OVERRIDE="$HOME_DIR/state" FM_DATA_OVERRIDE="$HOME_DIR/data" \
+    FM_PROJECTS_OVERRIDE="$HOME_DIR/projects" FM_CONFIG_OVERRIDE="$HOME_DIR/config" \
+    FM_SPAWN_NO_GUARD=1 PATH="$FAKEBIN_DIR:$BASE_PATH" \
+    "$SPAWN" "$id" --secondmate agy 2>&1) || rc=$?
+  [ "$rc" -ne 0 ] || fail "an agy secondmate spawn should be refused"
+  assert_contains "$out" "agy is a verified crewmate/scout adapter only" \
+    "agy secondmate refusal lacked its concrete reason"
+  pass "fm-spawn: agy cannot be launched as a secondmate"
+}
+
+test_agy_spawn_arms_no_busy_wiring() {
+  local id rec out rc statedir
+--- which agy ---
+/usr/bin/agy
+agy is /usr/bin/agy
+[
+1password
+4channels
+abw2html
+abw2raw
+abw2text
+accessdb
+aclocal
+aclocal-1.18
+aconnect
+71:#   A backend spawn refusal (missing dependency, version gate, unauthenticated
+136:#   /updatefirstmate, restart). A bare adapter name (claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy)
+143:#   A missing selected executable refuses before endpoint creation, and pi-signed
+284:#     __AGYBIN__    resolved, agy-verified executable for an agy launch
+292:# log; muse, gemini, and agy are crewmate/scout only and are refused for --secondmate.
+300:# agy installs no hook either - it exposes no hook surface at all - so it
+303:# spawn pre-registers the worktree in agy's own trust store through
+304:# bin/fm-agy-trust.sh (the claude shape, but non-fatal) and then waits for a
+836:    echo "error: remote launch returned backend '${remote_backend:-missing}', expected herdr; preserving the remote route for reconciliation" >&2
+850:    echo "error: remote launch returned Herdr session '${remote_herdr_session:-missing}', expected 'fm-remote'; preserving the remote route for reconciliation" >&2
+1371:    echo "error: task $ID's recorded worktree '${RELAUNCH_WT:-none}' is missing; refusing to relaunch without the local copy its work lives in" >&2
+1403:    ''|claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy)
+1465:  command -v jq >/dev/null 2>&1 || return 0
+1481:# agy pre-launch model validation. `agy models` (agy 1.2.0) prints one model per
+1492:agy_model_validate() {  # <agy-bin> <model>
+1499:      echo "notice: 'agy models' did not answer within ${bound}s; launching with --model '$model' unvalidated" >&2
+1501:      echo "notice: 'agy models' listing is unreachable (exit $rc); launching with --model '$model' unvalidated" >&2
+1508:  echo "error: agy model '$model' is not listed by 'agy models'; choose a listed id or omit --model" >&2
+1585:    # agy (Antigravity CLI): --prompt-interactive "<brief>" starts the supervised
+1588:    # agy 1.2.0). --model takes the bare catalog id from `agy models`
+1592:    # Every task worktree is a fresh path, so agy would show a folder-trust
+1594:    # suppresses it (agy 1.2.0 --help lists none). Left unanswered, the turn
+1595:    # runs in agy's own scratch directory instead of the worktree, so the
+1598:    # (bin/fm-agy-trust.sh, the claude shape), and the post-launch gate
+1599:    # (agy_wait_for_working) answers the preselected safe default ("Yes, I
+1603:    # reason cursor clears them: agy publishes no marker of its own and does not
+1605:    # TUI), so bin/fm-harness.sh must not read an agy worker as its launcher.
+1606:    # agy exposes no hook surface, so busy state is a rendered-tail fallback
+1608:    agy) printf '%s' 'env -u CLAUDECODE -u PI_CODING_AGENT -u GROK_AGENT -u FM_PI_HARNESS __AGYBIN__ --prompt-interactive "$(__OPINPUT__ encode launch-brief < __BRIEF__)" __MODELFLAG____EFFORTFLAG__--dangerously-skip-permissions' ;;
+1765:# muse, gemini, and agy are verified as CREWMATE/SCOUT adapters only. A secondmate is
+3:# Usage: fm-harness.sh                  print own harness: claude|codex|opencode|pi|pi-signed|grok|kimi|cursor|gemini|muse|rovo|omp|agy|unknown
+136:  # codex, opencode, kimi, muse, and agy publish no harness-identity marker at all, so
+222:    # agy (Antigravity CLI) is a Go-compiled single binary whose process name
+223:    # is exactly `agy` (verified, agy 1.2.0: `ps -o comm=` reports agy and
+224:    # Herdr's process-info reports name agy with argv[0] agy). Anchored, never
+225:    # *agy*, so unrelated commands cannot be misread as this harness. agy
+228:    # inherited launcher value, not an agy identity), so like muse it is
+230:    agy) echo "comm agy"; return ;;
