@@ -20,7 +20,7 @@ After each non-actionable arm close, the hook rechecks the identity-matched watc
 A cycle-end failure is benign when that live-watcher predicate is true, and the hook suppresses the arm output and continues silently.
 Only an exhausted failure with no verified watcher commits one last-resort notice for the continuous failure episode; a refused notice commit stays silent for a later retry, and after a successful notice later Stop cycles exit 2 without repeating it until the turn-end guard consumes the attended fail-open.
 The Claude turn-end guard owns that notice commit contract, the monotonic failure progression, one-time attended fail-open, post-alarm continuation suppression, and positive recovery reset described in [`turnend-guard.md`](turnend-guard.md#harness-integrations).
-While supervision is still needed and away mode remains inactive, an actionable close wakes the idle session through exit 2.
+While supervision is still needed and `state/.afk` is absent (neither away nor quiet mode), an actionable close wakes the idle session through exit 2.
 
 ## Actionable wake ordering
 
