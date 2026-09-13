@@ -15,9 +15,10 @@
 #     the hook delegates guarded recovery to bin/fm-lock.sh and then re-verifies
 #     ownership. A live owner, missing lock, malformed lock, or unresolved
 #     ancestry remains inert, so a competing session never arms or rewakes.
-#   - AFK: while state/.afk exists the away daemon owns the watcher and triage;
-#     this hook exits 0 and NEVER rewakes the primary (checked again at
-#     translation time so a mid-cycle AFK transition is honored).
+#   - AFK: while state/.afk exists (away or quiet mode) the daemon owns the
+#     watcher and triage; this hook exits 0 and NEVER rewakes the primary
+#     (checked again at translation time so a mid-cycle AFK transition is
+#     honored).
 #   - Need: arms only while the home needs supervision, as
 #     bin/fm-supervision-lib.sh defines it; an idle home exits 0.
 #   - Single-flight: Claude does not dedupe async hooks, so exactly one
@@ -133,7 +134,7 @@ if ! fm_session_lock_owned_by_self "$STATE"; then
   RECOVER_SESSION_LOCK=1
 fi
 
-# --- AFK: the away daemon owns the watcher and triage; never rewake ----------
+# --- AFK: away/quiet daemon owns the watcher and triage; never rewake -------
 [ -e "$STATE/.afk" ] && exit 0
 
 # --- need: whatever bin/fm-supervision-lib.sh counts as supervision need ------
