@@ -7,7 +7,7 @@ This document records the deterministic mechanism, structured surfaces, compatib
 
 A decision is not a separate thing in this system: it is an ordinary backlog task held for the captain, and the task id is the identity every surface and channel uses.
 `bin/fm-captain-hold.sh` is the only lifecycle command layered on that primitive.
-The command addresses the active home's configured data directory the same way `bin/fm-backlog-transition-lib.sh` addresses every backlog transition, so the existing backlog remains the only durable work database and a secondmate-owned captain call stays in the secondmate home.
+The command addresses the active home's configured data directory, so the existing backlog remains the only durable work database and a secondmate-owned captain call stays in the secondmate home.
 It never reads report bodies, review artifacts, terminal output, or chat.
 
 The `hold` subcommand is the mandatory captain-hold creation path: it uses an existing task or creates one when nothing exists to hold, records its UTC hold-set timestamp as the leading line of the task body, then invokes the underlying tasks-axi hold operation and verifies both records.
@@ -154,6 +154,7 @@ The window between a merge landing and cleanup is an accepted structural residua
 That local window is normally only seconds wide and requires re-holding a task whose merge has just landed.
 A re-hold inside the window makes cleanup retain the row rather than publish it, so the delivery is omitted until the stale hold is cleared from that row.
 Queued forge merges cannot be covered locally because the forge performs the merge asynchronously after the local command has returned, when no lock this code could hold would still be held.
+The away-posture restriction on queued merges and its residual limits are owned by [architecture.md](architecture.md#delivery-modes-are-explicit-per-task).
 
 ## Record divergence
 
