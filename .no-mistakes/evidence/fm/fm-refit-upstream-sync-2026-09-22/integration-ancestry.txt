@@ -1,0 +1,11 @@
+HEAD 1e5ab0a04455b9e50e7466f314813b587180dbcf
+merge 0aedd83e3af0f916fe05cae8af914584a35c7fc1
+merge-parents a45555dce586efbe413f9870b1bff9c285c468b1 d92cea0c55fe7f5a9ef1b9f204491468ef3831f3
+origin/main a45555dce586efbe413f9870b1bff9c285c468b1
+github-origin-main a45555dce586efbe413f9870b1bff9c285c468b1
+github-upstream-main 884d76bdbd4721310dcc3d4f7ad6b8a028756605
+upstream-ahead-of-second-parent 1 commit 884d76bd landed 2026-09-22T21:42:13Z; merge commit 2026-09-22 16:40:44 -0500 (21:40:44Z)
+HEAD-merged-to-origin-main no
+merge-commit-on-origin-main no
+branch-ref 4bf05428096ef30fedd7e617890a57da6210d031
+prs-for-branch count 0 (GitHub pulls API state=all head=DereKk8:fm/fm-refit-upstream-sync-2026-09-22)

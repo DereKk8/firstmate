@@ -1,0 +1,12 @@
+===== negative checks =====
+absent ok: fm/ENG-1-fix-auth
+absent ok: push only your `fm/
+absent ok: fm/ENG-1
+absent ok: fm/ticket-only
+absent ok: fm/fm/ENG-1
+absent ok: ENG-1-fix-auth-local
+absent ok: push only your
+absent ok: fm/ENG-1-fix-auth-nm
+absent ok: push only your `promote-direct`
+absent ok: Work only on your `promote-local`
+negative_fail=0

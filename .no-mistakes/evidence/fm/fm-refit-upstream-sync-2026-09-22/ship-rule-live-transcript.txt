@@ -1,0 +1,111 @@
+===== brief id=fix-auth repo=slashless mode=direct-PR rc=0 =====
+scaffolded: /tmp/fm-live-ship-rule-2547299/home/data/fix-auth/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+--- checkout / rule 1 / delivery contract ---
+22:1. First action: create your branch: `git checkout -b ENG-1-fix-auth`
+25:1. Never push to the default branch (push only your `ENG-1-fix-auth` branch). Never merge a PR.
+85:Delivery contract: mode=direct-PR
+95:# Home brief additions
+97:Standing home note: do not rename the ship branch.
+
+===== brief id=ticket-only repo=ticketonly mode=direct-PR rc=0 =====
+scaffolded: /tmp/fm-live-ship-rule-2547299/home/data/ticket-only/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+--- checkout / rule 1 / delivery contract ---
+22:1. First action: create your branch: `git checkout -b ENG-1`
+25:1. Never push to the default branch (push only your `ENG-1` branch). Never merge a PR.
+85:Delivery contract: mode=direct-PR
+95:# Home brief additions
+97:Standing home note: do not rename the ship branch.
+
+===== brief id=fix-auth-slashed repo=slashed mode=direct-PR rc=0 =====
+scaffolded: /tmp/fm-live-ship-rule-2547299/home/data/fix-auth-slashed/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+--- checkout / rule 1 / delivery contract ---
+22:1. First action: create your branch: `git checkout -b feature/ENG-1-fix-auth-slashed`
+25:1. Never push to the default branch (push only your `feature/ENG-1-fix-auth-slashed` branch). Never merge a PR.
+85:Delivery contract: mode=direct-PR
+95:# Home brief additions
+97:Standing home note: do not rename the ship branch.
+
+===== brief id=fix-auth-fleet repo=fleet mode=direct-PR rc=0 =====
+scaffolded: /tmp/fm-live-ship-rule-2547299/home/data/fix-auth-fleet/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+--- checkout / rule 1 / delivery contract ---
+22:1. First action: create your branch: `git checkout -b fm/fix-auth-fleet`
+25:1. Never push to the default branch (push only your `fm/fix-auth-fleet` branch). Never merge a PR.
+85:Delivery contract: mode=direct-PR
+95:# Home brief additions
+97:Standing home note: do not rename the ship branch.
+
+===== brief id=fix-auth-local repo=slashless-local mode=local-only rc=0 =====
+scaffolded: /tmp/fm-live-ship-rule-2547299/home/data/fix-auth-local/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+--- checkout / rule 1 / delivery contract ---
+22:1. First action: create your branch: `git checkout -b fm/fix-auth-local`
+25:1. Never push to any remote and never open a PR. Work only on your `fm/fix-auth-local` branch; firstmate handles the merge into local `main`.
+85:Delivery contract: mode=local-only
+92:# Home brief additions
+94:Standing home note: do not rename the ship branch.
+
+===== brief id=fix-auth-nm repo=slashless-nm mode=no-mistakes rc=0 =====
+scaffolded: /tmp/fm-live-ship-rule-2547299/home/data/fix-auth-nm/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+--- checkout / rule 1 / delivery contract ---
+22:1. First action: create your branch: `git checkout -b ENG-1-fix-auth-nm`
+26:1. Never push to the default branch. Never merge a PR.
+88:Delivery contract: mode=no-mistakes
+125:# Home brief additions
+127:Standing home note: do not rename the ship branch.
+
+===== brief id=already-prefixed repo=prefixed mode=direct-PR rc=0 =====
+scaffolded: /tmp/fm-live-ship-rule-2547299/home/data/already-prefixed/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+--- checkout / rule 1 / delivery contract ---
+22:1. First action: create your branch: `git checkout -b fm/ENG-1`
+25:1. Never push to the default branch (push only your `fm/ENG-1` branch). Never merge a PR.
+85:Delivery contract: mode=direct-PR
+95:# Home brief additions
+97:Standing home note: do not rename the ship branch.
+
+===== brief unknown mode rc=1 =====
+error: --mode must be one of no-mistakes, direct-PR, local-only (got 'nope')
+no brief path created
+
+===== promote id=promote-direct mode=direct-PR rc=0 =====
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+●  WATCHER DOWN - SUPERVISION IS OFF
+●  1 task(s) in flight, but no watcher has a fresh beacon (last beat: never, grace 300s).
+●  Trust the emitted supervision protocol for this harness; do not use shell & for watcher repair.
+●  This is a supervision warning only; the guarded operation WILL still run.
+●  repair a missing or failed watcher cycle with the Pi tool fm_watch_arm_pi, or restart Pi with -e /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/.pi/extensions/fm-primary-turnend-guard.ts -e /home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/.pi/extensions/fm-primary-pi-watch.ts if the extensions are not loaded.
+●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+promoted promote-direct to ship mode=direct-PR yolo=off (teardown protection restored)
+wrote ship instructions for mode=direct-PR: /tmp/fm-live-ship-rule-2547299/home/data/promote-direct/ship-instructions.md
+next: FM_HOME=/tmp/fm-live-ship-rule-2547299/home bin/fm-send.sh fm-promote-direct "$(cat /tmp/fm-live-ship-rule-2547299/home/data/promote-direct/ship-instructions.md)"
+--- ship-instructions checkout / rule 1 ---
+11:3. Return to a clean default-branch base, then create your branch: `git checkout -b fm/promote-direct`.
+26:1. Never push to the default branch (push only your `fm/promote-direct` branch). Never merge a PR.
+29:Delivery contract: mode=direct-PR
+
+===== promote id=promote-local mode=local-only rc=0 =====
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+promoted promote-local to ship mode=local-only yolo=off (teardown protection restored)
+wrote ship instructions for mode=local-only: /tmp/fm-live-ship-rule-2547299/home/data/promote-local/ship-instructions.md
+next: FM_HOME=/tmp/fm-live-ship-rule-2547299/home bin/fm-send.sh fm-promote-local "$(cat /tmp/fm-live-ship-rule-2547299/home/data/promote-local/ship-instructions.md)"
+--- ship-instructions checkout / rule 1 ---
+11:3. Return to a clean default-branch base, then create your branch: `git checkout -b fm/promote-local`.
+26:1. Never push to any remote and never open a PR. Work only on your `fm/promote-local` branch; firstmate handles the merge into local `main`.
+29:Delivery contract: mode=local-only
+
+===== promote id=promote-nm mode=no-mistakes rc=0 =====
+WARNING: watcher still down (same stale episode; last beat: never, grace 300s) - full banner already printed this episode.
+promoted promote-nm to ship mode=no-mistakes yolo=off (teardown protection restored)
+wrote ship instructions for mode=no-mistakes: /tmp/fm-live-ship-rule-2547299/home/data/promote-nm/ship-instructions.md
+next: FM_HOME=/tmp/fm-live-ship-rule-2547299/home bin/fm-send.sh fm-promote-nm "$(cat /tmp/fm-live-ship-rule-2547299/home/data/promote-nm/ship-instructions.md)"
+--- ship-instructions checkout / rule 1 ---
+11:3. Return to a clean default-branch base, then create your branch: `git checkout -b fm/promote-nm`.
+26:1. Never push to the default branch. Never merge a PR.
+34:Delivery contract: mode=no-mistakes
+
+===== promote slash task id rc=2 =====
+error: invalid task id
+no slash-id state created
+
+===== dispatch-resolve off rc=0 =====
+dispatch-resolve: off (TYPESAFE_API_KEY absent from the environment and /tmp/fm-live-ship-rule-2547299/home/.env)
+
+LIVE_HOME=/tmp/fm-live-ship-rule-2547299

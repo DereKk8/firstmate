@@ -1,0 +1,543 @@
+# Worker-visible ship contracts from live fm-brief.sh / fm-promote.sh
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/fix-auth/brief.md =====
+# Setup
+You are in a disposable git worktree of slashless, at a detached HEAD on a clean default branch.
+
+**Verify isolation before anything else.** Run `pwd -P` and `git rev-parse --show-toplevel`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+The path check is authoritative: `git rev-parse --git-dir` and `git rev-parse --git-common-dir` can help inspect the repo, but they do not prove you are outside the primary checkout.
+If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append `blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree` to the status file and stop.
+
+1. First action: create your branch: `git checkout -b ENG-1-fix-auth`
+
+# Rules
+1. Never push to the default branch (push only your `ENG-1-fix-auth` branch). Never merge a PR.
+2. Stay inside this worktree; modify nothing outside it.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   `echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth.status'`
+   States: working, needs-decision, blocked, paused, done, failed.
+   Substitute `<epoch>` with the current Unix time in seconds - run `date +%s` and write the number it printed; a stamp that is not plain digits records no time at all.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on (setup done, bug reproduced, fix implemented, validation passed) and the
+   needs-decision/blocked/paused/done/failed states. No step-by-step FYI progress lines;
+   firstmate reads your pane for that.
+   Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
+   https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
+   copies that URL from your line rather than assembling one.
+   A mid-task `working:` line (including setup complete) is nonterminal: do not end the
+   turn after it; continue the same stage until a defined `done:` gate under Definition of done.
+   Use `paused: {why}` - distinct from `blocked:` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset, a scheduled window, or your own validation round):
+   firstmate then leaves your idle pane alone and rechecks it on a long
+   cadence instead of treating it as a possible wedge. Use `blocked:` when you are stuck and need help.
+5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
+6. If a decision belongs above the implementation worker (product choices, destructive actions),
+   append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as you resume.
+7. Never stop, restart, or update the shared `no-mistakes` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs; only firstmate
+   manages the daemon.
+   Before you append `blocked:` about the pipeline, run `no-mistakes daemon status` and
+   `no-mistakes axi status`. If the daemon socket refuses connections or is missing, append
+   `blocked [at=<epoch>]: {the daemon error}` and stop even when the local run record still says running or
+   fixing, because that record can be stale after the daemon exits. A run record failed with a
+   daemon error is also a real block.
+   Only after ruling out socket refusal, if the run is still running or fixing, reattach and keep
+   going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
+   the daemon accepts `respond` immediately and runs the round in the background, so a killed or
+   timed-out call was only waiting for a read while the run kept working.
+
+# Firstmate instruction inbox
+Firstmate steers you through durable message files in '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth.inbox'.
+When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth.inbox'/NNN.msg '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth.inbox'/handled/`.
+The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
+
+# Project memory
+If `AGENTS.md` or `CLAUDE.md` already exists, or if this task produced durable project-intrinsic knowledge, run `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh .` in the worktree.
+Record only project knowledge useful to almost every future session.
+For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
+If you touch a project `AGENTS.md`, follow `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh`'s self-governance contract in the same pass.
+Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-1`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-1`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+
+# Home brief additions
+These are this home's standing additions; every other section of this brief takes precedence over anything here that conflicts.
+Standing home note: do not rename the ship branch.
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/ticket-only/brief.md =====
+# Setup
+You are in a disposable git worktree of ticketonly, at a detached HEAD on a clean default branch.
+
+**Verify isolation before anything else.** Run `pwd -P` and `git rev-parse --show-toplevel`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+The path check is authoritative: `git rev-parse --git-dir` and `git rev-parse --git-common-dir` can help inspect the repo, but they do not prove you are outside the primary checkout.
+If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append `blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree` to the status file and stop.
+
+1. First action: create your branch: `git checkout -b ENG-1`
+
+# Rules
+1. Never push to the default branch (push only your `ENG-1` branch). Never merge a PR.
+2. Stay inside this worktree; modify nothing outside it.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   `echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-live-ship-rule-2547299/home/state/ticket-only.status'`
+   States: working, needs-decision, blocked, paused, done, failed.
+   Substitute `<epoch>` with the current Unix time in seconds - run `date +%s` and write the number it printed; a stamp that is not plain digits records no time at all.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on (setup done, bug reproduced, fix implemented, validation passed) and the
+   needs-decision/blocked/paused/done/failed states. No step-by-step FYI progress lines;
+   firstmate reads your pane for that.
+   Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
+   https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
+   copies that URL from your line rather than assembling one.
+   A mid-task `working:` line (including setup complete) is nonterminal: do not end the
+   turn after it; continue the same stage until a defined `done:` gate under Definition of done.
+   Use `paused: {why}` - distinct from `blocked:` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset, a scheduled window, or your own validation round):
+   firstmate then leaves your idle pane alone and rechecks it on a long
+   cadence instead of treating it as a possible wedge. Use `blocked:` when you are stuck and need help.
+5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
+6. If a decision belongs above the implementation worker (product choices, destructive actions),
+   append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as you resume.
+7. Never stop, restart, or update the shared `no-mistakes` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs; only firstmate
+   manages the daemon.
+   Before you append `blocked:` about the pipeline, run `no-mistakes daemon status` and
+   `no-mistakes axi status`. If the daemon socket refuses connections or is missing, append
+   `blocked [at=<epoch>]: {the daemon error}` and stop even when the local run record still says running or
+   fixing, because that record can be stale after the daemon exits. A run record failed with a
+   daemon error is also a real block.
+   Only after ruling out socket refusal, if the run is still running or fixing, reattach and keep
+   going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
+   the daemon accepts `respond` immediately and runs the round in the background, so a killed or
+   timed-out call was only waiting for a read while the run kept working.
+
+# Firstmate instruction inbox
+Firstmate steers you through durable message files in '/tmp/fm-live-ship-rule-2547299/home/state/ticket-only.inbox'.
+When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list '/tmp/fm-live-ship-rule-2547299/home/state/ticket-only.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '/tmp/fm-live-ship-rule-2547299/home/state/ticket-only.inbox'/NNN.msg '/tmp/fm-live-ship-rule-2547299/home/state/ticket-only.inbox'/handled/`.
+The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
+
+# Project memory
+If `AGENTS.md` or `CLAUDE.md` already exists, or if this task produced durable project-intrinsic knowledge, run `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh .` in the worktree.
+Record only project knowledge useful to almost every future session.
+For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
+If you touch a project `AGENTS.md`, follow `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh`'s self-governance contract in the same pass.
+Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-1`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-1`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+
+# Home brief additions
+These are this home's standing additions; every other section of this brief takes precedence over anything here that conflicts.
+Standing home note: do not rename the ship branch.
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/fix-auth-slashed/brief.md =====
+# Setup
+You are in a disposable git worktree of slashed, at a detached HEAD on a clean default branch.
+
+**Verify isolation before anything else.** Run `pwd -P` and `git rev-parse --show-toplevel`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+The path check is authoritative: `git rev-parse --git-dir` and `git rev-parse --git-common-dir` can help inspect the repo, but they do not prove you are outside the primary checkout.
+If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append `blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree` to the status file and stop.
+
+1. First action: create your branch: `git checkout -b feature/ENG-1-fix-auth-slashed`
+
+# Rules
+1. Never push to the default branch (push only your `feature/ENG-1-fix-auth-slashed` branch). Never merge a PR.
+2. Stay inside this worktree; modify nothing outside it.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   `echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-slashed.status'`
+   States: working, needs-decision, blocked, paused, done, failed.
+   Substitute `<epoch>` with the current Unix time in seconds - run `date +%s` and write the number it printed; a stamp that is not plain digits records no time at all.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on (setup done, bug reproduced, fix implemented, validation passed) and the
+   needs-decision/blocked/paused/done/failed states. No step-by-step FYI progress lines;
+   firstmate reads your pane for that.
+   Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
+   https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
+   copies that URL from your line rather than assembling one.
+   A mid-task `working:` line (including setup complete) is nonterminal: do not end the
+   turn after it; continue the same stage until a defined `done:` gate under Definition of done.
+   Use `paused: {why}` - distinct from `blocked:` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset, a scheduled window, or your own validation round):
+   firstmate then leaves your idle pane alone and rechecks it on a long
+   cadence instead of treating it as a possible wedge. Use `blocked:` when you are stuck and need help.
+5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
+6. If a decision belongs above the implementation worker (product choices, destructive actions),
+   append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as you resume.
+7. Never stop, restart, or update the shared `no-mistakes` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs; only firstmate
+   manages the daemon.
+   Before you append `blocked:` about the pipeline, run `no-mistakes daemon status` and
+   `no-mistakes axi status`. If the daemon socket refuses connections or is missing, append
+   `blocked [at=<epoch>]: {the daemon error}` and stop even when the local run record still says running or
+   fixing, because that record can be stale after the daemon exits. A run record failed with a
+   daemon error is also a real block.
+   Only after ruling out socket refusal, if the run is still running or fixing, reattach and keep
+   going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
+   the daemon accepts `respond` immediately and runs the round in the background, so a killed or
+   timed-out call was only waiting for a read while the run kept working.
+
+# Firstmate instruction inbox
+Firstmate steers you through durable message files in '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-slashed.inbox'.
+When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-slashed.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-slashed.inbox'/NNN.msg '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-slashed.inbox'/handled/`.
+The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
+
+# Project memory
+If `AGENTS.md` or `CLAUDE.md` already exists, or if this task produced durable project-intrinsic knowledge, run `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh .` in the worktree.
+Record only project knowledge useful to almost every future session.
+For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
+If you touch a project `AGENTS.md`, follow `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh`'s self-governance contract in the same pass.
+Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-1`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-1`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+
+# Home brief additions
+These are this home's standing additions; every other section of this brief takes precedence over anything here that conflicts.
+Standing home note: do not rename the ship branch.
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/fix-auth-fleet/brief.md =====
+# Setup
+You are in a disposable git worktree of fleet, at a detached HEAD on a clean default branch.
+
+**Verify isolation before anything else.** Run `pwd -P` and `git rev-parse --show-toplevel`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+The path check is authoritative: `git rev-parse --git-dir` and `git rev-parse --git-common-dir` can help inspect the repo, but they do not prove you are outside the primary checkout.
+If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append `blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree` to the status file and stop.
+
+1. First action: create your branch: `git checkout -b fm/fix-auth-fleet`
+
+# Rules
+1. Never push to the default branch (push only your `fm/fix-auth-fleet` branch). Never merge a PR.
+2. Stay inside this worktree; modify nothing outside it.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   `echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-fleet.status'`
+   States: working, needs-decision, blocked, paused, done, failed.
+   Substitute `<epoch>` with the current Unix time in seconds - run `date +%s` and write the number it printed; a stamp that is not plain digits records no time at all.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on (setup done, bug reproduced, fix implemented, validation passed) and the
+   needs-decision/blocked/paused/done/failed states. No step-by-step FYI progress lines;
+   firstmate reads your pane for that.
+   Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
+   https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
+   copies that URL from your line rather than assembling one.
+   A mid-task `working:` line (including setup complete) is nonterminal: do not end the
+   turn after it; continue the same stage until a defined `done:` gate under Definition of done.
+   Use `paused: {why}` - distinct from `blocked:` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset, a scheduled window, or your own validation round):
+   firstmate then leaves your idle pane alone and rechecks it on a long
+   cadence instead of treating it as a possible wedge. Use `blocked:` when you are stuck and need help.
+5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
+6. If a decision belongs above the implementation worker (product choices, destructive actions),
+   append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as you resume.
+7. Never stop, restart, or update the shared `no-mistakes` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs; only firstmate
+   manages the daemon.
+   Before you append `blocked:` about the pipeline, run `no-mistakes daemon status` and
+   `no-mistakes axi status`. If the daemon socket refuses connections or is missing, append
+   `blocked [at=<epoch>]: {the daemon error}` and stop even when the local run record still says running or
+   fixing, because that record can be stale after the daemon exits. A run record failed with a
+   daemon error is also a real block.
+   Only after ruling out socket refusal, if the run is still running or fixing, reattach and keep
+   going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
+   the daemon accepts `respond` immediately and runs the round in the background, so a killed or
+   timed-out call was only waiting for a read while the run kept working.
+
+# Firstmate instruction inbox
+Firstmate steers you through durable message files in '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-fleet.inbox'.
+When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-fleet.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-fleet.inbox'/NNN.msg '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-fleet.inbox'/handled/`.
+The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
+
+# Project memory
+If `AGENTS.md` or `CLAUDE.md` already exists, or if this task produced durable project-intrinsic knowledge, run `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh .` in the worktree.
+Record only project knowledge useful to almost every future session.
+For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
+If you touch a project `AGENTS.md`, follow `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh`'s self-governance contract in the same pass.
+Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-1`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-1`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+
+# Home brief additions
+These are this home's standing additions; every other section of this brief takes precedence over anything here that conflicts.
+Standing home note: do not rename the ship branch.
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/fix-auth-local/brief.md =====
+# Setup
+You are in a disposable git worktree of slashless-local, at a detached HEAD on a clean default branch.
+
+**Verify isolation before anything else.** Run `pwd -P` and `git rev-parse --show-toplevel`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+The path check is authoritative: `git rev-parse --git-dir` and `git rev-parse --git-common-dir` can help inspect the repo, but they do not prove you are outside the primary checkout.
+If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append `blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree` to the status file and stop.
+
+1. First action: create your branch: `git checkout -b fm/fix-auth-local`
+
+# Rules
+1. Never push to any remote and never open a PR. Work only on your `fm/fix-auth-local` branch; firstmate handles the merge into local `main`.
+2. Stay inside this worktree; modify nothing outside it.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   `echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-local.status'`
+   States: working, needs-decision, blocked, paused, done, failed.
+   Substitute `<epoch>` with the current Unix time in seconds - run `date +%s` and write the number it printed; a stamp that is not plain digits records no time at all.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on (setup done, bug reproduced, fix implemented, validation passed) and the
+   needs-decision/blocked/paused/done/failed states. No step-by-step FYI progress lines;
+   firstmate reads your pane for that.
+   Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
+   https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
+   copies that URL from your line rather than assembling one.
+   A mid-task `working:` line (including setup complete) is nonterminal: do not end the
+   turn after it; continue the same stage until a defined `done:` gate under Definition of done.
+   Use `paused: {why}` - distinct from `blocked:` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset, a scheduled window, or your own validation round):
+   firstmate then leaves your idle pane alone and rechecks it on a long
+   cadence instead of treating it as a possible wedge. Use `blocked:` when you are stuck and need help.
+5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
+6. If a decision belongs above the implementation worker (product choices, destructive actions),
+   append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as you resume.
+7. Never stop, restart, or update the shared `no-mistakes` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs; only firstmate
+   manages the daemon.
+   Before you append `blocked:` about the pipeline, run `no-mistakes daemon status` and
+   `no-mistakes axi status`. If the daemon socket refuses connections or is missing, append
+   `blocked [at=<epoch>]: {the daemon error}` and stop even when the local run record still says running or
+   fixing, because that record can be stale after the daemon exits. A run record failed with a
+   daemon error is also a real block.
+   Only after ruling out socket refusal, if the run is still running or fixing, reattach and keep
+   going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
+   the daemon accepts `respond` immediately and runs the round in the background, so a killed or
+   timed-out call was only waiting for a read while the run kept working.
+
+# Firstmate instruction inbox
+Firstmate steers you through durable message files in '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-local.inbox'.
+When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-local.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-local.inbox'/NNN.msg '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-local.inbox'/handled/`.
+The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
+
+# Project memory
+If `AGENTS.md` or `CLAUDE.md` already exists, or if this task produced durable project-intrinsic knowledge, run `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh .` in the worktree.
+Record only project knowledge useful to almost every future session.
+For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
+If you touch a project `AGENTS.md`, follow `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh`'s self-governance contract in the same pass.
+Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-1`.
+Local-only landing always uses the fleet branch form `fm/fix-auth-local` even when a ticket and a project branch declaration are both present; guarded local landing and sibling tooling require that form.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-1`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+
+# Home brief additions
+These are this home's standing additions; every other section of this brief takes precedence over anything here that conflicts.
+Standing home note: do not rename the ship branch.
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/fix-auth-nm/brief.md =====
+# Setup
+You are in a disposable git worktree of slashless-nm, at a detached HEAD on a clean default branch.
+
+**Verify isolation before anything else.** Run `pwd -P` and `git rev-parse --show-toplevel`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+The path check is authoritative: `git rev-parse --git-dir` and `git rev-parse --git-common-dir` can help inspect the repo, but they do not prove you are outside the primary checkout.
+If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append `blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree` to the status file and stop.
+
+1. First action: create your branch: `git checkout -b ENG-1-fix-auth-nm`
+2. Run `no-mistakes doctor`; if it reports the repo is not initialized here, run `no-mistakes init`.
+
+# Rules
+1. Never push to the default branch. Never merge a PR.
+2. Stay inside this worktree; modify nothing outside it.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   `echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-nm.status'`
+   States: working, needs-decision, blocked, paused, done, failed.
+   Substitute `<epoch>` with the current Unix time in seconds - run `date +%s` and write the number it printed; a stamp that is not plain digits records no time at all.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on (setup done, bug reproduced, fix implemented, validation passed) and the
+   needs-decision/blocked/paused/done/failed states. No step-by-step FYI progress lines;
+   firstmate reads your pane for that.
+   Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
+   https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
+   copies that URL from your line rather than assembling one.
+   A mid-task `working:` line (including setup complete) is nonterminal: do not end the
+   turn after it; continue the same stage until a defined `done:` gate under Definition of done.
+   Use `paused: {why}` - distinct from `blocked:` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset, a scheduled window, or your own validation round):
+   firstmate then leaves your idle pane alone and rechecks it on a long
+   cadence instead of treating it as a possible wedge. Use `blocked:` when you are stuck and need help.
+5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
+6. If a decision belongs above the implementation worker (product choices, destructive actions),
+   append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+   For a no-mistakes ask-user gate specifically, escalate all ask-user findings as one event plus one snapshot file, using that same shape even when the gate holds only a single ask-user finding: write only the ask-user findings, verbatim and unparaphrased (id, severity, file, line, description, authority), to `/tmp/fm-live-ship-rule-2547299/home/data/fix-auth-nm/nm-<run>-findings.txt`, then report the gate with
+   `needs-decision [at=<epoch>] [key=nm-<run>-<step>]: ask-user findings=<id1>,<id2>,... file=/tmp/fm-live-ship-rule-2547299/home/data/fix-auth-nm/nm-<run>-findings.txt`
+   naming every ask-user finding id from that gate. The status line only points at the file; it never restates or summarizes a finding's content.
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as you resume.
+7. Never stop, restart, or update the shared `no-mistakes` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs; only firstmate
+   manages the daemon.
+   Before you append `blocked:` about the pipeline, run `no-mistakes daemon status` and
+   `no-mistakes axi status`. If the daemon socket refuses connections or is missing, append
+   `blocked [at=<epoch>]: {the daemon error}` and stop even when the local run record still says running or
+   fixing, because that record can be stale after the daemon exits. A run record failed with a
+   daemon error is also a real block.
+   Only after ruling out socket refusal, if the run is still running or fixing, reattach and keep
+   going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
+   the daemon accepts `respond` immediately and runs the round in the background, so a killed or
+   timed-out call was only waiting for a read while the run kept working.
+
+# Firstmate instruction inbox
+Firstmate steers you through durable message files in '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-nm.inbox'.
+When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-nm.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-nm.inbox'/NNN.msg '/tmp/fm-live-ship-rule-2547299/home/state/fix-auth-nm.inbox'/handled/`.
+The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
+
+# Project memory
+If `AGENTS.md` or `CLAUDE.md` already exists, or if this task produced durable project-intrinsic knowledge, run `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh .` in the worktree.
+Record only project knowledge useful to almost every future session.
+For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
+If you touch a project `AGENTS.md`, follow `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh`'s self-governance contract in the same pass.
+Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-1`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-1`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+
+# Home brief additions
+These are this home's standing additions; every other section of this brief takes precedence over anything here that conflicts.
+Standing home note: do not rename the ship branch.
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/already-prefixed/brief.md =====
+# Setup
+You are in a disposable git worktree of prefixed, at a detached HEAD on a clean default branch.
+
+**Verify isolation before anything else.** Run `pwd -P` and `git rev-parse --show-toplevel`; both must resolve to the disposable task worktree you were launched in, such as a treehouse pool path or an Orca-managed worktree, not the primary checkout firstmate operates from.
+The path check is authoritative: `git rev-parse --git-dir` and `git rev-parse --git-common-dir` can help inspect the repo, but they do not prove you are outside the primary checkout.
+If the top-level path is the primary checkout or not the worktree you were launched in, STOP - do not branch or commit here - append `blocked [at=<epoch>]: launched in primary checkout, not an isolated worktree` to the status file and stop.
+
+1. First action: create your branch: `git checkout -b fm/ENG-1`
+
+# Rules
+1. Never push to the default branch (push only your `fm/ENG-1` branch). Never merge a PR.
+2. Stay inside this worktree; modify nothing outside it.
+3. Use gh-axi for GitHub operations and chrome-devtools-axi for browser operations.
+4. Report status by appending one line:
+   `echo "{state} [at=<epoch>]: {one short line}" >> '/tmp/fm-live-ship-rule-2547299/home/state/already-prefixed.status'`
+   States: working, needs-decision, blocked, paused, done, failed.
+   Substitute `<epoch>` with the current Unix time in seconds - run `date +%s` and write the number it printed; a stamp that is not plain digits records no time at all.
+   Each append wakes firstmate, so report sparingly: only phase changes a supervisor
+   would act on (setup done, bug reproduced, fix implemented, validation passed) and the
+   needs-decision/blocked/paused/done/failed states. No step-by-step FYI progress lines;
+   firstmate reads your pane for that.
+   Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
+   https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
+   copies that URL from your line rather than assembling one.
+   A mid-task `working:` line (including setup complete) is nonterminal: do not end the
+   turn after it; continue the same stage until a defined `done:` gate under Definition of done.
+   Use `paused: {why}` - distinct from `blocked:` - ONLY when you are deliberately idling on a
+   known external wait you expect to clear on its own (an upstream release, a rate-limit reset, a scheduled window, or your own validation round):
+   firstmate then leaves your idle pane alone and rechecks it on a long
+   cadence instead of treating it as a possible wedge. Use `blocked:` when you are stuck and need help.
+5. If you hit the same obstacle twice, append `blocked [at=<epoch>]: {why}` and stop; firstmate will help.
+6. If a decision belongs above the implementation worker (product choices, destructive actions),
+   append `needs-decision [at=<epoch>]: {summary of options}` and stop. Firstmate will reply with the decision.
+
+   A decision or blocker you opened stays open until a `resolved` line carrying its exact key lands; a later `done:` or `working:` line never closes it, even when the answer is what started that work.
+   Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append `resolved [at=<epoch>]: {how it cleared}` yourself (same `[key=<slug>]` if you opened it with one) as you resume.
+7. Never stop, restart, or update the shared `no-mistakes` daemon - it is one instance serving
+   every lane/home, so restarting it kills other lanes' in-flight pipeline runs; only firstmate
+   manages the daemon.
+   Before you append `blocked:` about the pipeline, run `no-mistakes daemon status` and
+   `no-mistakes axi status`. If the daemon socket refuses connections or is missing, append
+   `blocked [at=<epoch>]: {the daemon error}` and stop even when the local run record still says running or
+   fixing, because that record can be stale after the daemon exits. A run record failed with a
+   daemon error is also a real block.
+   Only after ruling out socket refusal, if the run is still running or fixing, reattach and keep
+   going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
+   the daemon accepts `respond` immediately and runs the round in the background, so a killed or
+   timed-out call was only waiting for a read while the run kept working.
+
+# Firstmate instruction inbox
+Firstmate steers you through durable message files in '/tmp/fm-live-ship-rule-2547299/home/state/already-prefixed.inbox'.
+When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list '/tmp/fm-live-ship-rule-2547299/home/state/already-prefixed.inbox'/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: `mv '/tmp/fm-live-ship-rule-2547299/home/state/already-prefixed.inbox'/NNN.msg '/tmp/fm-live-ship-rule-2547299/home/state/already-prefixed.inbox'/handled/`.
+The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
+
+# Project memory
+If `AGENTS.md` or `CLAUDE.md` already exists, or if this task produced durable project-intrinsic knowledge, run `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh .` in the worktree.
+Record only project knowledge useful to almost every future session.
+For anything the codebase already shows, prefer a pointer to the authoritative file, command, or doc over copying the detail.
+If you touch a project `AGENTS.md`, follow `/home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M35HG1CT95Z7JHV0M00J5C0H/bin/fm-ensure-agents-md.sh`'s self-governance contract in the same pass.
+Keep it proportionate: skip `AGENTS.md` edits for trivial tasks that produced no durable project knowledge.
+
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-1`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-1`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+
+# Home brief additions
+These are this home's standing additions; every other section of this brief takes precedence over anything here that conflicts.
+Standing home note: do not rename the ship branch.
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/promote-direct/ship-instructions.md =====
+# Current ship safety rule
+1. Never push to the default branch (push only your `fm/promote-direct` branch). Never merge a PR.
+
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/promote-local/ship-instructions.md =====
+# Current ship safety rule
+1. Never push to any remote and never open a PR. Work only on your `fm/promote-local` branch; firstmate handles the merge into local `main`.
+
+
+===== /tmp/fm-live-ship-rule-2547299/home/data/promote-nm/ship-instructions.md =====
+# Current ship safety rule
+1. Never push to the default branch. Never merge a PR.
+
+The no-mistakes ask-user escalation below supersedes the scout rule 6 escalation shape.
+   For a no-mistakes ask-user gate specifically, escalate all ask-user findings as one event plus one snapshot file, using that same shape even when the gate holds only a single ask-user finding: write only the ask-user findings, verbatim and unparaphrased (id, severity, file, line, description, authority), to `/tmp/fm-live-ship-rule-2547299/home/data/promote-nm/nm-<run>-findings.txt`, then report the gate with
+   `needs-decision [at=<epoch>] [key=nm-<run>-<step>]: ask-user findings=<id1>,<id2>,... file=/tmp/fm-live-ship-rule-2547299/home/data/promote-nm/nm-<run>-findings.txt`
+   naming every ask-user finding id from that gate. The status line only points at the file; it never restates or summarizes a finding's content.
+
+
