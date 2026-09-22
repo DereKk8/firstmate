@@ -59,12 +59,8 @@ Project instructions still govern the work wherever they do not conflict with th
 EOF
 }
 
-fm_ship_rule_one() {  # <no-mistakes|direct-PR|local-only> <task-id|branch-name>
-  local mode=$1 id=$2 branch
-  case "$id" in
-    */*) branch=$id ;;
-    *) branch="fm/$id" ;;
-  esac
+fm_ship_rule_one() {  # <no-mistakes|direct-PR|local-only> <branch-name>
+  local mode=$1 branch=$2
   case "$mode" in
     direct-PR)
       printf '%s\n' "1. Never push to the default branch (push only your \`$branch\` branch). Never merge a PR."

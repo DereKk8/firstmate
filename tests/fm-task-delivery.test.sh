@@ -350,6 +350,14 @@ STUB
       "$mode: promoted worker was not told to stop for any wrong worktree"
     assert_grep "git checkout -b fm/$id" "$payload" \
       "$mode: promoted worker was not told to leave the scratch base for its ship branch"
+    case "$mode" in
+      direct-PR)
+        assert_grep "push only your \`fm/$id\` branch" "$payload" \
+          "$mode: promoted ship rule did not name the checkout branch" ;;
+      local-only)
+        assert_grep "Work only on your \`fm/$id\` branch" "$payload" \
+          "$mode: promoted ship rule did not name the checkout branch" ;;
+    esac
     assert_grep "## Captain's intent" "$payload" \
       "$mode: promoted worker did not receive the Captain's intent subsection"
     assert_grep "## Firstmate spec" "$payload" \

@@ -252,6 +252,66 @@ EOF
   pass "fm-brief.sh: declared formats use the explicit ticket, while ticketless and undeclared tasks keep fm/"
 }
 
+# A registered branch template is not required to contain '/'. Rule 1 must name
+# the same branch the checkout line creates, including a slashless composition,
+# and must not invent an fm/ prefix the template did not declare.
+test_ship_rule_names_the_checkout_branch() {
+  local home brief
+  home="$TMP_ROOT/ship-rule-branch-home"
+  mkdir -p "$home/data"
+  cat > "$home/data/projects.md" <<'EOF'
+- slashless [direct-PR] branch={ticket}-{short-description} - slashless template (added 2026-09-22)
+- slashed [direct-PR] branch=feature/{ticket}-{short-description} - slashed template (added 2026-09-22)
+- fleet [direct-PR] - no branch convention (added 2026-09-22)
+- slashless-local [local-only] branch={ticket}-{short-description} - local-only slashless template (added 2026-09-22)
+EOF
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-1 \
+    "$ROOT/bin/fm-brief.sh" fix-auth slashless --mode direct-PR >/dev/null 2>&1 \
+    || fail "slashless direct-PR scaffold should succeed"
+  brief="$home/data/fix-auth/brief.md"
+  assert_grep 'git checkout -b ENG-1-fix-auth' "$brief" \
+    "slashless template did not check out the composed branch"
+  assert_grep 'push only your `ENG-1-fix-auth` branch' "$brief" \
+    "slashless template ship rule did not name the composed branch"
+  assert_no_grep 'git checkout -b fm/ENG-1-fix-auth' "$brief" \
+    "slashless template prefixed the checkout branch"
+  assert_no_grep 'push only your `fm/ENG-1-fix-auth` branch' "$brief" \
+    "slashless template ship rule prefixed the composed branch"
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-1 \
+    "$ROOT/bin/fm-brief.sh" fix-auth-slashed slashed --mode direct-PR >/dev/null 2>&1 \
+    || fail "slashed direct-PR scaffold should succeed"
+  brief="$home/data/fix-auth-slashed/brief.md"
+  assert_grep 'git checkout -b feature/ENG-1-fix-auth-slashed' "$brief" \
+    "slashed template did not check out the composed branch"
+  assert_grep 'push only your `feature/ENG-1-fix-auth-slashed` branch' "$brief" \
+    "slashed template ship rule did not name the composed branch"
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-1 \
+    "$ROOT/bin/fm-brief.sh" fix-auth-fleet fleet --mode direct-PR >/dev/null 2>&1 \
+    || fail "undeclared direct-PR scaffold should succeed"
+  brief="$home/data/fix-auth-fleet/brief.md"
+  assert_grep 'git checkout -b fm/fix-auth-fleet' "$brief" \
+    "undeclared direct-PR did not keep the fleet branch"
+  assert_grep 'push only your `fm/fix-auth-fleet` branch' "$brief" \
+    "undeclared direct-PR ship rule did not name the fleet branch"
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-1 \
+    "$ROOT/bin/fm-brief.sh" fix-auth-local slashless-local --mode local-only >/dev/null 2>&1 \
+    || fail "slashless local-only scaffold should succeed"
+  brief="$home/data/fix-auth-local/brief.md"
+  assert_grep 'git checkout -b fm/fix-auth-local' "$brief" \
+    "local-only did not keep the fleet branch"
+  assert_grep 'Work only on your `fm/fix-auth-local` branch' "$brief" \
+    "local-only ship rule did not name the fleet branch"
+  assert_no_grep 'git checkout -b ENG-1-fix-auth-local' "$brief" \
+    "local-only composed a slashless project branch"
+  assert_no_grep 'Work only on your `ENG-1-fix-auth-local` branch' "$brief" \
+    "local-only ship rule named a composed project branch"
+  pass "fm-brief.sh: ship rule 1 names the checkout branch, including a slashless template"
+}
+
 test_ship_modes_generate_clean_briefs() {
   local home id mode brief status
   home="$TMP_ROOT/ship-home"
@@ -1151,6 +1211,7 @@ test_script_parses
 test_no_heredoc_in_command_substitution
 test_help_includes_entire_header
 test_project_branch_format_uses_only_authoritative_ticket
+test_ship_rule_names_the_checkout_branch
 test_ship_modes_generate_clean_briefs
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
