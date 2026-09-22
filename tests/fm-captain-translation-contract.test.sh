@@ -106,7 +106,7 @@ test_verbatim_internal_evidence_is_rejected_from_chat() {
 test_routine_no_action_response_is_event_scoped() {
   local contract
   contract=$(section_9)
-  assert_contains "$contract" 'reply exactly `Captain, shipshape.` without characterizing the visible session' \
+  assert_contains "$contract" 'Reply exactly `Captain, shipshape.` only for a true no-op that still needs an answer - an idle re-read, an empty heartbeat, or a pure acknowledgement with no consequence for the captain - without characterizing the visible session' \
     "section 9 does not require the exact event-scoped routine no-action response"
   assert_not_contains "$contract" 'Captain, no decision is needed.' \
     "section 9 implies the visible session has no unrelated open decisions"

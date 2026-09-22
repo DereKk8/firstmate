@@ -272,11 +272,11 @@ EOF
   brief="$home/data/fix-auth/brief.md"
   assert_grep 'git checkout -b ENG-1-fix-auth' "$brief" \
     "slashless template did not check out the composed branch"
-  assert_grep 'push only your `ENG-1-fix-auth` branch' "$brief" \
+  assert_grep "push only your \`ENG-1-fix-auth\` branch" "$brief" \
     "slashless template ship rule did not name the composed branch"
   assert_no_grep 'git checkout -b fm/ENG-1-fix-auth' "$brief" \
     "slashless template prefixed the checkout branch"
-  assert_no_grep 'push only your `fm/ENG-1-fix-auth` branch' "$brief" \
+  assert_no_grep "push only your \`fm/ENG-1-fix-auth\` branch" "$brief" \
     "slashless template ship rule prefixed the composed branch"
 
   FM_HOME="$home" FM_BRIEF_TICKET=ENG-1 \
@@ -285,7 +285,7 @@ EOF
   brief="$home/data/fix-auth-slashed/brief.md"
   assert_grep 'git checkout -b feature/ENG-1-fix-auth-slashed' "$brief" \
     "slashed template did not check out the composed branch"
-  assert_grep 'push only your `feature/ENG-1-fix-auth-slashed` branch' "$brief" \
+  assert_grep "push only your \`feature/ENG-1-fix-auth-slashed\` branch" "$brief" \
     "slashed template ship rule did not name the composed branch"
 
   FM_HOME="$home" FM_BRIEF_TICKET=ENG-1 \
@@ -294,7 +294,7 @@ EOF
   brief="$home/data/fix-auth-fleet/brief.md"
   assert_grep 'git checkout -b fm/fix-auth-fleet' "$brief" \
     "undeclared direct-PR did not keep the fleet branch"
-  assert_grep 'push only your `fm/fix-auth-fleet` branch' "$brief" \
+  assert_grep "push only your \`fm/fix-auth-fleet\` branch" "$brief" \
     "undeclared direct-PR ship rule did not name the fleet branch"
 
   FM_HOME="$home" FM_BRIEF_TICKET=ENG-1 \
@@ -303,11 +303,11 @@ EOF
   brief="$home/data/fix-auth-local/brief.md"
   assert_grep 'git checkout -b fm/fix-auth-local' "$brief" \
     "local-only did not keep the fleet branch"
-  assert_grep 'Work only on your `fm/fix-auth-local` branch' "$brief" \
+  assert_grep "Work only on your \`fm/fix-auth-local\` branch" "$brief" \
     "local-only ship rule did not name the fleet branch"
   assert_no_grep 'git checkout -b ENG-1-fix-auth-local' "$brief" \
     "local-only composed a slashless project branch"
-  assert_no_grep 'Work only on your `ENG-1-fix-auth-local` branch' "$brief" \
+  assert_no_grep "Work only on your \`ENG-1-fix-auth-local\` branch" "$brief" \
     "local-only ship rule named a composed project branch"
   pass "fm-brief.sh: ship rule 1 names the checkout branch, including a slashless template"
 }
