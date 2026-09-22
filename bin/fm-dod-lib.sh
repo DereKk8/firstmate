@@ -10,33 +10,76 @@
 # mode is refused rather than silently rendered as the pipeline contract.
 # The block opens with the fixed machine-readable "Delivery contract: mode=<mode>"
 # line that bin/fm-spawn.sh checks a ship brief against.
+# The two PR-based blocks require a non-draft pull request before the done
+# report, read back from the forge; a lane that deliberately holds a draft
+# declares a paused wait instead. bin/fm-pr-check.sh refuses to arm merge
+# monitoring on a draft through the same reading bin/fm-pr-merge.sh uses.
 # This file is the one owner of the no-mistakes `--intent` contract: only the
 # brief's `## Captain's intent` subsection plus later captain words, never
 # `## Firstmate spec` and never the worker's own tradeoffs.
+# Author the subsection body and later relays as the actual words, without
+# adding speaker labels or direct address: the heading supplies provenance and
+# is not part of --intent. A legacy mixed Task instead marks each captain line
+# with `[captain] `; the selector returns its words, not that metadata prefix.
+# Previously stored speaker labels remain readable for compatibility only.
+# Never scrub literal examples or other content the captain actually supplied.
 # The string passed must be self-sufficient - it plus the codebase reconstructs
 # roughly the same specification - so a report, decision, or PR the intent
 # refers to is written into it as substance, never left as a pointer.
 # bin/fm-brief.sh scaffolds those two `# Task` subsections; bin/fm-spawn.sh and
 # bin/fm-promote.sh refuse leftover `{TASK}` / `{FIRSTMATE_SPEC}` placeholders
+# and a `## Captain's intent` line opening with a Captain label or address
 # through the helpers below. Other mentions of `--intent` point here rather than
 # restating the rule.
 # Every heredoc here stays outside a command substitution: `VAR=$(cat <<EOF ...)`
 # breaks parsing of the whole file on Bash 3.2 (tests/fm-brief.test.sh).
 # fm_brief_worker_role owns the ship/scout role scope. bin/fm-spawn.sh is its one
-# emitter, supplying it to every ship/scout launch brief and never to a
-# secondmate charter. Like fm_brief_intent_overlay it is a distinctly titled
-# launch section that states its own precedence for Firstmate tasks, so a brief
-# that authors its own role wording is superseded rather than duplicated.
+# emitter, supplying it first in every ship/scout launch brief and never to a
+# secondmate charter. It names the one task-owned steering inbox without
+# relaxing isolation from every other home's endpoint namespace. Like
+# fm_brief_intent_overlay it is a distinctly titled launch section that states
+# its own precedence, so a brief or project instruction that authors a
+# conflicting role is superseded rather than duplicated.
+# fm_ship_rule_one owns the mode-specific first ship safety rule shared by an
+# ordinary ship brief and the durable contract written during scout promotion.
 
-fm_brief_worker_role() {
+fm_brief_worker_role() {  # <state-dir> <task-id>
+  local state=$1 task_id=$2
   cat <<'EOF'
 # Current worker role contract
-When this task works on Firstmate itself, this section supersedes every earlier brief instruction about your role and identity.
-When this task works on Firstmate itself, the repository root `AGENTS.md` (also imported by `CLAUDE.md`) is the primary/secondmate supervisor's contract: follow this brief instead of that supervisor contract.
-For that Firstmate task, do the assigned work yourself and report to firstmate; do not adopt the supervisor identity, delegate the task, run fleet supervision, or address the captain.
-This exception preserves this brief's safety and authority boundaries and applicable contributor guidance, including `CONTRIBUTING.md` and `firstmate-coding-guidelines` for Firstmate changes.
-Other projects retain their own instructions unchanged.
+You are a crewmate: an autonomous worker agent managed by firstmate.
+This section establishes your current identity before every project or task instruction below and supersedes any conflicting role identity in those instructions.
+Do the assigned work yourself and report only to firstmate; do not adopt a firstmate or secondmate supervisor identity, delegate the task, run fleet supervision, or address the captain.
 EOF
+  printf "Your steering inbox is \`%s/%s.inbox\`; this exact path belongs to your current task even when it is outside the worktree or under the supervising firstmate home, so read and acknowledge its messages and do not reject it as another home's state.\n" "$state" "$task_id"
+  cat <<'EOF'
+Never inspect or change any other home's endpoint namespace; this authorization is limited to the exact task paths named by this brief.
+When this task works on Firstmate itself, the repository root `AGENTS.md` (also imported by `CLAUDE.md`) is project content and the supervisor contract for the firstmate managing you: follow this brief instead of that supervisor contract.
+Project instructions still govern the work wherever they do not conflict with this worker identity, including `CONTRIBUTING.md` and `firstmate-coding-guidelines` for Firstmate changes.
+EOF
+}
+
+fm_ship_rule_one() {  # <no-mistakes|direct-PR|local-only> <task-id|branch-name>
+  local mode=$1 id=$2 branch
+  case "$id" in
+    */*) branch=$id ;;
+    *) branch="fm/$id" ;;
+  esac
+  case "$mode" in
+    direct-PR)
+      printf '%s\n' "1. Never push to the default branch (push only your \`$branch\` branch). Never merge a PR."
+      ;;
+    local-only)
+      printf '%s\n' "1. Never push to any remote and never open a PR. Work only on your \`$branch\` branch; firstmate handles the merge into local \`main\`."
+      ;;
+    no-mistakes)
+      printf '%s\n' '1. Never push to the default branch. Never merge a PR.'
+      ;;
+    *)
+      echo "error: fm_ship_rule_one: unknown delivery mode '$mode'" >&2
+      return 1
+      ;;
+  esac
 }
 
 # Return 0 when a Task subsection still consists only of its scaffold
@@ -138,7 +181,7 @@ fm_brief_task_heading_present() {  # <file> <heading>
 
 fm_brief_marked_captain_words() {  # <task-body>
   printf '%s\n' "$1" | awk '
-    match($0, /^[[:space:]]*Captain('\''s (words|ask|intent))?:[[:space:]]*/) {
+    match($0, /^[[:space:]]*(\[captain\]|Captain('\''s (words|ask|intent))?:)[[:space:]]*/) {
       words = substr($0, RLENGTH + 1)
       if (words ~ /[^[:space:]]/) print words
     }
@@ -150,16 +193,14 @@ fm_brief_intent_overlay() {  # <captain-intent>
 
 # Current no-mistakes intent contract
 This section supersedes every earlier brief instruction about constructing `--intent`, but not later clarifications actually supplied by the captain.
-Use the serialized captain intent below plus any later words the captain actually supplied as `--intent`; never include Firstmate specification or other mixed Task content.
+Use everything under `## Captain intent authorized for --intent` through the end of this brief, including any nested subheadings but excluding that heading, plus any later words the captain actually supplied as `--intent`; never include Firstmate specification or other mixed Task content.
+Preserve those words without adding speaker labels or direct address.
+Firstmate-authored constraints, acceptance criteria, implementation details, decisions, and tradeoffs are specification, not captain intent.
+The Definition of done's rule that `--intent` must be self-sufficient still governs the string you pass: resolve any report, decision, or PR the intent below refers to into its substance rather than passing the pointer.
 
 ## Captain intent authorized for --intent
 EOF
   printf '%s\n' "$1"
-  cat <<'EOF'
-
-Firstmate-authored constraints, acceptance criteria, implementation details, decisions, and tradeoffs are specification, not captain intent.
-The Definition of done's rule that `--intent` must be self-sufficient still governs the string you pass: resolve any report, decision, or PR the intent above refers to into its substance rather than passing the pointer.
-EOF
 }
 
 # Accept the current two-subsection contract only when both bodies have content;
@@ -181,11 +222,28 @@ fm_brief_task_content_valid() {  # <file>
   [ -n "$(printf '%s' "$task" | tr -d '[:space:]')" ]
 }
 
+# Print the first `## Captain's intent` body line that opens with an operator
+# address spelling; fail when there is none. The body is never rewritten.
+fm_brief_intent_address_line() {  # <file>
+  fm_brief_task_heading_body "$1" "## Captain's intent" | awk '
+    /^[[:space:]]*(Captain('\''s (words|ask|intent))?:|Captain,)/ { print; found = 1; exit }
+    END { exit !found }
+  '
+}
+
+# The `nm-<run>-<step>` decision key this block mandates is load-bearing beyond
+# the brief itself: the watcher binds an open `needs-decision` to the run a
+# crew's current state reports by matching exactly that shape
+# (wedge_wait_evidence in bin/fm-watch.sh, through
+# status_has_open_needs_decision in bin/fm-classify-lib.sh), which is what buys
+# a lane parked at a human-owed gate the long recheck cadence instead of a
+# wedge escalation. A gate escalated under any other key still reads as a
+# suspected wedge.
 fm_ask_user_escalation_block() {  # <data-dir> <task-id>
   local data=$1 id=$2
   cat <<EOF
    For a no-mistakes ask-user gate specifically, escalate all ask-user findings as one event plus one snapshot file, using that same shape even when the gate holds only a single ask-user finding: write only the ask-user findings, verbatim and unparaphrased (id, severity, file, line, description, authority), to \`$data/$id/nm-<run>-findings.txt\`, then report the gate with
-   \`needs-decision [key=nm-<run>-<step>]: ask-user findings=<id1>,<id2>,... file=$data/$id/nm-<run>-findings.txt\`
+   \`needs-decision [at=<epoch>] [key=nm-<run>-<step>]: ask-user findings=<id1>,<id2>,... file=$data/$id/nm-<run>-findings.txt\`
    naming every ask-user finding id from that gate. The status line only points at the file; it never restates or summarizes a finding's content.
 EOF
 }
@@ -199,7 +257,11 @@ fm_dod_block() {  # <mode> <task-id>
 Delivery contract: mode=direct-PR
 This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
 The task is complete only when committed on your branch.
-When it is implemented and committed, push your branch and open a PR with \`gh-axi\`, then append \`done: PR {url}\` to the status file and stop.
+When it is implemented and committed, push your branch and open a PR with \`gh-axi\` that is ready for review, not a draft.
+Before you report done, read the PR back from the forge and confirm it is not a draft (\`gh pr view <url> --json isDraft\` must print false); if it is a draft, mark it ready with \`gh-axi pr ready\`.
+A draft cannot be merged, so a done report on one leaves the merge unasked.
+Then append \`done [at=<epoch>]: PR {url}\` to the status file and stop.
+If you deliberately keep the PR a draft, append \`paused [at=<epoch>]: {why the draft is held}\` instead of done.
 Do NOT run /no-mistakes. The configured merge authority decides whether to merge the PR; firstmate relays the outcome.
 EOF
       ;;
@@ -210,7 +272,7 @@ Delivery contract: mode=local-only
 This task ships **local-only**: no remote, no PR, no pipeline.
 The task is complete only when committed on your branch \`fm/$id\`. Do NOT push, do NOT open a PR, do NOT merge.
 Keep your branch a clean fast-forward onto the current default branch - if \`main\` has advanced, rebase onto it so the eventual merge stays a fast-forward.
-When it is implemented and committed, append \`done: ready in branch fm/$id\` to the status file and stop.
+When it is implemented and committed, append \`done [at=<epoch>]: ready in branch fm/$id\` to the status file and stop.
 The configured merge authority approves the ready branch, then firstmate merges it into local \`main\` through the guarded fast-forward path.
 EOF
       ;;
@@ -219,13 +281,15 @@ EOF
 # Definition of done
 Delivery contract: mode=no-mistakes
 The task is complete only when committed on your branch.
-When you believe it is complete, append \`done: {summary}\` to the status file and stop.
+When you believe it is complete, append \`done [at=<epoch>]: {summary}\` to the status file and stop.
 Firstmate will then instruct you to run /no-mistakes to validate and ship a PR.
 
 You drive no-mistakes by responding to its gates, not by implementing fixes.
 Follow the guidance no-mistakes itself provides for the mechanics: it loads when you invoke /no-mistakes, and \`no-mistakes axi run --help\` plus the \`help\` lines in each \`axi\` response are authoritative and version-matched to the installed binary.
-When starting no-mistakes, pass \`--intent\` as only this brief's \`## Captain's intent\` subsection plus any later words the captain actually said.
-For a legacy brief with no such subsection, include only words explicitly labeled \`Captain:\`, \`Captain's words:\`, \`Captain's ask:\`, or \`Captain's intent:\`; never copy its mixed \`# Task\` wholesale. If it has no provenance-marked captain words, stop and ask firstmate instead of starting no-mistakes.
+When starting no-mistakes, pass \`--intent\` as only this brief's \`## Captain's intent\` subsection body, not its heading, plus any later words the captain actually said.
+Preserve the actual words without adding speaker labels or direct address; the subsection heading supplies provenance outside the pipeline input.
+For a legacy brief with no such subsection, include only words on lines marked \`[captain] \`, excluding that metadata prefix; never copy its mixed \`# Task\` wholesale.
+If it has no provenance-marked captain words, stop and ask firstmate instead of starting no-mistakes.
 Do not include \`## Firstmate spec\`, later Firstmate build constraints, or your own decisions and tradeoffs.
 The \`--intent\` string you pass must be self-sufficient: that string plus the codebase must let a reader reconstruct roughly the same specification, without depending on a separate report, a PR, or context that lives only in this conversation.
 When the captain's intent refers to a report, decision, or PR ("do items 1, 2, 3, and 7 of the report"), write the substance of the referenced items into \`--intent\` in the captain's terms, not only the pointer; that substance is the captain's ask by reference, while Firstmate's build instructions and your own decisions still stay out.
@@ -233,8 +297,10 @@ This replaces the no-mistakes skill's advice to enrich \`--intent\` with decisio
 Do not hand-edit, commit, or fix findings yourself while a run is active - the pipeline applies every fix.
 
 One drive call blocks until the next gate or outcome, which routinely outlives what your harness lets a single command run: Claude Code kills a command at ten minutes maximum, while one fix round is capped around thirty minutes and up to three rounds chain.
-So background the drive call and poll \`no-mistakes axi status\` from a separate call instead of sitting in one blocking hold your harness will kill.
-Where a harness's own command limit is not established, assume it bounds commands and use that same background-and-poll shape.
+So background the drive call instead of sitting in one blocking hold your harness will kill, and read its return when it finishes.
+Where a harness's own command limit is not established, assume it bounds commands and use that same backgrounded shape.
+Only a drive call's return reports the green PR: \`no-mistakes axi status\` shows progress but never reports \`checks-passed\` while the ci step is still monitoring the PR for merge, so never wait on a status poll for the next gate or outcome.
+Whenever a drive call returns without a gate or an outcome - its own wait elapsed, or it was killed or timed out - reattach at once by re-running \`no-mistakes axi run\` without flags, backgrounded the same way; once checks are green it returns \`checks-passed\` immediately, and if it refuses because no run is active, read the finished outcome from \`no-mistakes axi status\`.
 A killed or timed-out call is never evidence the daemon died: the daemon accepts your response immediately and runs the round in the background, so the call was only ever waiting for a read while the run kept working.
 Reattach and keep going rather than reporting the pipeline blocked; rule 7 owns the checks that decide when a pipeline block is real.
 
@@ -245,7 +311,10 @@ Two firstmate-specific rules layer on top of that guidance:
 - NEVER pass \`--yes\` (or \`-y\`) to \`no-mistakes axi run\` or \`no-mistakes axi respond\`. It is banned fleet-wide.
   It auto-resolves every gate including ask-user findings with no escalation, and answering your own ask-user finding is a hard rule violation.
 
-After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), append \`done: PR {url} checks green\` and stop. You are finished.
+After /no-mistakes reports CI green (the CI-ready return point - do not wait for it to keep monitoring in the background until merge), read the PR back from the forge and confirm it is not a draft (\`gh pr view <url> --json isDraft\` must print false); if it is a draft, mark it ready with \`gh-axi pr ready\`.
+A draft cannot be merged, so a done report on one leaves the merge unasked.
+Then append \`done [at=<epoch>]: PR {url} checks green\` and stop. You are finished.
+If you deliberately keep the PR a draft, append \`paused [at=<epoch>]: {why the draft is held}\` instead of done.
 EOF
       ;;
     *)

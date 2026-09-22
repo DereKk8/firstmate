@@ -94,16 +94,16 @@ if [ "$DOC_MODE" = 1 ]; then
   shift
   NOTE=$(fm_parent_channel_clean_note "$*")
   if [ -n "$NOTE" ]; then
-    LINE=$(printf '%s [%s]: %s (%s via-helper)' "$VERB" "$token" "$NOTE" "$DOC_PATH")
+    line=$(printf '%s [%s]: %s (%s via-helper)' "$VERB" "$token" "$NOTE" "$DOC_PATH")
   else
-    LINE=$(printf '%s [%s]: %s (via-helper)' "$VERB" "$token" "$DOC_PATH")
+    line=$(printf '%s [%s]: %s (via-helper)' "$VERB" "$token" "$DOC_PATH")
   fi
 else
   NOTE=$(fm_parent_channel_clean_note "$*")
-  LINE=$(printf '%s [%s]: %s (via-helper)' "$VERB" "$token" "$NOTE")
+  line=$(printf '%s [%s]: %s (via-helper)' "$VERB" "$token" "$NOTE")
 fi
 
-if ! fm_parent_channel_report "$HOME_DIR" "$STATE_DIR" "$LINE"; then
+if ! fm_parent_channel_report "$HOME_DIR" "$STATE_DIR" "$line"; then
   echo "error: cannot append report to parent channel '$DESTINATION'" >&2
   exit 1
 fi
