@@ -283,8 +283,6 @@ if ! git check-ref-format --branch "$BRANCH" >/dev/null 2>&1; then
   echo "error: --branch-prefix and task id must form a valid git branch (got '$BRANCH')" >&2
   exit 1
 fi
-printf -v BRANCH_Q '%q' "$BRANCH"
-
 if [ "$KIND" = secondmate ] && [ "$HERDR_LAB" -eq 1 ]; then
   echo "error: --herdr-lab applies only to crewmate ship or scout briefs" >&2
   exit 1

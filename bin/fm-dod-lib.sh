@@ -105,13 +105,6 @@
 # shellcheck source=bin/fm-brief-heading-lib.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fm-brief-heading-lib.sh"
 
-# Preserve the section-reader API here while the shared implementation serves the dispatcher too.
-fm_brief_heading_parse() { fm_brief_heading_parse_impl "$@"; }
-fm_brief_heading_body() { fm_brief_heading_body_impl "$@"; }
-fm_brief_heading_present() { fm_brief_heading_present_impl "$@"; }
-fm_brief_task_heading_body() { fm_brief_task_heading_body_impl "$@"; }
-fm_brief_task_heading_present() { fm_brief_task_heading_present_impl "$@"; }
-
 fm_brief_worker_role() {  # <state-dir> <task-id>
   local state=$1 task_id=$2
   cat <<'EOF'

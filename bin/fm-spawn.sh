@@ -1482,24 +1482,10 @@ fm_task_id_creation_valid "$ID" || {
   echo "error: invalid task id" >&2
   exit 2
 }
-BRANCH_TEMPLATE_USED=0
 if [ "$RELAUNCH" -eq 0 ] && [ "$KIND" = ship ]; then
   BRANCH="$BRANCH_PREFIX$ID"
-  SOURCE_BRIEF="$DATA/$ID/brief.md"
-  BRIEF_BRANCH=$(sed -n 's/^Ship branch: //p' "$SOURCE_BRIEF" 2>/dev/null | head -n 1)
-  if [ -n "$BRIEF_BRANCH" ] && [ "$BRIEF_BRANCH" != "$BRANCH" ]; then
-    PROJECT_NAME=${PROJ##*/}
-    BRANCH_FORMAT=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
-      "$FM_ROOT/bin/fm-project-mode.sh" --branch-format "$PROJECT_NAME" 2>/dev/null || true)
-    if [ -z "$BRANCH_FORMAT" ]; then
-      echo "error: branch mismatch for $ID: the brief says branch=$BRIEF_BRANCH but this spawn selected branch=$BRANCH" >&2
-      exit 1
-    fi
-    BRANCH=$BRIEF_BRANCH
-    BRANCH_TEMPLATE_USED=1
-  fi
   if ! git check-ref-format --branch "$BRANCH" >/dev/null 2>&1; then
-    echo "error: resolved ship branch must be a valid git branch (got '$BRANCH')" >&2
+    echo "error: --branch-prefix and task id must form a valid git branch (got '$BRANCH')" >&2
     exit 1
   fi
 fi
@@ -2990,6 +2976,25 @@ delivery_rigor_rank() { # <mode> -> 3 (most rigor) .. 1 (least); 0 = not a task 
 # differ, which is the exact drift this contract prevents.
 if [ "$KIND" = ship ]; then
   PROJ_NAME=$(basename "$PROJ_ABS")
+  BRANCH_TEMPLATE_USED=0
+  if [ "$RELAUNCH" -eq 0 ]; then
+    SOURCE_BRIEF="$DATA/$ID/brief.md"
+    BRIEF_BRANCH=$(sed -n 's/^Ship branch: //p' "$SOURCE_BRIEF" 2>/dev/null | head -n 1)
+    if [ -n "$BRIEF_BRANCH" ] && [ "$BRIEF_BRANCH" != "$BRANCH" ]; then
+      BRANCH_FORMAT=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
+        "$FM_ROOT/bin/fm-project-mode.sh" --branch-format "$PROJ_NAME" 2>/dev/null || true)
+      if [ -z "$BRANCH_FORMAT" ]; then
+        echo "error: branch mismatch for $ID: the brief says branch=$BRIEF_BRANCH but this spawn selected branch=$BRANCH" >&2
+        exit 1
+      fi
+      BRANCH=$BRIEF_BRANCH
+      BRANCH_TEMPLATE_USED=1
+    fi
+    if ! git check-ref-format --branch "$BRANCH" >/dev/null 2>&1; then
+      echo "error: resolved ship branch must be a valid git branch (got '$BRANCH')" >&2
+      exit 1
+    fi
+  fi
   # The parser's own refusal reaches the operator here rather than being
   # discarded: an entry it refuses (an unknown forge token, or a forge on
   # local-only) resolves to no posture at all, and launching on the silent

@@ -153,11 +153,13 @@ parsed=$(awk -v n="$NAME" '
     if (substr($0, 1, plen) != prefix) next
     after = substr($0, plen + 1);
     if (after != "" && substr(after, 1, 2) != " [" && substr(after, 1, 3) != " - ") next
-    mode="no-mistakes"; yolo="off"; branch="fm/"; branch_format=""; forge="none";
+    mode="no-mistakes"; yolo="off"; branch="fm/"; branch_format=""; forge="none"; stray="";
     if (substr(after, 1, 2) == " [") {
       s="";
       nk = split(after, rest, " ");
       for (i=1; i<=nk; i++) { s = s (s==""?"":" ") rest[i]; if (rest[i] ~ /\]$/) break }
+      for (j=i+1; j<=nk && rest[j] != "-"; j++)
+        if (rest[j] ~ /^branch=/ || rest[j] ~ /^forge=/ || rest[j] == "+yolo") stray = stray (stray==""?"":" ") rest[j]
       gsub(/^\[|\]$/, "", s);           # strip the surrounding brackets
       k = split(s, a, " ");
       # Tokens are order-independent: +yolo, branch=<prefix>, and forge=<value>
@@ -188,6 +190,7 @@ parsed=$(awk -v n="$NAME" '
         if (a[j] != "" && mode_set == 0) { mode = a[j]; mode_set = 1 }
       }
     }
+    if (stray != "") print "outside", stray
     format = branch_format == "" ? "-" : "template=" branch_format
     # branch is printed LAST: an empty branch= prefix must survive as an empty
     # final field, which only holds when nothing follows it.
@@ -208,6 +211,7 @@ posture=
 while IFS=' ' read -r kind rest; do
   case "$kind" in
     near) echo "warn: ignoring \"$rest\" registered for $NAME in $REG; it is not a forge binding, and the forge binding is spelled forge=gerrit" >&2 ;;
+    outside) echo "warn: ignoring \"$rest\" for $NAME in $REG: branch=, forge=, and +yolo are read only inside the [mode ...] brackets" >&2 ;;
     posture) posture=$rest ;;
   esac
 done <<EOF

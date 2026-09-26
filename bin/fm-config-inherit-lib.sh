@@ -224,7 +224,7 @@ warn_inheritable_config_error() {
 # Otherwise prints the first required phrase it did not find on stdout and
 # returns 1, so a caller can name the concrete gap instead of a generic
 # rejection. The accept set itself is unchanged.
-shared_captain_header_valid_impl() {
+shared_captain_header_valid() {
   local src=$1 head
   head=$(sed -n '1,12p' "$src" 2>/dev/null) || return 1
   case "$head" in *main-authoritative*) ;; *) printf '%s' "main-authoritative"; return 1 ;; esac
@@ -233,8 +233,6 @@ shared_captain_header_valid_impl() {
   case "$head" in *"main firstmate"*) ;; *) printf '%s' "main firstmate"; return 1 ;; esac
   case "$head" in *"marked status"*|*"document pointer"*) ;; *) printf '%s' "marked status\" or \"document pointer"; return 1 ;; esac
 }
-
-shared_captain_header_valid() { shared_captain_header_valid_impl "$@"; }
 
 shared_captain_dir_safe() {
   local dir=$1

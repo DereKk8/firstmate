@@ -199,8 +199,8 @@ test_project_branch_format_uses_only_authoritative_ticket() {
   home="$TMP_ROOT/project-branch-format-home"
   mkdir -p "$home/data"
   cat > "$home/data/projects.md" <<'EOF'
-- oulow [no-mistakes] branch=feature/{ticket}-{short-description} - Oulow branch convention (added 2026-08-19)
-- oulow-local [local-only] branch=feature/{ticket}-{short-description} - Oulow local-only branch fixture (added 2026-08-19)
+- oulow [no-mistakes branch=feature/{ticket}-{short-description}] - Oulow branch convention (added 2026-08-19)
+- oulow-local [local-only branch=feature/{ticket}-{short-description}] - Oulow local-only branch fixture (added 2026-08-19)
 - undeclared [no-mistakes] - no branch convention (added 2026-08-19)
 EOF
 
@@ -227,7 +227,7 @@ EOF
     "ticketed local-only task composed a project branch"
   assert_grep 'ready in branch fm/localonly-ticketed' "$brief" \
     "ticketed local-only task did not report the fleet ready branch"
-  assert_grep "always uses the fleet branch form \`fm/localonly-ticketed\` even when a ticket and a project branch declaration are both present" "$brief" \
+  assert_grep "it uses the resolved ship-branch prefix plus \`localonly-ticketed\`" "$brief" \
     "local-only delivery text did not state the fleet-form rule"
 
   FM_HOME="$home" FM_BRIEF_TICKET='' \
@@ -260,10 +260,10 @@ test_ship_rule_names_the_checkout_branch() {
   home="$TMP_ROOT/ship-rule-branch-home"
   mkdir -p "$home/data"
   cat > "$home/data/projects.md" <<'EOF'
-- slashless [direct-PR] branch={ticket}-{short-description} - slashless template (added 2026-09-22)
-- slashed [direct-PR] branch=feature/{ticket}-{short-description} - slashed template (added 2026-09-22)
+- slashless [direct-PR branch={ticket}-{short-description}] - slashless template (added 2026-09-22)
+- slashed [direct-PR branch=feature/{ticket}-{short-description}] - slashed template (added 2026-09-22)
 - fleet [direct-PR] - no branch convention (added 2026-09-22)
-- slashless-local [local-only] branch={ticket}-{short-description} - local-only slashless template (added 2026-09-22)
+- slashless-local [local-only branch={ticket}-{short-description}] - local-only slashless template (added 2026-09-22)
 EOF
 
   FM_HOME="$home" FM_BRIEF_TICKET=ENG-1 \

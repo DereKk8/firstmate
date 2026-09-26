@@ -180,10 +180,6 @@ apply_session_host() {  # <artifact>
   export LAVISH_AXI_HOST LAVISH_AXI_PORT
 }
 
-# The per-home address opens boards; a saved board session is authoritative for
-# polling. Keep the former polling entry point as a forwarding adapter.
-apply_configured_lavish_host() { apply_session_host "$@"; }
-
 # Canonical identity is physical, not the path string: Lavish itself keys a
 # session on the realpath of the artifact, so two names for one file are one
 # source and must never become two owners.
@@ -395,7 +391,7 @@ cmd_poll() {
     iteration_started=$(poll_iteration_started) || die "cannot start the poll rate governor"
     [ -f "$artifact" ] && [ ! -L "$artifact" ] && [ -r "$artifact" ] \
       || die "artifact is no longer a readable file: $artifact"
-    apply_configured_lavish_host "$artifact"
+    apply_session_host "$artifact"
     # Posting a round's reply is BEST EFFORT and deliberately carries no delivery
     # machinery. The staged file is the only record that a reply is owed, so it is
     # consumed HERE - after every non-posting step that could abort this poll has

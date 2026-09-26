@@ -11,7 +11,7 @@
 # Parse an exact ATX heading outside fenced blocks. Body mode prints through
 # the next unfenced heading at the same or a higher level; present mode reports
 # whether the heading exists.
-fm_brief_heading_parse_impl() {  # <file|-> <heading> <body|present>
+fm_brief_heading_parse() {  # <file|-> <heading> <body|present>
   local file=$1 heading=$2 mode=$3 input=$1
   if [ "$file" = - ]; then
     input=/dev/stdin
@@ -73,28 +73,23 @@ fm_brief_heading_parse_impl() {  # <file|-> <heading> <body|present>
   ' "$input"
 }
 
-fm_brief_heading_body_impl() {  # <file> <heading>
-  fm_brief_heading_parse_impl "$1" "$2" body
+fm_brief_heading_body() {  # <file> <heading>
+  fm_brief_heading_parse "$1" "$2" body
 }
 
-fm_brief_heading_present_impl() {  # <file> <heading>
-  fm_brief_heading_parse_impl "$1" "$2" present >/dev/null
+fm_brief_heading_present() {  # <file> <heading>
+  fm_brief_heading_parse "$1" "$2" present >/dev/null
 }
 
-fm_brief_task_heading_body_impl() {  # <file> <heading>
+fm_brief_task_heading_body() {  # <file> <heading>
   local task
-  task=$(fm_brief_heading_body_impl "$1" "# Task")
-  printf '%s\n' "$task" | fm_brief_heading_parse_impl - "$2" body
+  task=$(fm_brief_heading_body "$1" "# Task")
+  printf '%s\n' "$task" | fm_brief_heading_parse - "$2" body
 }
 
-fm_brief_task_heading_present_impl() {  # <file> <heading>
+fm_brief_task_heading_present() {  # <file> <heading>
   local task
-  task=$(fm_brief_heading_body_impl "$1" "# Task")
-  printf '%s\n' "$task" | fm_brief_heading_parse_impl - "$2" present >/dev/null
+  task=$(fm_brief_heading_body "$1" "# Task")
+  printf '%s\n' "$task" | fm_brief_heading_parse - "$2" present >/dev/null
 }
 
-fm_brief_heading_parse() { fm_brief_heading_parse_impl "$@"; }
-fm_brief_heading_body() { fm_brief_heading_body_impl "$@"; }
-fm_brief_heading_present() { fm_brief_heading_present_impl "$@"; }
-fm_brief_task_heading_body() { fm_brief_task_heading_body_impl "$@"; }
-fm_brief_task_heading_present() { fm_brief_task_heading_present_impl "$@"; }

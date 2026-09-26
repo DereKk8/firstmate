@@ -144,11 +144,6 @@ fm_pr_forge_host_valid() {
 # segments and no fixed depth. GitLab reserves "-" as its route separator and
 # forbids a leading hyphen, ".git", and ".atom", so none of those can name a
 # real namespace and each is refused here.
-# Preserve the GitLab-specific entrypoint while sharing the forge DNS validator.
-fm_pr_gitlab_host_valid() {
-  fm_pr_forge_host_valid "$@"
-}
-
 fm_pr_gitlab_path_valid() {
   local path=${1-} segment
   local LC_ALL=C
@@ -236,7 +231,7 @@ fm_pr_url_parse() {
   if [[ "$raw" =~ $pattern ]]; then
     host=${BASH_REMATCH[1]}
     path=${BASH_REMATCH[2]}
-    fm_pr_gitlab_host_valid "$host" || return 1
+    fm_pr_forge_host_valid "$host" || return 1
     fm_pr_gitlab_path_valid "$path" || return 1
     FM_PR_PROVIDER=gitlab
     FM_PR_URL=$raw
