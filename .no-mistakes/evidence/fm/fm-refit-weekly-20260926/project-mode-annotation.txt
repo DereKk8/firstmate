@@ -1,0 +1,19 @@
+# Live: registry annotation placement (fm-project-mode.sh)
+
+$ fm-project-mode.sh --branch-format oulow   # inside [mode ...] brackets
+feature/{ticket}-{short-description}
+
+$ fm-project-mode.sh --branch-prefix oulow
+fm/
+
+$ fm-project-mode.sh oulow
+no-mistakes off
+
+$ fm-project-mode.sh --branch-format oulow-outside   # outside placement (stderr shown)
+warn: ignoring "branch=feature/{ticket}-{short-description}" for oulow-outside in /tmp/fm-evidence-DDzpwY/home/data/projects.md: branch=, forge=, and +yolo are read only inside the [mode ...] brackets
+$ fm-project-mode.sh --branch-prefix oulow-outside
+warn: ignoring "branch=feature/{ticket}-{short-description}" for oulow-outside in /tmp/fm-evidence-DDzpwY/home/data/projects.md: branch=, forge=, and +yolo are read only inside the [mode ...] brackets
+fm/
+$ fm-project-mode.sh oulow-outside
+warn: ignoring "branch=feature/{ticket}-{short-description}" for oulow-outside in /tmp/fm-evidence-DDzpwY/home/data/projects.md: branch=, forge=, and +yolo are read only inside the [mode ...] brackets
+no-mistakes off

@@ -1,0 +1,21 @@
+# Live: brief branch contract (fm-brief.sh)
+
+## ticketed PR-mode task (registered template feature/{ticket}-{short-description})
+scaffolded: /tmp/fm-evidence-DDzpwY/home/data/prep-191/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+$ scan data/prep-191/brief.md
+22:1. First action: create your branch: `git checkout -b feature/ENG-TASKS-191-prep-191 --`
+96:Ship branch: feature/ENG-TASKS-191-prep-191
+
+## ticketed local-only task (must keep the fleet prefix, not the template)
+scaffolded: /tmp/fm-evidence-DDzpwY/home/data/localonly-191/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+$ scan data/localonly-191/brief.md
+22:1. First action: create your branch: `git checkout -b fm/localonly-191 --`
+85:Local-only does not compose a ticketed branch template; it uses the resolved ship-branch prefix plus `localonly-191` because guarded local landing and sibling tooling require a task-id branch.
+93:Ship branch: fm/localonly-191
+
+## ticketless local-only task (fleet prefix, ticketless contract sentence)
+scaffolded: /tmp/fm-evidence-DDzpwY/home/data/localonly-ticketless/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+$ scan data/localonly-ticketless/brief.md
+22:1. First action: create your branch: `git checkout -b fm/localonly-ticketless --`
+84:This task has no authoritative external ticket, so use the resolved ship-branch prefix plus `localonly-ticketless`; local-only never composes a ticketed template.
+91:Ship branch: fm/localonly-ticketless

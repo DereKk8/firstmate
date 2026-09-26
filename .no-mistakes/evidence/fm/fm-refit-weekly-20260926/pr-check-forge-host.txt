@@ -1,0 +1,11 @@
+# Live: fm-pr-check.sh URL parsing through fm_pr_forge_host_valid (F4)
+
+## valid self-hosted GitLab MR URL (parse must accept and arm)
+$ fm-pr-check.sh prtask https://gitlab.example.co.uk/group/sub/deep/project/-/merge_requests/42
+armed: state/prtask.check.sh
+exit=0 ; invalid-request-refusal? no
+
+## malformed GitLab path (.git) must be refused by the parser
+$ fm-pr-check.sh prtask https://gitlab.com/g/p.git/-/merge_requests/1
+error: invalid PR check request
+exit=2 ; invalid-request-refusal? YES

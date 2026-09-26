@@ -1,0 +1,34 @@
+# Live: spawn branch reconciliation (fm-spawn.sh)
+
+## 1) mismatch: brief fix/b-mismatch vs spawn --branch-prefix contrib/
+Ship branch: fix/b-mismatch
+exit=1
+error: branch mismatch for b-mismatch: the brief says branch=fix/b-mismatch but this spawn selected branch=contrib/b-mismatch
+unbound-variable error? no
+task meta written? no
+
+## 2) agreement: brief fix/b-agree vs spawn --branch-prefix fix/ (must not refuse; reaches backend)
+Ship branch: fix/b-agree
+exit=1
+FAKE_TMUX_REACHED: new-session
+FAKE_TMUX_REACHED: list-windows
+FAKE_TMUX_REACHED: new-window
+branch-mismatch refusal? no
+reached backend (tmux args logged):
+has-session -t firstmate
+new-session -d -s firstmate
+list-windows -t firstmate -F #{window_name}
+new-window -dP -F #{window_id} -t firstmate: -n fm-b-agree -c /tmp/fm-evidence-DDzpwY/projects/nottmpl
+
+## 3) registry template: brief feature/ENG-TASKS-191-b-tmpl vs spawn default fm/ (must adopt brief branch)
+Ship branch: feature/ENG-TASKS-191-b-tmpl
+exit=1
+FAKE_TMUX_REACHED: new-session
+FAKE_TMUX_REACHED: list-windows
+FAKE_TMUX_REACHED: new-window
+branch-mismatch refusal? no
+reached backend (tmux args logged):
+has-session -t firstmate
+new-session -d -s firstmate
+list-windows -t firstmate -F #{window_name}
+new-window -dP -F #{window_id} -t firstmate: -n fm-b-tmpl -c /tmp/fm-evidence-DDzpwY/projects/tmplproj

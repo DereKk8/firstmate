@@ -1,0 +1,30 @@
+# Focused targeted suites run for this change (not full repo suite)
+
+## tests/fm-brief.test.sh
+ok=37 not_ok=0
+ok - fm-brief.sh: every crewmate scaffold forbids administering the shared worktree pool
+
+## tests/fm-task-delivery.test.sh
+ok=27 not_ok=0
+# all fm-task-delivery tests passed
+
+## tests/fm-dod-lib.test.sh
+ok=18 not_ok=0
+all fm-dod-lib tests passed
+
+## tests/fm-shared-captain-inheritance.test.sh
+ok=9 not_ok=0
+# all fm-shared-captain-inheritance tests passed
+
+## tests/fm-pr-check-security.test.sh
+ok=45 not_ok=0
+ok - teardown removes safe poll artifacts and refuses directory-shaped check files without traversal
+
+## tests/fm-agy-harness.test.sh
+ok=30 not_ok=0
+ok - fm-spawn: agy arms no busy wiring and writes no sidecar
+
+## tests/fm-gemini-harness.test.sh
+ok=10 not_ok=0
+ok - fm-control-lib.sh: gemini's wiring stays outside the project worktree
+
