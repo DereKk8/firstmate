@@ -1,6 +1,6 @@
 ---
 name: explain
-description: On-invocation plain-language visual explainer for anything firstmate reports or any named concept. Use when the captain invokes /explain (e.g. "/explain", "/explain that PR", "/explain how worktrees work"), asks to explain something, or orders work "…and explain it". Produces a visual Lavish page built by a spawned explainer mate in the Style E layout.
+description: Plainly explain pending decisions waiting on the captain or a named decision or topic using a seven-part structured format. Use when the captain invokes /explain (e.g. "/explain", "/explain the pending decisions", "/explain that decision"), asks to explain pending decisions, or asks to explain a specific decision or topic.
 user-invocable: true
 metadata:
   internal: true
@@ -8,83 +8,50 @@ metadata:
 
 # explain
 
-Produce a plain-language visual explainer for the captain.
-Small questions get a chat answer directly.
-Anything meaty delegates to a spawned explainer mate so firstmate keeps its context lean.
+Plainly explain pending decisions waiting on the captain so the captain can deeply understand each choice and make the best call.
+Firstmate answers directly in chat, in the same turn, without spawning a worker or opening a visual page.
 
-## What it does
+## Operating sequence
 
 1. **Resolve the subject.**
-   No argument: explain the last report or update the captain received (scan the most recent status-line append, the last PR-ready signal, or the last captain-facing outcome).
-   With an argument: the captain named a specific thing - a PR URL, a task id, a concept name, a file path.
-   Treat that as the subject.
+   When invoked with no arguments (e.g. `/explain` or "explain the pending decisions"), gather all decisions currently waiting on the captain.
+   When invoked with an argument (e.g. `/explain <subject>`), identify that specific named decision, pull request, project question, or topic.
 
-2. **Decide the medium.**
-   Small question (one concept, one-line answer): compose a rich chat answer directly - no mate spawned.
-   Meatier or multi-concept: delegate to the explainer mate.
-   Err on the side of delegating.
+2. **Gather decisions from authoritative durable sources.**
+   Do not invent a new reader or parser.
+   Gather pending decisions exclusively from the established durable sources:
+   - The authoritative backlog and captain holds via `bin/fm-captain-hold.sh` (or `data/backlog.md`).
+   - Open captain holds reported in `decisions_open` from `bin/fm-bearings-snapshot.sh --json` (use `--all-decisions` when revealing bounded non-live holds).
+   - The wake drain's `OPEN DECISIONS` fold from durable status logs.
+   If no decisions are waiting on the captain, state so plainly in chat and stop.
 
-3. **Gather evidence pointers, never long prose.**
-   Collect paths (report files, PR URLs, status records, state-file references) that the mate will need.
-   Do not copy the content of those files or summarize them at length - the mate reads them.
+3. **Read the evidence before writing.**
+   For each decision to explain, inspect its underlying evidence directly before composing the response.
+   Read the recorded question and options in the hold reason or backlog task.
+   Read any linked investigation report (such as `data/<id>/report.md`), evidence files, notes, or pull request descriptions.
+   Never guess the story or context from a bare task title or status line.
 
-4. **Dispatch the explainer mate.**
-   Build a brief from `.agents/skills/explain/explainer-brief.md`, filling in:
-   - The subject
-   - The evidence-pointer list
-    - The FM_HOME path (so the mate writes to `data/explain/` and `data/explain/concept-ledger.md`)
-    - A task-id slug like `explain-<kebab-subject>`
-   Write the brief to `data/<task-id>/brief.md`, then spawn the mate with:
-   ```sh
-   bin/fm-spawn.sh <task-id> projects/<firstmate-repo-name> --scout --harness <cheap-harness> --model <cheap-model> --effort low
-   ```
-   The repo is the firstmate repo clone listed in `data/projects.md`; if absent, fall back to the primary-home path itself (firstmate-operating repo).
-   Append `working: explainer mate dispatched for <subject>` to the task status file.
+4. **Render each decision in the structured explanation format.**
+   Present each decision directly in chat using the seven-part structure the captain approved:
+   - **The setup**: what the thing is and why it exists, in plain words with no internal jargon.
+   - **The gap**: the precise hole or tension in one or two sentences.
+   - **A story**: a concrete, numbered, dated walk-through with realistic objects and people, ending with the result: what now disagrees and why nobody notices.
+   - **Why it matters**: tied to the product's actual promise, detailing the concrete trouble or consequences.
+   - **The options**: each option named plainly with pros, cons, and cost; mark the recommended option, and cite a real-world precedent when one exists.
+   - **The real underlying question**: the single-sentence framing of what is actually being decided.
+   - **The recommendation and direct question**: state the recommendation and ask directly which option the captain wants.
 
-5. **Surf the page link to the captain.**
-   When the mate signals done, read its status and relay the page link to the captain in chat.
-   The page never replaces the normal chat report.
+5. **When explaining a single named topic or subject.**
+   If the captain asked `/explain <subject>`, apply the same seven-part structure to that named decision or topic wherever the sections fit.
 
-6. **Relay chat follow-ups to the mate.**
-   If the captain asks a follow-up question in chat after seeing the page, relay it to the mate through `fm-send` so the mate answers inside the Lavish poll (page-only follow-ups).
-   Chat stays between captain and firstmate.
-   When the captain changes topic, the explainer register ends on its own.
+## Writing style and constraints
 
-## Pre-order clause
-
-When the captain says "…and explain it" or "…and explain the findings" while ordering work, firstmate records the pre-order and defers the explainer to a separate mate.
-The work agent never builds the page itself.
-
-1. **Record the pre-order.**
-   After spawning the work task (step 4 creates `state/<task-id>.meta`), append `explain=preorder` to that metadata file.
-   This marker survives restarts and tells firstmate there is a pending explainer for this task.
-
-2. **Add a lightweight evidence clause to the work brief.**
-   The clause only tells the worker to keep its evidence discoverable for a later explainer.
-   The worker builds no page and its definition of done is unchanged:
-   ```
-   When your work is complete: ensure the evidence of your work is discoverable.
-   Your report, PR URL, or branch commit list must be at a stable path or URL so a later explainer mate can read it.
-   Do not produce an explainer page - a separate explainer mate will build that after you finish.
-   ```
-
-3. **When the work finishes, dispatch the explainer mate.**
-   After the normal report (PR link, local-merge outcome, or scout findings) reaches the captain, firstmate reads the finished work's evidence pointers and dispatches a separate explainer mate exactly as in step 4 above.
-   The mate builds the page from those pointers using the explainer-brief template.
-   The page link then arrives alongside or immediately after the normal report.
-
-4. **The normal report always arrives first; the explainer page never replaces it.**
-   The page is an extra link, not a substitute.
-   If the mate fails, the normal report stands on its own.
-
-## Scope exclusion
-
-Invoking `/explain` never changes normal reporting behavior afterward.
-It does not persist a "sticky explain mode" session-wide.
-Each `/explain` is one-shot with follow-ups for that explainer only.
-
-## Related files
-
-- `.agents/skills/explain/explainer-brief.md` - the contract template the spawned mate receives.
-- `data/explain/concept-ledger.md` - concept ledger; created by the first explainer mate at runtime.
-- `data/explain/<slug>.html` - kept Lavish pages; all under gitignored `data/`.
+- Keep each section concise and never pad.
+- If a decision has no genuine concrete walk-through story, omit that item rather than inventing one.
+- If an option has no genuine real-world precedent, omit that item rather than fabricating one.
+- Follow `AGENTS.md` section 9 language: talk in outcomes and project consequences, not internal mechanics.
+- Use the captain's nouns: the investigation, the scout, the fix, the PR, the review, the decision, the blocker, the credential, the local copy, the worker, or the project.
+- Never expose internal terms such as startup machinery, locks, watchers, polling, crewmates, task ids, briefs, worktrees, checkouts, status or metadata files, teardown, promotion, harness names, runtime backend names, context budgets, delivery-mode names, autonomy flags, wake types, status prefixes, decision holds, pipeline step names, validation-state labels, or compressed safety labels.
+- Whenever citing a pull request, always output its full forge URL (`https://...`), never a bare number or `#number`.
+- Never answer, resolve, or close a decision from within this skill.
+- Explaining decisions does not change them; closing a decision requires the captain's own explicit choice recorded through the appropriate channel.

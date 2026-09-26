@@ -10,6 +10,8 @@ set -u
 DIAG="$ROOT/.agents/skills/diagnostic-reasoning/SKILL.md"
 PROJECT="$ROOT/.agents/skills/project-management/SKILL.md"
 REFACTOR_REVIEW="$ROOT/.agents/skills/refactor-review/SKILL.md"
+EXPLAIN="$ROOT/.agents/skills/explain/SKILL.md"
+EXPLAIN_BRIEF="$ROOT/.agents/skills/explain/explainer-brief.md"
 HARNESS="$ROOT/.agents/skills/harness-adapters/references/common/model-and-effort.md"
 CLAUDE="$ROOT/.agents/skills/harness-adapters/references/harness/claude.md"
 CODEX="$ROOT/.agents/skills/harness-adapters/references/harness/codex.md"
@@ -71,6 +73,46 @@ test_refactor_review_owner_is_internal_and_one_shot() {
     assert_grep "$phrase" "$REFACTOR_REVIEW" "refactor-review owner is missing '$phrase'"
   done
   pass "refactor-review is one-shot, internal, discoverable, and owns its review contract"
+}
+
+test_explain_skill_contract() {
+  local count
+  assert_present "$EXPLAIN" "explain skill is missing"
+  assert_absent "$EXPLAIN_BRIEF" "explainer-brief.md template must be removed"
+  assert_grep 'name: explain' "$EXPLAIN" "explain metadata has the wrong name"
+  assert_grep 'user-invocable: true' "$EXPLAIN" "explain must be user-invocable"
+  assert_grep '  internal: true' "$EXPLAIN" "explain must remain internal"
+  assert_absent "$ROOT/skills/explain" "explain must not be published as a public skill"
+  count=$(grep -Fc 'When the captain invokes `/explain`, load the `explain` skill' "$AGENTS")
+  [ "$count" -eq 1 ] || fail "explain must have exactly one AGENTS.md trigger entry, found $count"
+  assert_grep '"path": ".agents/skills/explain/SKILL.md"' "$ROOT/docs/documentation-audiences.json" \
+    "documentation inventory must classify explain"
+  assert_no_grep '"path": ".agents/skills/explain/explainer-brief.md"' "$ROOT/docs/documentation-audiences.json" \
+    "documentation inventory must not contain deleted explainer-brief"
+  for phrase in \
+    'The setup' \
+    'The gap' \
+    'A story' \
+    'Why it matters' \
+    'The options' \
+    'The real underlying question' \
+    'The recommendation and direct question' \
+    'without spawning a worker' \
+    '`AGENTS.md` section 9'; do
+    assert_grep "$phrase" "$EXPLAIN" "explain skill is missing '$phrase'"
+  done
+  for banned in \
+    'explainer mate' \
+    'explainer-brief' \
+    'lavish-axi' \
+    'data/explain/' \
+    'concept-ledger'; do
+    assert_no_grep "$banned" "$EXPLAIN" "explain skill retained old behavior term '$banned'"
+  done
+  if grep -q "$(printf '\342\200\224')" "$EXPLAIN"; then
+    fail "explain skill contains an em dash"
+  fi
+  pass "explain skill is internal, user-invocable, and owns the seven-part decision explanation contract"
 }
 
 test_diagnostic_owner_covers_causal_procedure() {
@@ -324,6 +366,7 @@ test_compressed_agents_retains_authority_and_supervision_safety() {
 
 test_new_skill_metadata_and_triggers
 test_refactor_review_owner_is_internal_and_one_shot
+test_explain_skill_contract
 test_diagnostic_owner_covers_causal_procedure
 test_project_management_owner_covers_guarded_operations
 test_generic_effort_fallback_respects_precedence

@@ -149,10 +149,6 @@
       "audience": "agent-runtime"
     },
     {
-      "path": ".agents/skills/explain/explainer-brief.md",
-      "audience": "agent-runtime"
-    },
-    {
       "path": ".agents/skills/firstmate-codexapp/SKILL.md",
       "audience": "agent-runtime"
     },
