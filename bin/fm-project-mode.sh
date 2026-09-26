@@ -34,8 +34,9 @@
 #   Bracket tokens are order-independent, but only inside the brackets: +yolo,
 #   branch=<value>, and forge=<value> are recognized by their own shape in any
 #   order, and whichever token is left over is the mode. A branch=, forge=, or
-#   +yolo token outside the brackets is ignored with one stderr warning naming it,
-#   so a misplaced annotation never silently loses a prefix or template.
+#   +yolo token outside the brackets is refused with exit status 3 and a clear
+#   error naming it, so a misplaced annotation never silently loses a prefix or
+#   template.
 #   A branch value with {ticket}, {notion-id}, {short-description}, {slug}, or
 #   {task-id} is a ticketed template; other values are prefixes and may be empty
 #   to resolve a bare task-id branch.
@@ -89,13 +90,15 @@
 # `branch` resolves as it did before the forge existed, and in the mode slot it
 # is read as an unknown mode. A key one or two edits from `forge` (such as
 # `forg=` or `Forge=`) is still ignored, with one stderr warning naming the token
-# and the forge=gerrit spelling. The one refusal is a malformed forge binding - a
+# and the forge=gerrit spelling. The refusals are a malformed forge binding - a
 # `forge=` token whose value is empty or outside the closed set - which is
 # REFUSED in the default and --forge output forms: nothing on stdout, exit
-# status 3, the token named. Resolving it to "no registered forge" would hand a
-# Gerrit project the pull-request contract the binding exists to prevent.
-# local-only with a forge is refused the same way. --branch-prefix and
-# --branch-format do not make that check because neither query publishes work.
+# status 3, the token named (resolving it to "no registered forge" would hand a
+# Gerrit project the pull-request contract the binding exists to prevent);
+# local-only with a forge is refused the same way. A misplaced annotation
+# outside the brackets (branch=, forge=, or +yolo placed outside [mode ...]) is
+# REFUSED across all query modes, exit status 3, so an unrecognized placement
+# fails loudly rather than silently dropping a template or prefix.
 # Usage: fm-project-mode.sh [--raw|--branch-prefix|--branch-format|--forge] <project-name>
 set -eu
 
@@ -155,7 +158,17 @@ parsed=$(awk -v n="$NAME" '
     prefix = "- " n; plen = length(prefix);
     if (substr($0, 1, plen) != prefix) next
     after = substr($0, plen + 1);
-    if (after != "" && substr(after, 1, 2) != " [" && substr(after, 1, 3) != " - ") next
+    if (after != "" && substr(after, 1, 2) != " [" && substr(after, 1, 3) != " - ") {
+      if (after ~ /^ +(branch=|forge=|\+yolo)/) {
+        sub(/^ +/, "", after);
+        split(after, rest, " ");
+        stray = "";
+        for (j=1; j<=length(rest) && rest[j] != "-"; j++)
+          if (rest[j] ~ /^branch=/ || rest[j] ~ /^forge=/ || rest[j] == "+yolo") stray = stray (stray==""?"":" ") rest[j]
+        if (stray != "") { print "outside", stray; exit }
+      }
+      next
+    }
     mode="no-mistakes"; yolo="off"; branch="fm/"; branch_format=""; forge="none"; stray="";
     if (substr(after, 1, 2) == " [") {
       s="";
@@ -163,6 +176,7 @@ parsed=$(awk -v n="$NAME" '
       for (i=1; i<=nk; i++) { s = s (s==""?"":" ") rest[i]; if (rest[i] ~ /\]$/) break }
       for (j=i+1; j<=nk && rest[j] != "-"; j++)
         if (rest[j] ~ /^branch=/ || rest[j] ~ /^forge=/ || rest[j] == "+yolo") stray = stray (stray==""?"":" ") rest[j]
+      if (stray != "") { print "outside", stray; exit }
       gsub(/^\[|\]$/, "", s);           # strip the surrounding brackets
       k = split(s, a, " ");
       # Tokens are order-independent: +yolo, branch=<prefix>, and forge=<value>
@@ -193,7 +207,6 @@ parsed=$(awk -v n="$NAME" '
         if (a[j] != "" && mode_set == 0) { mode = a[j]; mode_set = 1 }
       }
     }
-    if (stray != "") print "outside", stray
     format = branch_format == "" ? "-" : "template=" branch_format
     # branch is printed LAST: an empty branch= prefix must survive as an empty
     # final field, which only holds when nothing follows it.
@@ -214,7 +227,10 @@ posture=
 while IFS=' ' read -r kind rest; do
   case "$kind" in
     near) echo "warn: ignoring \"$rest\" registered for $NAME in $REG; it is not a forge binding, and the forge binding is spelled forge=gerrit" >&2 ;;
-    outside) echo "warn: ignoring \"$rest\" for $NAME in $REG: branch=, forge=, and +yolo are read only inside the [mode ...] brackets" >&2 ;;
+    outside)
+      echo "refused: misplaced annotation \"$rest\" for $NAME in $REG: branch=, forge=, and +yolo are read only inside the [mode ...] brackets; correct data/projects.md" >&2
+      exit 3
+      ;;
     posture) posture=$rest ;;
   esac
 done <<EOF

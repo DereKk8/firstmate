@@ -1143,6 +1143,54 @@ ROWS
   pass "fm-project-mode: only a malformed forge binding refuses; every other token keeps its old tolerance"
 }
 
+# Misplaced annotations outside the [mode ...] brackets (branch=, forge=, +yolo)
+# are refused across all query modes with exit status 3, so a misplaced annotation
+# fails loudly rather than silently dropping a template, prefix, or posture.
+test_project_mode_refuses_misplaced_outside_annotations() {
+  local home out err status
+  home="$TMP_ROOT/outside-annotations/home"
+  mkdir -p "$home/data"
+
+  # 1. branch= outside brackets with mode
+  printf '%s\n' '- outside-branch [no-mistakes] branch=feature/{ticket}-{short-description} - fixture' > "$home/data/projects.md"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" outside-branch 2>/dev/null)
+  status=$?
+  [ "$status" -eq 3 ] || fail "outside branch= lookup should exit 3 (got $status)"
+  err=$(FM_HOME="$home" "$PROJECT_MODE" outside-branch 2>&1 >/dev/null)
+  assert_contains "$err" "refused: misplaced annotation" "refusal did not name misplaced annotation"
+  assert_contains "$err" "read only inside the [mode ...] brackets" "refusal did not explain bracket rule"
+
+  # --branch-format lookup also refuses loudly
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --branch-format outside-branch 2>/dev/null)
+  status=$?
+  [ "$status" -eq 3 ] || fail "outside branch= --branch-format lookup should exit 3 (got $status)"
+
+  # --branch-prefix lookup also refuses loudly
+  out=$(FM_HOME="$home" "$PROJECT_MODE" --branch-prefix outside-branch 2>/dev/null)
+  status=$?
+  [ "$status" -eq 3 ] || fail "outside branch= --branch-prefix lookup should exit 3 (got $status)"
+
+  # 2. branch= outside without brackets
+  printf '%s\n' '- nobracket branch=feature/{ticket}-{short-description} - fixture' > "$home/data/projects.md"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" nobracket 2>/dev/null)
+  status=$?
+  [ "$status" -eq 3 ] || fail "nobracket branch= lookup should exit 3 (got $status)"
+
+  # 3. +yolo outside brackets
+  printf '%s\n' '- outside-yolo [no-mistakes] +yolo - fixture' > "$home/data/projects.md"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" outside-yolo 2>/dev/null)
+  status=$?
+  [ "$status" -eq 3 ] || fail "outside +yolo lookup should exit 3 (got $status)"
+
+  # 4. forge= outside brackets
+  printf '%s\n' '- outside-forge [no-mistakes] forge=gerrit - fixture' > "$home/data/projects.md"
+  out=$(FM_HOME="$home" "$PROJECT_MODE" outside-forge 2>/dev/null)
+  status=$?
+  [ "$status" -eq 3 ] || fail "outside forge= lookup should exit 3 (got $status)"
+
+  pass "fm-project-mode: misplaced annotations outside brackets refuse loudly across all queries"
+}
+
 # Yolo is inactive for the Gerrit forge on the captain's decision of 2026-09-15,
 # because a Code-Review+2 is a positive attributed claim that a named human
 # approved. Every path that could carry merge authority to such a project must
@@ -1404,6 +1452,31 @@ EOF
     "the ref-format refusal did not name the branch it refused"
   assert_absent "$home/state/branch-agree-a7.meta" "the refused spawn still recorded a task"
 
+  # A project declaring a ticketed branch template adopts the brief's matching branch
+  # without crashing under set -u or falsely reporting drift.
+  rec=$(make_home branch-tmpl "- proj [no-mistakes branch=feature/{ticket}-{short-description}] - fixture (added 2026-01-01)")
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  write_brief "$home" branch-agree-tmpl no-mistakes
+  printf 'Ship branch: feature/ENG-1-branch-agree-tmpl\n' >> "$home/data/branch-agree-tmpl/brief.md"
+  out=$(run_spawn "$home" "$fakebin" branch-agree-tmpl "$proj" claude --mode no-mistakes --yolo off)
+  assert_not_contains "$out" "branch mismatch" "a brief carrying the registered template branch was reported as drift"
+  assert_not_contains "$out" "unbound variable" "spawn branch template path crashed under set -u"
+
+  # A project with a misplaced outside annotation refuses loudly on spawn
+  rec=$(make_home branch-outside "- proj [no-mistakes] branch=feature/{ticket}-{short-description} - fixture")
+  IFS='|' read -r home proj fakebin <<EOF
+$rec
+EOF
+  write_brief "$home" branch-agree-outside no-mistakes
+  printf 'Ship branch: feature/ENG-1-branch-agree-outside\n' >> "$home/data/branch-agree-outside/brief.md"
+  out=$(run_spawn "$home" "$fakebin" branch-agree-outside "$proj" claude --mode no-mistakes --yolo off)
+  status=$?
+  [ "$status" -ne 0 ] || fail "spawn on project with outside annotation should exit non-zero"
+  assert_contains "$out" "refused: misplaced annotation" "spawn on misplaced annotation did not emit refusal"
+  assert_absent "$home/state/branch-agree-outside.meta" "spawn on misplaced annotation still recorded a task"
+
   pass "fm-spawn: the brief must carry the spawn's selected ship branch, and the selection is validated before anything is created"
 }
 
@@ -1635,6 +1708,7 @@ test_project_mode_matches_whole_multiword_names
 test_project_mode_maps_the_conditional_policy
 test_project_mode_binds_the_forge_orthogonally
 test_project_mode_refuses_only_a_malformed_forge_binding
+test_project_mode_refuses_misplaced_outside_annotations
 test_forge_gerrit_refuses_yolo
 test_forge_gerrit_changes_what_no_mistakes_means
 test_forge_gerrit_direct_pr_publishes_one_change

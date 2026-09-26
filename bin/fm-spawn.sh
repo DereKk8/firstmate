@@ -2981,8 +2981,10 @@ if [ "$KIND" = ship ]; then
     SOURCE_BRIEF="$DATA/$ID/brief.md"
     BRIEF_BRANCH=$(sed -n 's/^Ship branch: //p' "$SOURCE_BRIEF" 2>/dev/null | head -n 1)
     if [ -n "$BRIEF_BRANCH" ] && [ "$BRIEF_BRANCH" != "$BRANCH" ]; then
-      BRANCH_FORMAT=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
-        "$FM_ROOT/bin/fm-project-mode.sh" --branch-format "$PROJ_NAME" 2>/dev/null || true)
+      if ! BRANCH_FORMAT=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
+        "$FM_ROOT/bin/fm-project-mode.sh" --branch-format "$PROJ_NAME"); then
+        exit 1
+      fi
       if [ -z "$BRANCH_FORMAT" ]; then
         echo "error: branch mismatch for $ID: the brief says branch=$BRIEF_BRANCH but this spawn selected branch=$BRANCH" >&2
         exit 1

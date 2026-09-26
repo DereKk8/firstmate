@@ -456,8 +456,10 @@ REPO=${POS[1]}
 TICKET=${FM_BRIEF_TICKET:-}
 BRANCH_FORMAT=
 if [ "$KIND" = ship ]; then
-  BRANCH_FORMAT=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
-    "$FM_ROOT/bin/fm-project-mode.sh" --branch-format "$REPO" 2>/dev/null || true)
+  if ! BRANCH_FORMAT=$(FM_HOME="$FM_HOME" FM_DATA_OVERRIDE="$DATA" \
+    "$FM_ROOT/bin/fm-project-mode.sh" --branch-format "$REPO"); then
+    exit 1
+  fi
 fi
 SHORT_DESCRIPTION=$ID
 if [ -n "$TICKET" ]; then

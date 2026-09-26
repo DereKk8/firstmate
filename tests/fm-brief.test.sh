@@ -260,6 +260,16 @@ EOF
     "undeclared project did not keep the historical fleet branch"
   assert_no_grep 'git checkout -b feature/' "$brief" \
     "undeclared project adopted a branch convention without a declaration"
+
+  # Misplaced outside-bracket placement refuses loudly and does not scaffold a brief
+  cat >> "$home/data/projects.md" <<'EOF'
+- oulow-outside [no-mistakes] branch=feature/{ticket}-{short-description} - outside placement
+EOF
+  local err
+  err=$(FM_HOME="$home" FM_BRIEF_TICKET=ENG-99 "$ROOT/bin/fm-brief.sh" outside-task oulow-outside --mode no-mistakes 2>&1) \
+    && fail "scaffold on project with outside annotation should exit non-zero"
+  assert_contains "$err" "refused: misplaced annotation" "fm-brief did not emit registry refusal"
+  assert_absent "$home/data/outside-task/brief.md" "scaffold on refused registry entry still wrote a brief"
   pass "fm-brief.sh: declared formats use the explicit ticket, while ticketless and undeclared tasks keep fm/"
 }
 
