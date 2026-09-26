@@ -7,7 +7,9 @@
 # The npm tools use `npm view <package> version` as their published-version source.
 # The no-mistakes CLI's update banner is not used as a release source because it
 # is cached or absent on some invocations; its latest stable release comes from
-# the authoritative GitHub releases/latest API endpoint via gh-axi instead.
+# the authoritative GitHub releases/latest API endpoint via gh-axi instead, and
+# treehouse's latest release comes from its own GitHub releases/latest endpoint
+# the same way.
 #
 # Usage: fm-external-tooling-check.sh [--help]
 #
@@ -130,6 +132,22 @@ check_no_mistakes() {
   emit_result no-mistakes "$installed" "$latest" needs-quiet-fleet github-release
 }
 
+check_treehouse() {
+  local installed=unavailable latest=unavailable raw
+  if command -v treehouse >/dev/null 2>&1; then
+    raw=$(treehouse --version 2>/dev/null) || raw=
+    installed=$(extract_version "$raw")
+    [ -n "$installed" ] || installed=unavailable
+  fi
+  if command -v gh-axi >/dev/null 2>&1; then
+    raw=$(GH_PROMPT_DISABLED=1 gh-axi api \
+      /repos/kunchenguid/treehouse/releases/latest --jq .tag_name 2>/dev/null) || raw=
+    latest=$(extract_version "$raw")
+    [ -n "$latest" ] || latest=unavailable
+  fi
+  emit_result treehouse "$installed" "$latest" needs-quiet-fleet github-release
+}
+
 case "${1:-}" in
   '' )
     check_npm_tool claude @anthropic-ai/claude-code needs-quiet-fleet
@@ -147,6 +165,7 @@ case "${1:-}" in
     check_brew_tool rtk rtk formula needs-quiet-fleet
     check_pypi_tool headroom headroom-ai needs-quiet-fleet
     check_no_mistakes
+    check_treehouse
     exit "$CHECK_FAILURE"
     ;;
   -h|--help)

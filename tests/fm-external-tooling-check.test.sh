@@ -18,7 +18,11 @@ printf 'gh-axi %s\n' "$*" >> "$FM_EXTERNAL_TOOLING_LOG"
 if [ "${1:-}" = --version ]; then
   printf '%s\n' 'gh-axi 0.1.29 (fake)'
 elif [ "${1:-}" = api ]; then
-  printf '%s\n' 'v1.45.4'
+  case "${2:-}" in
+    /repos/kunchenguid/no-mistakes/releases/latest) printf '%s\n' 'v1.45.4' ;;
+    /repos/kunchenguid/treehouse/releases/latest) printf '%s\n' 'v3.2.0' ;;
+    *) exit 2 ;;
+  esac
 else
   exit 2
 fi
@@ -59,7 +63,7 @@ fi
     *) exit 2 ;;
   esac
 SH
-  for tool_version in 'claude:2.1.240' 'notion-axi:0.1.30' 'quota-axi:0.1.30' 'tasks-axi:0.1.30' 'codex:0.149.0' 'opencode:1.18.20' 'pi:0.84.2' 'herdr:0.8.2' 'rtk:0.45.0'; do
+  for tool_version in 'claude:2.1.240' 'notion-axi:0.1.30' 'quota-axi:0.1.30' 'tasks-axi:0.1.30' 'codex:0.149.0' 'opencode:1.18.20' 'pi:0.84.2' 'herdr:0.8.2' 'rtk:0.45.0' 'treehouse:3.1.0'; do
     tool=${tool_version%%:*}
     version=${tool_version#*:}
     printf '#!/usr/bin/env bash\nprintf "%%s\\n" "%s"\n' "$version" > "$fakebin/$tool"
@@ -107,8 +111,8 @@ test_reports_npm_and_no_mistakes_drift() {
   : > "$log"
 
   out=$(run_check "$fakebin" "$log")
-  [ "$(printf '%s\n' "$out" | grep -c '^tool=')" -eq 15 ] \
-    || fail "report must contain exactly fifteen tool lines"
+  [ "$(printf '%s\n' "$out" | grep -c '^tool=')" -eq 16 ] \
+    || fail "report must contain exactly sixteen tool lines"
 
   line=$(printf '%s\n' "$out" | grep '^tool=claude ')
   assert_field "$line" installed 2.1.240 "claude installed version"
@@ -138,6 +142,13 @@ test_reports_npm_and_no_mistakes_drift() {
   assert_field "$line" coordination needs-quiet-fleet "no-mistakes coordination"
   assert_field "$line" source github-release "no-mistakes source"
 
+  line=$(printf '%s\n' "$out" | grep '^tool=treehouse ')
+  assert_field "$line" installed 3.1.0 "treehouse installed version"
+  assert_field "$line" latest 3.2.0 "treehouse GitHub release version"
+  assert_field "$line" status behind "treehouse drift"
+  assert_field "$line" coordination needs-quiet-fleet "treehouse coordination"
+  assert_field "$line" source github-release "treehouse source"
+
   line=$(printf '%s\n' "$out" | grep '^tool=codex ')
   assert_field "$line" status behind "codex brew drift"
   assert_field "$line" coordination needs-quiet-fleet "codex coordination"
@@ -156,6 +167,8 @@ test_reports_npm_and_no_mistakes_drift() {
     "the checker must never invoke no-mistakes update"
   assert_contains "$(<"$log")" 'gh-axi api /repos/kunchenguid/no-mistakes/releases/latest --jq .tag_name' \
     "no-mistakes latest must come from the GitHub release endpoint"
+  assert_contains "$(<"$log")" 'gh-axi api /repos/kunchenguid/treehouse/releases/latest --jq .tag_name' \
+    "treehouse latest must come from the GitHub release endpoint"
   pass "the checker reports npm drift, GitHub-release drift, and coordination tags"
 }
 
