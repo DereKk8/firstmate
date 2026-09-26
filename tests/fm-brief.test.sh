@@ -227,8 +227,19 @@ EOF
     "ticketed local-only task composed a project branch"
   assert_grep 'ready in branch fm/localonly-ticketed' "$brief" \
     "ticketed local-only task did not report the fleet ready branch"
-  assert_grep "it uses the resolved ship-branch prefix plus \`localonly-ticketed\`" "$brief" \
+  assert_grep "Local-only does not compose a ticketed branch template; it uses the resolved ship-branch prefix plus \`localonly-ticketed\` because guarded local landing and sibling tooling require a task-id branch." "$brief" \
     "local-only delivery text did not state the fleet-form rule"
+
+  FM_HOME="$home" FM_BRIEF_TICKET='' \
+    "$ROOT/bin/fm-brief.sh" localonly-ticketless oulow-local --mode local-only >/dev/null 2>&1 \
+    || fail "ticketless local-only task on a declared project should scaffold"
+  brief="$home/data/localonly-ticketless/brief.md"
+  assert_grep 'git checkout -b fm/localonly-ticketless' "$brief" \
+    "ticketless local-only task did not keep the fleet branch"
+  assert_no_grep 'git checkout -b feature/' "$brief" \
+    "ticketless local-only task composed a project branch"
+  assert_grep "This task has no authoritative external ticket, so use the resolved ship-branch prefix plus \`localonly-ticketless\`; local-only never composes a ticketed template." "$brief" \
+    "ticketless local-only delivery text did not state the fleet-form rule"
 
   FM_HOME="$home" FM_BRIEF_TICKET='' \
     "$ROOT/bin/fm-brief.sh" ticketless-ENG-TASKS-999-change oulow --mode no-mistakes >/dev/null 2>&1 \
