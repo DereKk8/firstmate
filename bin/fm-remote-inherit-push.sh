@@ -22,21 +22,15 @@ DATA="${FM_DATA_OVERRIDE:-$FM_HOME/data}"
 # shellcheck source=bin/fm-config-inherit-lib.sh
 . "$SCRIPT_DIR/fm-config-inherit-lib.sh"
 
+# Retain this script's guard entry point while sharing its implementation with local inheritance.
+shared_captain_header_valid() { shared_captain_header_valid_impl "$@"; }
+
 die() { printf 'error: %s\n' "$1" >&2; exit 1; }
 sha256_file() {
   if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'; else sha256sum "$1" | awk '{print $1}'; fi
 }
 file_link_count() {
   if [ "$(uname)" = Darwin ]; then /usr/bin/stat -f %l "$1" 2>/dev/null; else stat -c %h "$1" 2>/dev/null; fi
-}
-shared_captain_header_valid() {
-  local head
-  head=$(sed -n '1,12p' "$1" 2>/dev/null) || return 1
-  case "$head" in *main-authoritative*) ;; *) return 1 ;; esac
-  case "$head" in *"read-only in secondmate homes"*) ;; *) return 1 ;; esac
-  case "$head" in *"must not be edited there"*) ;; *) return 1 ;; esac
-  case "$head" in *"main firstmate"*) ;; *) return 1 ;; esac
-  case "$head" in *"marked status"*|*"document pointer"*) ;; *) return 1 ;; esac
 }
 [ "$#" -eq 2 ] || { echo "usage: fm-remote-inherit-push.sh <secondmate-id> <generation>" >&2; exit 2; }
 ID=$1
@@ -74,7 +68,11 @@ while IFS= read -r rel; do
     [ -f "$source" ] && [ ! -L "$source" ] || die "inherited source is unsafe: $source"
     [ "$(file_link_count "$source")" = 1 ] || die "inherited source is hardlinked: $source"
     if [ "$rel" = data/captain-shared.md ]; then
-      shared_captain_header_valid "$source" || die "shared captain preferences have no valid primary-authoritative header"
+      if ! missing=$(shared_captain_header_valid "$source"); then
+        reason="shared captain preferences have no valid primary-authoritative header"
+        [ -z "$missing" ] || reason="$reason: missing \"$missing\""
+        die "$reason"
+      fi
     fi
     snapshot="$TMP/$(printf '%s' "$rel" | tr '/' '_')"
     cp -p -- "$source" "$snapshot" || die "cannot snapshot inherited source: $source"
