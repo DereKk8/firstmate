@@ -41,6 +41,11 @@ run_check() {
 test_clean_pr_armed() {
   local case_dir rc out
   case_dir=$(make_case clean)
+  # fm-pr-check's named-head gate only arms when the head it names is held
+  # outside the worker's disposable copy. In no-mistakes mode the forge-reported
+  # head is that named head, so a pushed ship's forge answer arms the poll.
+  mkdir -p "$case_dir/wt"
+  add_gh_mock "$case_dir" deadbeefdeadbeef0000000000000000deadbeef
   set +e
   out=$(run_check "$case_dir" task-x1 https://github.com/example/repo/pull/7 2>&1)
   rc=$?
