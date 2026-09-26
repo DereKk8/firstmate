@@ -31,11 +31,14 @@
 #   - <name> [<mode> branch=<format>] - <desc> (added <date>)        -> ticketed branch template when it contains a known placeholder
 #   - <name> [<mode> forge=gerrit] - <desc> (added <date>)           -> <mode> off, --forge gerrit
 #   <name> may contain spaces; it ends at the literal " [" or " - " that follows it.
-#   Bracket tokens are order-independent: +yolo, branch=<value>, and forge=<value>
-#   are recognized by their own shape wherever they appear, and whichever token is
-#   left over is the mode. A branch value with {ticket}, {notion-id},
-#   {short-description}, {slug}, or {task-id} is a ticketed template; other values
-#   are prefixes and may be empty to resolve a bare task-id branch.
+#   Bracket tokens are order-independent, but only inside the brackets: +yolo,
+#   branch=<value>, and forge=<value> are recognized by their own shape in any
+#   order, and whichever token is left over is the mode. A branch=, forge=, or
+#   +yolo token outside the brackets is ignored with one stderr warning naming it,
+#   so a misplaced annotation never silently loses a prefix or template.
+#   A branch value with {ticket}, {notion-id}, {short-description}, {slug}, or
+#   {task-id} is a ticketed template; other values are prefixes and may be empty
+#   to resolve a bare task-id branch.
 #
 # Registered modes:
 #   no-mistakes            full pipeline -> PR -> configured merge authority (default)
