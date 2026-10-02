@@ -39,7 +39,7 @@ Today it runs beside a Claude, Cursor, OpenCode, omp, Grok, or Codex primary: aw
 
 ### Not yet on the host
 
-Attended supervision beside a Codex primary, running the host by default on the other five primaries, and the daemon's retirement are later steps of the same design.
+Attended supervision beside a Codex primary, the default-on flip for the other five primaries, and the daemon's retirement are later steps of the same design.
 Until they land, their current behavior stays as described in their own owners.
 
 ## Components and their owners
