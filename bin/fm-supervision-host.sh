@@ -1141,6 +1141,8 @@ while :; do
       && ! fm_recovery_marker_publish "$STATE/.watcher-down" downtime >/dev/null 2>&1; then
       log_line "pass-through	downtime-unrestored	$(printf '%s\n' "$REASON" | head -n 1)"
       HANDLE_RC=1
+    else
+      HANDLE_RC=0
     fi
     emit
     exit "$HANDLE_RC"
