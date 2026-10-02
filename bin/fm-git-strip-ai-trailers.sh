@@ -15,9 +15,15 @@
 #       core.hooksPath (or $GIT_DIR/hooks) in the repository git is actually
 #       running in, so a husky directory that only appears after npm install
 #       still runs, and git -C some-other-repo does not inherit the task
-#       worktree's hooks. Does not touch the project's git config; the caller
-#       prefixes the pane with GIT_CONFIG_COUNT / GIT_CONFIG_KEY_0 /
-#       GIT_CONFIG_VALUE_0.
+#       worktree's hooks. That lookup also ignores GIT_CONFIG_PARAMETERS,
+#       because git -c core.hooksPath=<this dir> (or a child process that
+#       inherits it) carries the override there, and a lookup that honored it
+#       would find this directory again and never run the repository's own
+#       hook - a skipped pre-push guard. An empty core.hooksPath means no
+#       repository hook, as in plain git; any other failed lookup exits
+#       nonzero rather than skipping the repository's hook. Does not touch the
+#       project's git config; the caller prefixes the pane with
+#       GIT_CONFIG_COUNT / GIT_CONFIG_KEY_0 / GIT_CONFIG_VALUE_0.
 #
 # WHY THIS EXISTS. Claude launches already carry attribution-off in their
 # per-launch --settings JSON. Cursor and other non-Claude runtimes inject a
@@ -144,15 +150,28 @@ write_executable() {
 # Shared body for every wrapper: after the pane-wide GIT_CONFIG override is
 # cleared, resolve this repository's own hooks directory the way git does
 # (core.hooksPath, else the common dir's hooks) and exec that name if it
-# exists. Skip when that path is this launch's own hooks dir so the wrapper
-# cannot recurse into itself.
+# exists. The lookup runs without GIT_CONFIG_PARAMETERS as well, since git -c
+# is the other environment channel that can carry this directory as
+# core.hooksPath; only the repository's config files name its own hooks. Skip
+# when the lookup still names this launch's own hooks dir, meaning those files
+# point here, so the wrapper cannot recurse into itself. An empty
+# core.hooksPath makes that lookup fail, but plain git reads it as "no hooks",
+# so the wrapper runs none; any other failure reruns the lookup to show git's
+# error and refuses.
 runtime_chain_body() {
   local ours=$1
   cat <<EOF
 unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
 ours=$(quote_for_hook "$ours")
 name=\${0##*/}
-orig=\$(git rev-parse --path-format=absolute --git-path hooks) || exit 0
+orig=\$(unset GIT_CONFIG_PARAMETERS; git rev-parse --path-format=absolute --git-path hooks 2>/dev/null) || {
+  if hooks_path=\$(unset GIT_CONFIG_PARAMETERS; git config --get --type=path core.hooksPath 2>/dev/null) && [ -z "\$hooks_path" ]; then
+    exit 0
+  fi
+  (unset GIT_CONFIG_PARAMETERS; git rev-parse --path-format=absolute --git-path hooks >/dev/null)
+  echo "fm-git-strip-ai-trailers: cannot resolve this repository's hooks directory; refusing to skip its \$name hook" >&2
+  exit 1
+}
 if [ "\$orig" = "\$ours" ]; then
   exit 0
 fi

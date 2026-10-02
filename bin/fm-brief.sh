@@ -20,7 +20,7 @@
 #   --scout writes the scout contract instead: the deliverable is a report at
 #   data/<task-id>/report.md (no branch, no push, no PR) and the worktree is scratch.
 #   It offers the Lavish review loop only when `fm-bootstrap.sh lavish-compatible`
-#   confirms the supported lavish-axi floor; otherwise it asks for a text report.
+#   confirms the legacy board-compatibility floor; otherwise it asks for a text report.
 #   --secondmate writes a persistent secondmate charter. The project list
 #   is cloned into the secondmate home, while the natural-language scope
 #   tells the main firstmate when to route work there; routine churn stays in its own home;
@@ -96,8 +96,9 @@
 # a spawn-time and firstmate-side input only (AGENTS.md section 7).
 # Every scaffold's status protocol distinguishes the configured
 # declared-external-wait verb (FM_CLASSIFY_PAUSED_VERB, default "paused") from
-# "blocked:": pause for a known external wait expected to clear on its own,
-# blocked when firstmate must act.
+# "blocked:": pause for a known wait expected to clear on its own, including
+# the worker's own background work, pipeline or long command; blocked when
+# firstmate must act. The first-sight alert remains; repeats use the long cadence.
 # Emission-time syntax and legacy unknown-time handling are owned by
 # bin/fm-classify-lib.sh; each scaffold renders the stamp as a literal <epoch>
 # placeholder the worker replaces with a numeric Unix time as it appends, so a
@@ -149,7 +150,16 @@ esac
 # shellcheck source=bin/fm-dod-lib.sh
 . "$SCRIPT_DIR/fm-dod-lib.sh"
 PAUSED_VERB=${FM_CLASSIFY_PAUSED_VERB:-$FM_CLASSIFY_PAUSED_VERB_DEFAULT}
-CREWMATE_PAUSE_WAIT_EXAMPLES='an upstream release, a rate-limit reset, a scheduled window, or your own validation round'
+IFS= read -r -d '' CREWMATE_PAUSE_INSTRUCTIONS <<EOF || true
+   Use \`$PAUSED_VERB: {why}\` - distinct from \`blocked:\` - when deliberately waiting for work or an external condition expected to clear on its own, including your own validation round.
+   Before ending your turn with your own background shell or monitor still running, or before waiting on your own pipeline run or a long foreground command, append \`$PAUSED_VERB [at=<epoch>]: {job and completion condition}\` to the status file.
+   Name what you are waiting for and what will let you resume; do not repeat the declaration on every poll.
+   Do not declare active implementation or reasoning as a wait.
+   Firstmate may still raise one first-sight alert; the declared wait then uses the existing long recheck cadence instead of repeated possible-wedge alarms.
+   When you know when the wait clears, include \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) for a recheck at that time.
+   Follow the resolution rule below when the wait clears, then resume the task.
+   Use \`blocked:\` when you are stuck and need help.
+EOF
 
 resolve_directory_input() {
   local name=$1 path=$2 resolved
@@ -343,16 +353,47 @@ INBOX_DIR=$(shell_quote "$STATE/$ID.inbox")
 
 # The receive-and-ack half of the steering-inbox contract, included in every
 # scaffold kind. The record format, doorbell line, and re-ring ladder are
-# owned by bin/fm-task-inbox-lib.sh; the doorbell itself is self-describing,
-# so this section is reinforcement for the natural-checkpoint habit, not the
-# only carrier of the instruction.
+# owned by bin/fm-task-inbox-lib.sh. The doorbell names the inbox as
+# "$FM_TASK_INBOX", which bin/fm-spawn.sh exports into every launch; the full
+# path here remains the fallback for a worker launched without that export.
+# The doorbell itself is self-describing, so this section is reinforcement
+# for the natural-checkpoint habit, not the only carrier of the instruction.
+# config/wait-no-turns (docs/configuration.md) adds the line that a waiting
+# worker does not poll the inbox: checkpoint checks happen during active work,
+# so waiting still spends no turns.
 IFS= read -r -d '' INBOX_SECTION <<EOF || true
 # Firstmate instruction inbox
 Firstmate steers you through durable message files in $INBOX_DIR.
 When a terminal message says an instruction is waiting there - and at any natural checkpoint when you are unsure - list $INBOX_DIR/*.msg, read and act on each message in numeric order, then acknowledge each handled message by moving it: \`mv $INBOX_DIR/NNN.msg $INBOX_DIR/handled/\`.
 The move IS the acknowledgement: without it firstmate rings again and eventually treats you as stuck. An empty or absent inbox needs no action.
 EOF
+if [ -e "$CONFIG/wait-no-turns" ]; then
+  INBOX_SECTION+="Do not poll or list the inbox while waiting; a waiting instruction rings."$'\n'
+fi
 INBOX_SECTION=${INBOX_SECTION%$'\n'}
+
+# How a crewmate or scout waits. Every model turn resends the whole context, so
+# a wait must cost no turns: a decision wait ends the turn, and an external
+# wait sleeps in one bounded blocking shell command sized to the harness.
+# Emitted only when config/wait-no-turns is present.
+IFS= read -r -d '' WAIT_SECTION <<'EOF' || true
+# Waiting
+Every turn you take resends your whole context, so a wait must cost no turns.
+After you append `needs-decision:` or `blocked:`, end your turn at once: do not check the inbox, the status file, or anything else, because the answer arrives as a terminal message that starts your next turn.
+Wait on anything external - a pipeline gate, PR checks, a heavy-test slot - with ONE blocking shell command that returns when the state changes: `no-mistakes axi run` or `respond` with `--wait`, `gh pr checks <pr> --watch`, or `until <condition>; do sleep 30; done` for anything else.
+Never spend turns on `sleep` followed by a status check, and never background a command in order to poll it.
+In Claude Code that `until` loop in a single Bash call is the sanctioned foreground wait: when the harness refuses a sleep-then-check command and points you at backgrounding instead, reissue the wait as the loop rather than accepting the background.
+Bound that command by what your harness lets one command run: in Pi pass the bash tool a `timeout` of at most 2700 seconds, because Pi sets none by default; in Claude Code pass the Bash tool its maximum `timeout` of 600000 ms, because its default is 2 minutes; in Codex keep waiting on a still-running command with empty `write_stdin` polls of up to 300000 ms; elsewhere pass your shell tool its largest timeout and assume at most 10 minutes.
+Give any `--wait` a duration a little under that bound.
+When the bound passes with nothing changed, run the same blocking command again, with no status check in between.
+The one exception is `respond`: it sent its answer before it began waiting, so reattach with `no-mistakes axi run --wait` instead, and never send the same `respond` again, because it would answer whichever gate parks next without you reading it.
+A wait your shell can watch this way needs no `paused:` line, except your own pipeline run, a long foreground command, or your own validation round, which you declare once just before its blocking hold: append `paused:` once just before its first blocking command, then stay in the command, and never append it again as you reissue that command.
+EOF
+WAIT_SECTION=${WAIT_SECTION%$'\n'}
+WAIT_BLOCK=
+if [ -e "$CONFIG/wait-no-turns" ]; then
+  WAIT_BLOCK="$WAIT_SECTION"$'\n\n'
+fi
 
 if [ "$KIND" = secondmate ]; then
 SECONDMATE_PROJECTS=""
@@ -524,8 +565,12 @@ HERDR_SECTION=$(printf '%s\n' \
 'On Herdr 0.7.3 the API socket is not relocatable by `HERDR_CONFIG_PATH`, `XDG_CONFIG_HOME`, or `HOME`.' \
 'A named non-`default` session plus an explicit `--session <name>` Herdr option on every call is the only viable local isolation.' \
 '' \
+'For tmux-based lab primaries, `bin/fm-lab-home.sh` owns the short private socket directory; do not place `TMUX_TMPDIR` under the lab home or worktree.' \
+'Use `LAB_HOME_HELPER='"$(shell_quote "$FM_ROOT/bin/fm-lab-home.sh")"'`, then `LAB_TMUX_DIR=$("$LAB_HOME_HELPER" tmux-dir "$FM_HOME")` and launch tmux with `TMUX_TMPDIR="$LAB_TMUX_DIR"`.' \
+'Your single EXIT cleanup trap must kill only the server addressed through that `TMUX_TMPDIR`, call `"$LAB_HOME_HELPER" teardown "$FM_HOME"`, and call the Herdr teardown below; do not install a second trap that replaces either cleanup.' \
+'' \
 '1. Set `HERDR_LAB_HELPER='"$HERDR_LAB_HELPER"'` and generate the session name with `HERDR_LAB_SESSION=$("$HERDR_LAB_HELPER" name '"$ID"')`.' \
-'   Install `trap '\''"$HERDR_LAB_HELPER" teardown "$HERDR_LAB_SESSION"'\'' EXIT` before provisioning, then provision only with `"$HERDR_LAB_HELPER" provision "$HERDR_LAB_SESSION"`.' \
+'   Install the combined EXIT cleanup before provisioning, then provision only with `"$HERDR_LAB_HELPER" provision "$HERDR_LAB_SESSION"`.' \
 '2. Run every task-specific non-lifecycle Herdr command through `"$HERDR_LAB_HELPER" run "$HERDR_LAB_SESSION" <arguments...>`.' \
 '   The helper supplies the required `--session "$HERDR_LAB_SESSION"` as a Herdr option, before any `--` delimiter; `HERDR_SESSION` alone is never accepted as isolation.' \
 '3. Teardown only through `"$HERDR_LAB_HELPER" teardown "$HERDR_LAB_SESSION"`.' \
@@ -620,12 +665,7 @@ The report is the only thing that survives, so anything worth keeping must be in
    Whenever you mention a PR anywhere - a status line, your terminal, a summary - write its full
    https:// URL exactly as the forge printed it, never a bare number such as "PR 108"; firstmate
    copies that URL from your line rather than assembling one.
-   Use \`$PAUSED_VERB: {why}\` - distinct from \`blocked:\` - ONLY when you are deliberately idling on a
-   known external wait you expect to clear on its own ($CREWMATE_PAUSE_WAIT_EXAMPLES):
-   firstmate then leaves your idle pane alone and rechecks it on a long cadence instead of
-   treating it as a possible wedge. When you know when the wait clears, say so in the line with
-   \`until <YYYY-MM-DDTHH:MMZ>\` (UTC) and firstmate rechecks at that time instead.
-   Use \`blocked:\` when you are stuck and need help.
+$CREWMATE_PAUSE_INSTRUCTIONS
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
 6. If a decision belongs to a human (product choices, destructive actions),
    append \`needs-decision [at=<epoch>]: {summary of options}\` and stop. Firstmate will reply with the decision.
@@ -633,7 +673,7 @@ The report is the only thing that survives, so anything worth keeping must be in
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
 
-$INBOX_SECTION
+$WAIT_BLOCK$INBOX_SECTION
 
 # Definition of done
 Write your findings to \`$DATA/$ID/report.md\`.
@@ -702,10 +742,7 @@ $RULE1
    copies that URL from your line rather than assembling one.
    A mid-task \`working:\` line (including setup complete) is nonterminal: do not end the
    turn after it; continue the same stage until a defined \`done:\` gate under Definition of done.
-   Use \`$PAUSED_VERB: {why}\` - distinct from \`blocked:\` - ONLY when you are deliberately idling on a
-   known external wait you expect to clear on its own ($CREWMATE_PAUSE_WAIT_EXAMPLES):
-   firstmate then leaves your idle pane alone and rechecks it on a long
-   cadence instead of treating it as a possible wedge. Use \`blocked:\` when you are stuck and need help.
+$CREWMATE_PAUSE_INSTRUCTIONS
 5. If you hit the same obstacle twice, append \`blocked [at=<epoch>]: {why}\` and stop; firstmate will help.
 6. If a decision belongs above the implementation worker (product choices, destructive actions),
    append \`needs-decision [at=<epoch>]: {summary of options}\` and stop. Firstmate will reply with the decision.
@@ -714,7 +751,7 @@ $ASK_USER_BLOCK
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
 
-$INBOX_SECTION
+$WAIT_BLOCK$INBOX_SECTION
 
 # Project memory
 A project's \`AGENTS.md\` or \`CLAUDE.md\` is loaded into every agent session in that project, so edit it only to correct information that is factually wrong - including information your own change made wrong - and never to add knowledge because it is missing.

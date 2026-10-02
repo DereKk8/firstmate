@@ -115,14 +115,17 @@ Inheritance copies the literal `config/crew-harness` file, so a secondmate's own
 Inherited `config/backend` becomes that secondmate home's local runtime-backend default for future spawns only; it never retargets, rewrites, migrates, stops, or restarts an already-live worker endpoint.
 A present primary value always converges byte-exact into validated secondmate homes, and primary absence removes the destination so those homes keep runtime auto-detection.
 Explicit per-spawn `--backend` and `FM_BACKEND` remain stronger than every home's local `config/backend`, including an inherited default.
+The declared `config/supervision-host-off` opt-out follows the same primary-authoritative propagation: its presence opts secondmate homes out even if they have their own engine setting, and its absence removes their copy at convergence.
+`config/supervision-host` itself is not inherited; each home selects its own engine.
 `config/secondmate-harness` is not inherited because it is only the primary's knob for launching secondmate agents.
 `config/claude-account` and `config/pi-account` are not inherited: a local secondmate agent launches on the launching home's worker account pin, and a secondmate home that should pin its own workers needs its own file ([`docs/configuration.md`](../../../docs/configuration.md) "Worker account pin").
 `data/captain-shared.md` is main-authoritative in the primary home and read-only in secondmate homes.
 Its primary file header must state that the file is main-authoritative, read-only in secondmate homes, must not be edited there, and that new captain-preference discoveries are routed to the main firstmate through marked status or a document pointer.
 Every propagation point converges the secondmate copy to the primary bytes; when the primary file is absent, any existing secondmate copy is quarantined and removed so absence converges too.
+Both the local helper and the remote receiver compare the destination against the generation each last published there, so an untouched inherited copy is replaced quietly instead of being reported as drift.
+A destination matching neither the primary bytes nor that recorded generation is quarantined to a collision-safe private dated sibling file before replacement, with a `SECONDMATE_SYNC:` diagnostic naming the home and quarantine artifact on the local route, so genuine local edits and interrupted publication keep a recovery copy.
 The helper rejects unsafe directories, symlinked or nonordinary source or destination artifacts, and hardlinked destination files.
 Between propagation runs, the secondmate copy is filesystem read-only; the helper may make its owned destination writable only around a guarded update and restores read-only mode on success, unchanged bytes, and recoverable failure paths.
-Before replacing divergent secondmate bytes, the helper hash-compares source and destination, quarantines the secondmate-local version to a collision-safe private dated sibling file, and emits a `SECONDMATE_SYNC:` diagnostic naming the home and quarantine artifact.
 Never copy any secondmate `data/captain-shared.md` back into the primary.
 Keep each home's `data/captain.md` domain-local.
 After first propagation to an existing home, trim that home's local `data/captain.md` by hand to domain-specific content plus pointers to `data/captain-shared.md`; do not automate or silently delete private content.

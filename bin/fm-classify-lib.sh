@@ -47,7 +47,13 @@
 # Directory of this library, used to locate the sibling fm-crew-state.sh reader.
 # Resolved at source time from BASH_SOURCE so it works whether sourced by a
 # bin/ script (which sets its own SCRIPT_DIR) or directly by a test.
-_FM_CLASSIFY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd 2>/dev/null)" || _FM_CLASSIFY_LIB_DIR="."
+_FM_CLASSIFY_LIB_DIR="$(d=${BASH_SOURCE[0]%/*}; [ "$d" != "${BASH_SOURCE[0]}" ] || d=.; cd "${d:-/}" && pwd 2>/dev/null)" || _FM_CLASSIFY_LIB_DIR="."
+
+# The kernel name, read once at source time rather than forked by every status
+# stat helper below. These helpers mostly run inside $() subshells, where a lazy
+# cache would never persist. fm-wake-lib.sh's _FM_UNAME is reused when it is
+# already loaded; either value is compared only against Darwin.
+_FM_CLASSIFY_UNAME_S=${_FM_UNAME:-$(uname -s 2>/dev/null)}
 
 # The crew current-state reader used for the "provably working" decision.
 # Overridable so tests can stub the run-step/pane verdict without a real worktree
@@ -86,12 +92,15 @@ unset _fm_classify_nounset
 # classification below.
 FM_CLASSIFY_CAPTAIN_RE_DEFAULT='done:|needs-decision:|blocked:|failed:|PR ready|checks green|ready in branch|merged'
 
-# The deliberate-external-wait verb. A crew (or firstmate steering it) appends
+# The declared-wait verb. A crew (or firstmate steering it) appends
 #   paused: <reason>
-# to declare it is intentionally idling on a KNOWN external dependency.
-# bin/fm-brief.sh owns the worker-facing wait examples.
+# to declare a known wait expected to clear on its own. The legacy "external
+# wait" name and "awaiting external" reason also cover the worker's own work;
+# they do not identify a separate classification or liveness source.
+# bin/fm-brief.sh owns worker-facing declaration and resolution instructions.
 # Unlike `blocked:` (stuck, firstmate must help), an idle `paused:` pane is EXPECTED, so
-# the stale path absorbs it instead of escalating a possible wedge. It is
+# the stale path bounds repeats instead of escalating a possible wedge; a live
+# idle worker can still surface a first-sight stale alert. It is
 # deliberately NOT in the captain-relevant set above: a pause is a "stop
 # wedge-nagging this idle pane" signal, not work to keep surfacing. This constant
 # is the ONE definition of the verb; both the watcher and the daemon read it here
@@ -913,6 +922,25 @@ EOF
   printf '%s\n' "$current"
 }
 
+# The subset of status_open_decisions the task raised about its own work: a
+# reserved-namespace key is raised by a supervisor library about the task (a
+# pending-reply escalation), a `remote-reply-continuity-` key is the parent's
+# own blocker about a broken remote reply mirror
+# (bin/fm-procevent-remote-reply.sh), and a `captain-hold-` key relays a child
+# decision a secondmate escalated to the captain (bin/fm-captain-hold.sh) while
+# it keeps working, so the task is not waiting on any of them. Pending-reply
+# recovery and a fire-and-forget retry ring consult this set and leave a task
+# alone while it is non-empty.
+status_own_open_decisions() {  # <status-file>
+  local line prefix
+  status_open_decisions "$1" | while IFS= read -r line || [ -n "$line" ]; do
+    for prefix in ${FM_CLASSIFY_RESERVED_KEY_PREFIXES:-$FM_CLASSIFY_RESERVED_KEY_PREFIXES_DEFAULT} remote-reply-continuity- captain-hold-; do
+      case "$line" in "$prefix"*) continue 2 ;; esac
+    done
+    printf '%s\n' "$line"
+  done
+}
+
 # 0 when the fold above still holds at least one decision OPENED by
 # `needs-decision` - the status side's own record that a human was asked
 # something and has not answered. A `blocked` record is deliberately not this: a
@@ -1029,6 +1057,28 @@ EOF
   printf '%s' "$verb"
 }
 
+# The status file inside <state> that is this home's outbound parent channel
+# rather than a self-home task status log, printed; empty when there is none.
+# Only a remote mate home resolves one - its state/parent-replies.status is the
+# parent channel (bin/fm-parent-channel-lib.sh owns that resolution, sourced
+# lazily here because that library sources this one at its top level, so a
+# top-level source would be circular). A main home, a local mate - whose
+# channel lives in the parent home - or an unusable identity or binding keeps
+# every file, so ordinary task logs fold and wake exactly as before. The home
+# is the directory containing <state>, the <home>/state layout every caller of
+# these fleet-wide scans shares; a state dir outside such a home excludes
+# nothing. Callers compare the resolved path, never the file name, so a
+# parent-replies.status in any other home shape stays an ordinary task log.
+status_scan_parent_channel_exclude() {  # <state>
+  local state=$1 exclude
+  if ! command -v fm_parent_channel_outbound_status >/dev/null 2>&1; then
+    # shellcheck source=bin/fm-parent-channel-lib.sh
+    . "$_FM_CLASSIFY_LIB_DIR/fm-parent-channel-lib.sh"
+  fi
+  exclude=$(fm_parent_channel_outbound_status "$(dirname "$state")" "$state") || return 0
+  printf '%s\n' "$exclude"
+}
+
 # Fleet-wide wrapper around status_open_decisions: scans every task's status
 # log under <state> and prefixes each still-open decision with its owning task
 # id, so a per-wake or per-session surface can print the consolidated open set
@@ -1037,9 +1087,11 @@ EOF
 # one "<task>\t<key>\t<verb>\t<note>" line per open decision, in glob (task id)
 # order; prints nothing when none are open.
 scan_open_decisions() {  # <state>
-  local state=$1 f task open line
+  local state=$1 f task open line exclude
+  exclude=$(status_scan_parent_channel_exclude "$state")
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
+    [ "$f" = "$exclude" ] && continue
     task=$(basename "$f"); task="${task%.status}"
     open=$(status_open_decisions "$f") || continue
     [ -n "$open" ] || continue
@@ -1146,7 +1198,7 @@ _fm_open_decisions_file_ident() {  # <file> -> strongest available identity
     "$FM_STATUS_IDENTITY_READER" "$f"
     return
   fi
-  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+  if [ "$_FM_CLASSIFY_UNAME_S" = Darwin ]; then
     ident=$(LC_ALL=C /usr/bin/stat -f '%d:%i' "$f" 2>/dev/null) || return 1
     epoch=$(LC_ALL=C /usr/bin/stat -f '%B' "$f" 2>/dev/null) || epoch=0
     if [ "$epoch" != 0 ]; then birth=$(LC_ALL=C /usr/bin/stat -f '%FB' "$f" 2>/dev/null) || birth=''; else birth=''; fi
@@ -1165,7 +1217,7 @@ _fm_status_file_size() {  # <status-file>
     "$FM_STATUS_SIZE_READER" "$f"
     return
   fi
-  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+  if [ "$_FM_CLASSIFY_UNAME_S" = Darwin ]; then
     LC_ALL=C /usr/bin/stat -f '%z' "$f" 2>/dev/null
   else
     LC_ALL=C stat -c '%s' "$f" 2>/dev/null
@@ -1174,7 +1226,7 @@ _fm_status_file_size() {  # <status-file>
 
 _fm_status_file_mtime() {  # <status-file>
   local f=$1
-  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+  if [ "$_FM_CLASSIFY_UNAME_S" = Darwin ]; then
     LC_ALL=C /usr/bin/stat -f '%m' "$f" 2>/dev/null
   else
     LC_ALL=C stat -c '%Y' "$f" 2>/dev/null
@@ -1330,9 +1382,11 @@ status_open_decisions_incremental() {  # <status-file> [<captured-end-offset>]
 # the whole-file status_open_decisions, so a fleet-wide per-drain scan stays
 # bounded by new appends rather than total lifetime log size across every task.
 scan_open_decisions_incremental() {  # <state>
-  local state=$1 f task open line
+  local state=$1 f task open line exclude
+  exclude=$(status_scan_parent_channel_exclude "$state")
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
+    [ "$f" = "$exclude" ] && continue
     task=$(basename "$f"); task="${task%.status}"
     open=$(status_open_decisions_incremental "$f") || continue
     [ -n "$open" ] || continue
@@ -1347,9 +1401,11 @@ EOF
 }
 
 status_presentation_snapshot() {  # <state>
-  local state=$1 f task size ident
+  local state=$1 f task size ident exclude
+  exclude=$(status_scan_parent_channel_exclude "$state")
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
+    [ "$f" = "$exclude" ] && continue
     [ -f "$f" ] && [ -r "$f" ] && [ ! -L "$f" ] || continue
     task=$(basename "$f"); task="${task%.status}"
     size=$(_fm_status_file_size "$f") || return 1
@@ -1567,7 +1623,7 @@ status_presentation_marker_parse() {
 }
 
 _status_observed_path_state() {
-  if [ "$(uname -s 2>/dev/null)" = Darwin ]; then
+  if [ "$_FM_CLASSIFY_UNAME_S" = Darwin ]; then
     LC_ALL=C /usr/bin/stat -f '%HT:%p' "$1" 2>/dev/null
   else
     LC_ALL=C stat -c '%F:%f' "$1" 2>/dev/null
@@ -1961,9 +2017,11 @@ status_line_is_unread_surface() {  # <status-line>
 # Prints nothing when none are unread. Directory scan rejects status symlinks
 # the same way scan_open_decisions does.
 scan_unread_surface_lines() {  # <state>
-  local state=$1 f task lines line
+  local state=$1 f task lines line exclude
+  exclude=$(status_scan_parent_channel_exclude "$state")
   for f in "$state"/*.status; do
     [ -e "$f" ] || continue
+    [ "$f" = "$exclude" ] && continue
     task=$(basename "$f"); task="${task%.status}"
     lines=$(status_new_lines_since_cursor "$f") || return 1
     [ -n "$lines" ] || continue
@@ -2071,14 +2129,24 @@ status_open_activities() {  # <status-file-or-dash>
 # task id from a recorded window target, falling back to the tmux-shaped
 # "<session>:fm-<id>" form when no metadata state is available.
 window_to_task() {
-  local w=$1 state=${2:-${STATE:-${FM_STATE_OVERRIDE:-}}} meta mw mt t
+  local w=$1 state=${2:-${STATE:-${FM_STATE_OVERRIDE:-}}} meta mw mt t line
   if [ -n "$state" ]; then
     for meta in "$state"/*.meta; do
       [ -e "$meta" ] || continue
-      mw=$(grep '^window=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
-      mt=$(grep '^terminal=' "$meta" 2>/dev/null | tail -1 | cut -d= -f2- || true)
+      # The last window= and terminal= values, read in one pass without the
+      # grep | tail -1 | cut -d= -f2- pipelines this once forked per key.
+      mw=
+      mt=
+      {
+        while IFS= read -r line || [ -n "$line" ]; do
+          case "$line" in
+            window=*) mw=${line#window=} ;;
+            terminal=*) mt=${line#terminal=} ;;
+          esac
+        done < "$meta"
+      } 2>/dev/null
       [ "$mw" = "$w" ] || [ "$mt" = "$w" ] || continue
-      t=$(basename "$meta")
+      t=${meta##*/}
       t=${t%.meta}
       printf '%s' "$t"
       return 0
