@@ -1140,10 +1140,10 @@ while :; do
     if [ -n "$SUCCESSOR_GENERATION" ] \
       && ! fm_recovery_marker_publish "$STATE/.watcher-down" downtime >/dev/null 2>&1; then
       log_line "pass-through	downtime-unrestored	$(printf '%s\n' "$REASON" | head -n 1)"
-      exit 1
+      HANDLE_RC=1
     fi
     emit
-    exit 0
+    exit "$HANDLE_RC"
   fi
   if [ "$HANDLE_RC" -ne 0 ]; then
     if returned_during_turn; then
