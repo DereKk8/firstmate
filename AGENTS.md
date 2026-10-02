@@ -128,6 +128,7 @@ For a dead secondmate direct report, load `secondmate-provisioning` and reconcil
 Each secondmate reconciles work already in its own home and then idles; recovery never authorizes it to invent work.
 
 If `state/.afk` is present, load `/afk` in away mode or `/quiet` in quiet mode (`bin/fm-wake-lib.sh`'s `fm_afk_mode`); where its daemon runs, let the daemon own supervision rather than arming another cycle, and on Pi keep the ordinary supervision session, which runs in both postures with main parked while the record exists.
+While `state/.afk` exists, the daemon owns supervision.
 Surface only captain-relevant decisions, review-ready PRs, failures, and credential needs; otherwise resume the emitted supervision protocol silently.
 A restart must be a non-event because durable state and live backend inventory, not conversation memory, are authoritative.
 
@@ -185,6 +186,7 @@ Classify the deliverable:
 
 - **Ship** is the default and produces a project change through the selected delivery mode; once implementation is authorized, dispatch a ship and keep any remaining bounded research inside it unless unresolved uncertainty could materially change whether or what to build.
 - **Scout** produces knowledge in `data/<id>/report.md`, never a PR, and is appropriate for investigation, diagnosis, planning, reproduction, or audit work when the captain explicitly requests a separate knowledge or design deliverable or unresolved uncertainty could materially change whether or what to build.
+When implementation is separately authorized, promote the existing scout through `bin/fm-promote.sh` rather than creating a duplicate task.
 
 - If established evidence already answers an informational question, relay it without a design-only scout; when implementation intent is unclear, answer and ask one concise implementation question when useful rather than dispatching speculative design work.
 - Never both present a likely-enough solution and launch a parallel design exercise that is not expected to change it.
@@ -250,6 +252,9 @@ After an autonomous merge, give the captain a one-line full-URL or local-main ou
 ### Validate
 
 Load `validation-supervision` when a ship starts or already has an active no-mistakes validation run, including a mid-run requirement change or finding.
+The task worker that starts a no-mistakes run drives the pipeline and owns every `no-mistakes axi run` and `no-mistakes axi respond` call through the next gate or outcome.
+Firstmate never invokes `no-mistakes axi respond` for a crew-owned run.
+Require the matching `resolved` event, forbid `--yes`, and require the worker to process every synchronous return until completion or a genuinely new escalation.
 
 ### PR ready, landing, and teardown
 
@@ -291,7 +296,7 @@ Handle actionable wakes as follows:
 Load `bearings` on a contributions check wake or when filing work linked to an upstream issue; its contribution-follow-up section owns triage and exact signal acknowledgement.
 
 When any wake reports a merged PR for a project cloned in this home, refresh that clone through the guarded fleet-sync path.
-When Relay-linked work reaches a milestone or terminal state, load `fmx-respond`; before terminal teardown, use its promised-final reconciliation when a typed public commitment exists, otherwise post the final completion follow-up so the link clears even if earlier follow-ups were spent.
+When Relay-linked work reaches a milestone or terminal state, load `fmx-respond`; before teardown, use its promised-final reconciliation when a typed public commitment exists, otherwise post the final completion follow-up before teardown.
 
 A secondmate's idle endpoint is healthy, and parent supervision relies on its routed status rather than treating a quiet pane as stale.
 Waiting on a healthy supervision cycle is silent; empty polls, elapsed time, and no-change updates are not captain-facing progress.
@@ -433,10 +438,15 @@ A full sync is complete only after the real merge commit passes `bin/fm-merge-co
 
 Skill descriptions are the always-loaded trigger index; load each agent-only skill only at its stated trigger.
 Load `agent-skill-trigger-index` only when auditing or maintaining the complete trigger index.
+- `diagnostic-reasoning` - load before scoping a reported bug and before acting on a diagnostic report.
+- `project-management` - load before adding, creating, removing, or initializing a project.
+- `refactor-review` - load when the captain invokes `/refactor-review`, requests an architecture-refactoring review of a drafted change, or a preordered task reports `refactor-review-ready`; it is one-shot and never automatic.
+- `stuck-crewmate-recovery` - load when the session-start digest reports an ordinary direct report's endpoint dead or its metadata has no window, after a stale wake, looping pane, repeated confusion, an answered-by-brief question, an unresponsive crewmate, or a failed steer, and whenever a live worker reports its no-mistakes pipeline dead, unreachable, or timed out.
 
 ## 14. Relay
 
 When Relay is enabled, load `fmx-respond` for its activation, authority, mention, follow-up, and public-loop contract.
+`docs/configuration.md` owns activation, generated state, cadence, wire protocol, and opt-out mechanics.
 
 ## Captain instruction precedence
 
