@@ -7,8 +7,6 @@
 # so it is honored only from the default-branch copy of this file. Layered above
 # gate-context lifecycle boundary (bin/fm-gate-refuse-lib.sh) and the
 # HEAD-continuity guard; see docs/architecture.md "No-mistakes gate authority boundary."
-# gemini/antigravity cannot neutralize this repo's AGENTS.md under disable_project_settings.
-agent: codex
 disable_project_settings: true
 
 # Trusted documentation placement policy for the Document step.
