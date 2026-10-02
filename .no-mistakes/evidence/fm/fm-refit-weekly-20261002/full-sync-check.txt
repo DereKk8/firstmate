@@ -1,0 +1,2 @@
+== diff-tree check ==
+== merge content check ==

@@ -1,0 +1,78 @@
+FM_TEST_BEGIN 2026-10-02T15:05:33Z tests/fm-supervision-host.test.sh family=afk expected_gate_skip=none
+ok - host+hook: a successor closed before exit_to_main does not suppress the branch-outcome rewake
+ok - host+hook: a successor that closes during a held engine turn does not suppress the branch-outcome rewake
+ok - host+hook: a refused hand-back becomes a delivered failure notice
+ok - host+hook: a refused hand-back on an announced handling marker becomes a delivered failure notice
+ok - host: parked child-exit sampling uses ordinary half-second sleeps
+ok - report surface: only the branch actor's current turn may report, and only on the tasks its wake names
+ok - report surface: visible late outcomes queue a relay, while silent outcomes remain stored without a wake or note
+(node:1012852) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1012914) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1012983) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1013057) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1013127) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1013206) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1013289) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1013479) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok - dispatch entry: the host reads branch eligibility, the offer rule, and the wake prompt from the Pi branch's own owner
+ok - drain: BRANCH OUTCOMES runs on a Claude home by default and on another primary with the file, never with off, and never on Pi
+ok - drain: captain outcomes come first, and routine overflow collapses into a count one drain clears
+ok - drain: repeated captain outcomes collapse per task, and the byte cap presents only the run its acknowledgement covers
+ok - drain: a long away window costs one short drain, captain outcomes collapsed per task and routine overflow counted, and nothing from it is shown again
+ok - drain: the BRANCH OUTCOMES budgets count bytes, cutting multibyte summaries by whole characters in any locale
+ok - drain: branch outcomes stay unread when a projection of the store fails
+ok - drain: branch outcomes stay unread and the drain fails when jq is missing
+ok - drain: branch outcomes stay unread when the drain cannot print them
+ok - drain: a legacy backlog is presented with each outcome's age and a check-first instruction, never adopted
+ok - drain: a keyed decision survives acknowledgement through a newer outcome for its task
+ok - drain: an outcome carried across a switch off Pi comes back with its age, never adopted
+ok - drain: an outcome nothing has shown is presented until acknowledged, and a repeated acknowledgement changes nothing
+ok - drain: an outcome the host drain presented but main never acknowledged stays unprocessed across a switch to Pi
+ok - drain: an outcome the host drain presented but main never acknowledged survives an outcome index repair
+ok - host: an attended wake the branch may take is handled on the engine, and its routine outcome never wakes main
+ok - host: an attended captain outcome wakes main once and stays in its drain until main acknowledges it
+ok - host: a captain outcome recorded after the captain left waits for the return, then reaches main's drain
+ok - host: a quiet record without its daemon is a present captain, so outcomes and decisions reach main
+ok - host: an attended decision close stays main's exactly as the plain arm delivers it
+ok - host: an off written while the host is parked sends the next attended close to main, naming the opt-out
+ok - host: a main-only pass-through leaves the successor watcher running and the close undelivered for main
+ok - host: an attended close whose main session cannot be identified reaches main and runs no engine turn
+ok - host: a decision close accepted away whose turn starts attended still reaches main unchanged
+(node:1117007) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok - host: an attended close whose task turns main-only before its turn still reaches main unchanged
+ok - host+hook: an attended main-only pass-through rewakes main and keeps its successor watcher
+ok - host+hook: a captain outcome beside a quiet record rewakes the present captain with no away note
+ok - host+hook: a Claude home without config/supervision-host runs the host at the default engine, and an off file restores the plain arm
+ok - host+hook: a close that turns main-only at its turn rewakes main and keeps its successor watcher
+not ok - hook write failure: the Stop hook did not finish
+FM_TEST_END 2026-10-02T15:07:30Z tests/fm-supervision-host.test.sh exit=1 duration_ms=117156 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=1 skipped_gate=0 duration_ms=117195
+FM_TEST_SUMMARY_FAMILY family=afk count=1 duration_ms=117156 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-supervision-host.test.sh duration_ms=117156

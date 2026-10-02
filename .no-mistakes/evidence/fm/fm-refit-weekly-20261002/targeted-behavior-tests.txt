@@ -1,0 +1,220 @@
+FM_TEST_BEGIN 2026-10-02T14:57:29Z tests/fm-backend-herdr.test.sh family=backend-dispatch expected_gate_skip=none
+ok - fm_backend_herdr_version_check: accepts the current protocol (14)
+ok - fm_backend_herdr_version_check: refuses an old protocol loudly
+not ok - version_check should refuse when herdr is not installed
+FM_TEST_END 2026-10-02T14:57:29Z tests/fm-backend-herdr.test.sh exit=1 duration_ms=117 gate_skip=false
+FM_TEST_BEGIN 2026-10-02T14:57:29Z tests/fm-calm-claude-mod.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - the Calm mod is one hooks module, linked into the project's auto-load path, with no command, skill, agent, or classic hook path that bypasses its exact opt-in
+ok - the Pi working ship renders byte-for-byte the shared sprite core's frame painted in standard ANSI, at every width, cadence step, freeze, clamp, and reset
+ok - the Raster packing lays the shared frame out row-major in Claude Code's dark or light theme palette, using light as the both-readable fallback, with plain padding, default backgrounds, BMP glyphs, clipping, and a standard base64 encoding
+ok - the Calm policy resolves the shared preference exactly as Pi does, reads on, max, and off as Pi does, and shares Pi's 240-character-or-newline preservation behavior while classifying working notes by stop reason, tool use, and restored transcript shape
+ok - the supervision notes read the store owner's tail copy and markers as Pi does: sailboat and anchor lines, silent rows skipped, bounded replay of unread and unprocessed rows not already shown in the session, and latch notes
+ok - the mod's operational-input classifier agrees with bin/fm-operational-input.sh on all 77 corpus cases: every current kind the owner encodes, every legacy shape, and every near miss
+ok - the mod's doorbell port agrees with bin/fm-operational-input.sh doorbell-kind on all 28 cases: every record the owner writes and every unbacked or malformed near miss
+FM_TEST_END 2026-10-02T14:57:31Z tests/fm-calm-claude-mod.test.sh exit=0 duration_ms=1892 gate_skip=false
+FM_TEST_BEGIN 2026-10-02T14:57:31Z tests/fm-remote-job.test.sh family=secondmate expected_gate_skip=none
+ok - default: result and command samples use 0.25 seconds; dispatcher uses four 0.05-second waits then one second
+ok - legacy: result and command samples use 0.07 seconds; dispatcher uses four 0.07-second waits then one second
+ok - active: result and command samples use 0.12 seconds; dispatcher uses four 0.07-second waits then one second
+ok - default queue and execution bounds independently cover long polls
+ok - operator PATH excludes a symlinked local bin
+ok - operator PATH honors nvm defaults with a deterministic fallback
+ok - operator PATH resolves the authorized Nix profile bin link
+ok - operator PATH orders discovered tool installs deterministically
+ok - the worker preserves bounded argv and stdin in an empty environment
+ok - active jobs keep the worker ready for concurrent requests
+ok - ensure replaces a live worker after its code changes
+ok - worker identity binds the canonical configured code root
+ok - stale ownership is reclaimed without signaling a reused pid
+ok - the worker enforces the job timeout and publishes its result
+ok - the worker expires queued jobs before they can mutate
+ok - queued jobs receive a fresh bounded execution window
+ok - a queued short command preempts a running long poll instead of waiting its window
+ok - a poll re-armed after preemption reads the same cursor with nothing lost
+ok - sibling polls never preempt each other into a re-arm churn loop
+ok - worker shutdown terminates the active command tree before replacement
+ok - Linux supervision recovers crashes and stops orphaned commands
+ok - pre-execution validation obeys the job timeout
+ok - the worker drains bounded output without changing command results
+ok - the worker refuses symlinked job fields before command execution
+ok - failed shutdown quarantines ownership against replacement workers
+ok - quarantine recovery refuses unverifiable supervisors and ignores reused pids
+ok - a repeatedly signalled shutdown still releases ownership for the next worker
+ok - TERM after ownership loss stops the serving worker
+ok - TERM after ownership loss still stops the active command tree
+ok - a lost owner terminates without stopping the replacement owner's work
+ok - an ousted worker in shutdown leaves the replacement quarantine untouched
+ok - an idle worker sleeps out a second between passes instead of busy-polling
+ok - an idle worker keeps its readiness heartbeat fresh between passes
+ok - an idle worker claims and publishes a staged job within a few seconds
+ok - an idle worker still repairs queue permissions and stops promptly on TERM
+ok - the fork-free state read keeps every malformed-record rejection
+ok - the builtin record reads bound bytes, not characters, in a UTF-8 locale
+ok - the lane scan reads staged records without execs and honors home isolation
+ok - a same-home queued command still preempts the poll through the builtin scan
+ok - the lane scan bounds argv in bytes, not characters, in a UTF-8 locale
+ok - barely healthy worker failures remain bounded by the restart guard
+ALL TESTS PASSED
+FM_TEST_END 2026-10-02T14:59:23Z tests/fm-remote-job.test.sh exit=0 duration_ms=111420 gate_skip=false
+FM_TEST_BEGIN 2026-10-02T14:59:23Z tests/fm-supervision-host.test.sh family=afk expected_gate_skip=none
+ok - host+hook: a successor closed before exit_to_main does not suppress the branch-outcome rewake
+ok - host+hook: a successor that closes during a held engine turn does not suppress the branch-outcome rewake
+ok - host+hook: a refused hand-back becomes a delivered failure notice
+ok - host+hook: a refused hand-back on an announced handling marker becomes a delivered failure notice
+ok - host: parked child-exit sampling uses ordinary half-second sleeps
+ok - report surface: only the branch actor's current turn may report, and only on the tasks its wake names
+ok - report surface: visible late outcomes queue a relay, while silent outcomes remain stored without a wake or note
+(node:531732) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:531762) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:531774) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:531786) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:531796) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:531809) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:531821) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:531844) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok - dispatch entry: the host reads branch eligibility, the offer rule, and the wake prompt from the Pi branch's own owner
+ok - drain: BRANCH OUTCOMES runs on a Claude home by default and on another primary with the file, never with off, and never on Pi
+ok - drain: captain outcomes come first, and routine overflow collapses into a count one drain clears
+ok - drain: repeated captain outcomes collapse per task, and the byte cap presents only the run its acknowledgement covers
+ok - drain: a long away window costs one short drain, captain outcomes collapsed per task and routine overflow counted, and nothing from it is shown again
+ok - drain: the BRANCH OUTCOMES budgets count bytes, cutting multibyte summaries by whole characters in any locale
+ok - drain: branch outcomes stay unread when a projection of the store fails
+ok - drain: branch outcomes stay unread and the drain fails when jq is missing
+ok - drain: branch outcomes stay unread when the drain cannot print them
+ok - drain: a legacy backlog is presented with each outcome's age and a check-first instruction, never adopted
+ok - drain: a keyed decision survives acknowledgement through a newer outcome for its task
+ok - drain: an outcome carried across a switch off Pi comes back with its age, never adopted
+ok - drain: an outcome nothing has shown is presented until acknowledged, and a repeated acknowledgement changes nothing
+ok - drain: an outcome the host drain presented but main never acknowledged stays unprocessed across a switch to Pi
+ok - drain: an outcome the host drain presented but main never acknowledged survives an outcome index repair
+ok - host: an attended wake the branch may take is handled on the engine, and its routine outcome never wakes main
+ok - host: an attended captain outcome wakes main once and stays in its drain until main acknowledges it
+ok - host: a captain outcome recorded after the captain left waits for the return, then reaches main's drain
+ok - host: a quiet record without its daemon is a present captain, so outcomes and decisions reach main
+ok - host: an attended decision close stays main's exactly as the plain arm delivers it
+ok - host: an off written while the host is parked sends the next attended close to main, naming the opt-out
+ok - host: a main-only pass-through leaves the successor watcher running and the close undelivered for main
+ok - host: an attended close whose main session cannot be identified reaches main and runs no engine turn
+ok - host: a decision close accepted away whose turn starts attended still reaches main unchanged
+(node:665726) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M3YH9G14HRZ7TJHP8YFDK403/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok - host: an attended close whose task turns main-only before its turn still reaches main unchanged
+ok - host+hook: an attended main-only pass-through rewakes main and keeps its successor watcher
+ok - host+hook: a captain outcome beside a quiet record rewakes the present captain with no away note
+ok - host+hook: a Claude home without config/supervision-host runs the host at the default engine, and an off file restores the plain arm
+ok - host+hook: a close that turns main-only at its turn rewakes main and keeps its successor watcher
+not ok - hook write failure: the Stop hook did not finish
+FM_TEST_END 2026-10-02T15:01:20Z tests/fm-supervision-host.test.sh exit=1 duration_ms=117711 gate_skip=false
+FM_TEST_BEGIN 2026-10-02T15:01:20Z tests/fm-spawn-dispatch-profile.test.sh family=backend-dispatch expected_gate_skip=none
+ok - allowlist=absent preserves the operational floor and filters only when opted in
+ok - allowlist=missing-config preserves the operational floor and filters only when opted in
+ok - allowlist=enabled preserves the operational floor and filters only when opted in
+ok - allowlist=empty preserves the operational floor and filters only when opted in
+ok - invalid allowlist names refuse before launch or task publication
+ok - inaccessible config with present allowlist refuses before launch or task publication
+ok - inaccessible config with absent allowlist refuses before launch or task publication
+ok - inaccessible ancestor with present allowlist refuses before launch or task publication
+ok - inaccessible ancestor with absent allowlist refuses before launch or task publication
+ok - secondmate launch inherits the allowlist for subsequent worker launches
+ok - local inheritance preserves the allowlist on source errors and mirrors proven absence
+ok - remote inheritance preserves the allowlist on source errors and mirrors proven absence
+ok - fm-spawn: actual ship/scout launch commands deliver the worker role contract
+ok - no --model/--effort records defaults and types the claude launch instructions
+ok - a claude launch publishes the brief as an operational-inbox record and passes only the doorbell
+ok - a secondmate claude launch publishes its brief record into the secondmate's own home
+ok - a claude spawn whose launch-brief record cannot publish stops with a clear error and sends no launch
+ok - non-cursor launches clear inherited Cursor identity markers
+ok - relative home overrides ignore CDPATH and become absolute before spawn launch construction
+ok - FM_HOME defaults resolve relative paths and preserve absolute spellings
+ok - absolute override spellings are preserved in spawn launch paths
+ok - unresolvable relative spawn overrides fail with named diagnostics
+ok - active crew-dispatch profile requires an explicit harness for ship spawns
+ok - active crew-dispatch profile requires an explicit harness for scout spawns
+ok - active crew-dispatch profile allows an explicit resolved harness
+ok - active crew-dispatch profile allows the legacy positional harness form
+ok - active crew-dispatch profile allows the raw launch-command escape hatch
+ok - a chained raw launch commits through the AI-trailer strip in every step
+ok - claude receives --model and --effort profile flags
+ok - codex receives --model and model_reasoning_effort profile flags
+ok - codex Luna receives --model and model_reasoning_effort max profile flags
+ok - codex omits max for models without the catalog capability
+ok - a codex crewmate launches with no hook layer and keeps its turn-end signal
+ok - a codex secondmate keeps the project hook layer its primary session runs on
+ok - grok receives --model and --reasoning-effort profile flags
+ok - grok omits unsupported max reasoning effort
+ok - grok omits unsupported xhigh reasoning effort
+ok - cursor receives its model-qualified reasoning class and exact task workspace
+ok - cursor refuses model ids absent from its resolved binary's live catalog
+ok - cursor preserves the requested model when its live catalog is unreachable
+ok - opencode receives --model and the effort as its config's agent variant
+ok - opencode without an effort keeps its launch config unchanged
+ok - opencode emits the variant for an effort the openai family exposes
+ok - opencode omits the variant for an effort outside the model family's list
+ok - native effort validator checks harness and model as separate axes
+ok - Ultra is explicit for native Pi and Pi-signed, including direct-PR, and refuses unsupported profiles before provisioning
+ok - batch dispatch preserves native Ultra in metadata and launch flags
+ok - Pi scout spawn enters the recorded worktree before launch
+ok - pi receives --model and --thinking max profile flags
+ok - Pi launch probing omits --tui-mode on older Pi and preserves it on supporting Pi
+ok - pi-signed shares Pi launch semantics while preserving its configured and recorded identity
+ok - pi-signed refuses safely and actionably when the selected executable is unavailable
+ok - pi-signed is a distinct persistent secondmate runtime with shared Pi supervision semantics
+ok - batch dispatch forwards shared --harness, --model, and --effort to every pair
+ok - claude forwards firstmate's CLAUDE_CONFIG_DIR so the crewmate uses the same credential store
+ok - the primary-owned Lavish server address reaches every worker launch
+cat: /tmp/fm-spawn-dispatch-profile.lbZ1ZX/profile-lavish-ambient/pane.log: No such file or directory
+ok - absent Lavish configuration preserves the destination environment
+ok - claude omits the config-dir prefix when firstmate runs with the single-store default
+ok - config/claude-permission-mode=bypass launches exactly as an absent file does
+ok - config/claude-permission-mode=auto replaces --dangerously-skip-permissions with --permission-mode auto
+ok - config/claude-permission-mode=auto reaches scout launches too
+ok - claude worker launches cover the task-channel directories in bypass and auto modes
+ok - an unrecognized config/claude-permission-mode token refuses before any endpoint or metadata
+ok - config/claude-permission-mode changes claude launches only
+ok - non-claude harnesses do not receive the claude CLAUDE_CONFIG_DIR prefix
+ok - a claude task launch establishes only Firstmate's task control channels through the system prompt
+ok - a persistent claude secondmate keeps its supervisor contract without a task-worker authority overlay
+ok - fm-spawn: a Claude launch longer than 1024 bytes is delivered intact through the staging path
+ok - a claude crewmate launch carries the attribution-off policy in its own settings
+ok - keep-ai-trailers omits Claude attribution settings and the pane strip hooks
+ok - keep-ai-trailers is inherited so a secondmate's crew launch keeps AI trailers
+ok - a claude secondmate launch carries the attribution-off policy too
+ok - active crew-dispatch profile does not block secondmate launches
+# all fm-spawn-dispatch-profile tests passed
+FM_TEST_END 2026-10-02T15:04:15Z tests/fm-spawn-dispatch-profile.test.sh exit=0 duration_ms=174724 gate_skip=false
+FM_TEST_SUMMARY total=5 failed=2 skipped_gate=0 duration_ms=406084
+FM_TEST_SUMMARY_FAMILY family=afk count=1 duration_ms=117711 failed=1
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=2 duration_ms=174841 failed=1
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=1892 failed=0
+FM_TEST_SUMMARY_FAMILY family=secondmate count=1 duration_ms=111420 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-spawn-dispatch-profile.test.sh duration_ms=174724
+FM_TEST_SLOWEST rank=2 script=tests/fm-supervision-host.test.sh duration_ms=117711
+FM_TEST_SLOWEST rank=3 script=tests/fm-remote-job.test.sh duration_ms=111420
+FM_TEST_SLOWEST rank=4 script=tests/fm-calm-claude-mod.test.sh duration_ms=1892
+FM_TEST_SLOWEST rank=5 script=tests/fm-backend-herdr.test.sh duration_ms=117
