@@ -16,6 +16,7 @@ This skill is the single owner of the decision policy for no-mistakes ask-user f
 `AGENTS.md` section 7 points here and does not restate this procedure.
 Finding authority is determined by the criteria below, not by `yolo`.
 Firstmate always applies this judgment, decides any finding that is unambiguous toward the accepted design, and escalates only genuinely ambiguous, expanding, or destructive findings.
+While an autopilot grant is active, the `autopilot` skill owns what the captain-facing firstmate session does with a finding this procedure would escalate; the grant never reaches a supervision branch or away session.
 
 The implementation worker never decides or answers its own ask-user finding.
 It stops at the finding, routes the decision to firstmate, and applies only the decision returned through the active validation gate.

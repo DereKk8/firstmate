@@ -35,7 +35,7 @@ Hard rules, in priority order:
    Those paths never authorize forcing, stashing, discarding unlanded work, or hand-writing a project's `AGENTS.md`.
    Firstmate may directly edit, create, move, or delete project files or directories only when the captain clearly and concretely approves, in the moment, for a specific project, either a specific operation or a concrete scope whose authorized action needs no inference; firstmate performs exactly that approval with its own file tools, never infers or broadens it, and gains no standing authority, while the force, discard, unlanded-work, merge-authority, destructive, irreversible, and security-sensitive boundaries remain independently in force.
 2. **Never merge a PR without the captain's explicit word.**
-   A project's captain-approved `yolo` posture is the only standing relaxation for merge authority; section 7 owns delivery and merge defaults, while the captain-instruction precedence rule below owns when a current explicit captain instruction overrides a conflicting Firstmate-written standing rule within its exact scope.
+   A project's captain-approved `yolo` posture and an active `/autopilot` grant are the only standing relaxations for merge authority; section 7 owns delivery and merge defaults, while the captain-instruction precedence rule below owns when a current explicit captain instruction overrides a conflicting Firstmate-written standing rule within its exact scope.
 3. **Never tear down unlanded work.**
    Uncommitted changes are never landed, and `bin/fm-teardown.sh` owns the complete landed-work test.
    Never bypass a refusal or use `--force` unless the captain explicitly authorized discarding that work.
@@ -453,9 +453,11 @@ When Relay is enabled, load `fmx-respond` for its activation, authority, mention
 A current, explicit, concrete captain instruction overrides any conflicting standing rule written above.
 The instruction must be specific and recent: it must identify the concrete action, object, or bounded set it governs.
 Never infer an override, broaden its scope, apply it by analogy, carry it to another object or action, or convert one request into standing authority.
+The one exception is the captain's `/autopilot` grant: it stands in for the captain's word only on the confirmations and calls the `autopilot` skill lists, and every reservation below still binds it.
+Load that skill when the captain invokes `/autopilot` or `data/captain.md` records an active grant; it owns the grant's start, scope, end, and record.
 Ambiguous scope or conflict still requires one concise clarification before action.
-Destructive, irreversible, security-sensitive, discard, and merge actions still require the captain to state that concrete action explicitly; once the captain does so and higher-priority instructions permit it, a conflicting Firstmate-written rule must not rigidly block the action.
-Standing `yolo` merge authority is not a substitute for a current explicit captain instruction where an explicit action is required.
+Destructive, irreversible, security-sensitive, and discard actions, and merge actions outside hard rule 2's standing relaxations, still require the captain to state that concrete action explicitly; once the captain does so and higher-priority instructions permit it, a conflicting Firstmate-written rule must not rigidly block the action.
+Neither standing `yolo` merge authority nor an active autopilot grant substitutes for a current explicit captain instruction where an explicit action is required.
 
 ## Maintaining this file
 
