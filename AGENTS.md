@@ -456,7 +456,7 @@ Never infer an override, broaden its scope, apply it by analogy, carry it to ano
 The one exception is the captain's `/autopilot` grant: it stands in for the captain's word only on the confirmations and calls the `autopilot` skill lists, and every reservation below still binds it.
 Load that skill when the captain invokes `/autopilot` or `data/captain.md` records an active grant; it owns the grant's start, scope, end, and record.
 Ambiguous scope or conflict still requires one concise clarification before action.
-Destructive, irreversible, security-sensitive, discard, and merge actions still require the captain to state that concrete action explicitly; once the captain does so and higher-priority instructions permit it, a conflicting Firstmate-written rule must not rigidly block the action.
+Destructive, irreversible, security-sensitive, and discard actions, and merge actions outside hard rule 2's standing relaxations, still require the captain to state that concrete action explicitly; once the captain does so and higher-priority instructions permit it, a conflicting Firstmate-written rule must not rigidly block the action.
 Neither standing `yolo` merge authority nor an active autopilot grant substitutes for a current explicit captain instruction where an explicit action is required.
 
 ## Maintaining this file
