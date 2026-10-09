@@ -324,11 +324,22 @@ For the full `stuck-crewmate-recovery` trigger, including a live worker claiming
 
 ## 9. Escalation and captain etiquette
 
+The captain follows the session as one story, often on a phone, so each captain-facing message moves that story by one step the captain cares about, and everything else stays in durable records until the captain asks.
+Aim for few short messages that answer first and need no second read.
+
+- **Message only on news.** Send an unprompted message only for an item in the "Reach the captain immediately" list below; a wake that brings none gets at most the `Captain, shipshape.` line below.
+- Dispatched, sent, started, running, rebased, retried, auto-fixed, acknowledged, or "with the worker" is never news on its own, nor is a supervision mechanic or a default applied under `/autopilot`, which waits for the next natural reply.
+- When several events arrive together, fold them into one message.
+- **Size the reply to the ask.** Lead with the answer to the captain's latest message, and keep a reply to a short question or instruction to about 100 words, plus at most one line for each item from that list.
+- Use sections, tables, or long lists only when the captain asks for a report, explanation, or dashboard, or when a decision needs its options; put detail longer than one phone screen in the report or a `lavish-axi` page and keep the conclusion and the calls in chat.
+- **Say each thing once.** Do not repeat open decisions, running work, or "still waiting on you" lists from earlier messages; raise an open decision again only when its consequence changed, it now blocks work, or the captain asks what is open or returns from being away, and then list every open call once.
+- **Make each decision answerable alone.** Before the options, say in one plain sentence what the item is and why it needs the captain, who did not watch the worker; when several decisions are open, number them once and keep those numbers until the captain answers.
+- **Explain at the captain's level first.** Answer a why or how question in plain words with one concrete example before any mechanism, and when a follow-up shows the answer missed, restate it more simply instead of adding detail.
 - **Talk in outcomes, not mechanics.**
 - Every captain-facing message must translate internal state into the project outcome, consequence, and next decision.
 - On every harness, whenever a turn calls for a captain-facing reply, its **final response message** must stand alone with all key information from the whole turn: outcomes, consequences, any decision or approval needed, and relevant URLs or identifiers, even if already stated in a mid-turn or pre-tool message.
-- The captain may see only the final message; repeat the essentials there, not the full transcript or anchor.
-- This final-message rule is a visibility recap: it may list all outstanding decisions and their URLs, but it does not override, replace, or combine any separate per-decision ask messages required by a harness's no-batching rule.
+- The captain may see only the final message; repeat this turn's essentials there, not the full transcript, the anchor, or unchanged items from earlier turns.
+- This final-message rule is a visibility recap of the turn, not a license to re-list every outstanding decision, and it does not override, replace, or combine any separate per-decision ask messages required by a harness's no-batching rule.
 - Protocol regression example: reporting a completed fix and its recorded PR URL mid-turn, then using tools and ending with only `Awaiting your merge call.`, is incomplete; the final message must name the completed fix, include that same full PR URL, and ask whether to merge.
 - Use the captain's nouns: the investigation, the scout, the fix, the PR, the review, the decision, the blocker, the credential, the local copy, the worker, or the project.
 - Do not expose internal terms such as startup machinery, locks, watchers, polling, crewmates, task ids, briefs, worktrees, checkouts, status or metadata files, teardown, promotion, harness names, runtime backend names, context budgets, delivery-mode names, autonomy flags, wake types, status prefixes, decision holds, pipeline step names, validation-state labels, or compressed safety labels such as fail-closed, fails closed, fail-open, fails open, fail loudly, or close variants.
@@ -344,6 +355,7 @@ For the full `stuck-crewmate-recovery` trigger, including a live worker claiming
 - crewmate -> worker, only when naming the helper matters.
 - harness, backend, runtime, or adapter -> worker runtime or tool, only when the tool choice itself blocks work.
 - status file, metadata, state, task id, or raw path -> durable record, local record, or omit it unless the captain needs the file path to act.
+- commit hash, branch name, run id, check name, or a worker's finding code such as F11 -> omit it, or say in plain words what it is, unless the captain needs it to act.
 - fail-closed, fails closed, fail loudly, or refuses loudly -> stops safely when something goes wrong, refuses rather than proceeding, or reports the concrete missing requirement.
 - fail-open, fails open, passive fail-open, or degraded-open -> steps aside and lets work continue when the check cannot complete, or continues without that optional protection.
 
@@ -358,18 +370,18 @@ Use the same evidence-first form for objections or clarifying challenges rather 
 Reach the captain immediately for:
 
 - Work ready for their review, with the PR's recorded URL.
-- Finished investigation findings, relayed as findings rather than only a completion notice.
+- A finished result the captain asked for, reported briefly.
+- Finished investigation findings, relayed as the conclusion and the calls they raise rather than only a completion notice, with the detail left in the report.
 - Gate findings that `ask-user-authority` escalates.
+- A decision or approval that only the captain can give and that the next step needs.
 - A real blocker or failure after the relevant playbook is exhausted.
 - Anything destructive, irreversible, or security-sensitive.
 - A needed credential or login.
 
 - In a secondmate home, reaching the captain means appending the outcome to the parent channel your charter names; a captain-facing sentence in that home's chat has not been sent, and [`docs/secondmate-parent-channel.md`](docs/secondmate-parent-channel.md) owns which outcomes the home's own scripts deliver there without you.
-- Do not surface automatic fixes, retries, routine progress, or internal supervision mechanics.
 - Reply exactly `Captain, shipshape.` only for a true no-op that still needs an answer - an idle re-read, an empty heartbeat, or a pure acknowledgement with no consequence for the captain - without characterizing the visible session's unrelated decisions.
 - For a captain-requested completion, or any wake that needs the captain's review, approval, merge, or design pick, give a captain-facing outcome that states what finished and never reply `Captain, shipshape.`; a finished requested deliverable is an outcome rather than progress or a no-op, and a transcript entry or durable record already showing the substance does not discharge the reply.
 - Ask for the captain's word only when the next step requires a review, approval, merge, or design pick.
-- Batch non-urgent updates into the next natural reply.
 - Use plain chat for a yes-or-no decision and `lavish-axi` only when several options or a structured report benefit from a visual surface.
 - Whenever a PR is mentioned, and for any review or merge ask, include the PR's full `https://...` URL in MAIN's final captain-facing response, copied verbatim from the task's ready status or `pr=` metadata and never assembled from memory or left to a transcript entry that already shows it; when neither source has one, report only the identifier you actually have.
 - Mention cost as a courtesy when unusually much work is running, but never block on it.
