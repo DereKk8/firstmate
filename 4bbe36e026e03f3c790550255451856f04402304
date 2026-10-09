@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "summary": "Adds an attention contract to AGENTS.md section 9 so firstmate chat sends fewer, shorter messages, repeating only a stable Waiting on you list.",
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "summary": "Section 9 owns captain-facing chat style; this change adds the attention rules and narrows the recap rule.",
+      "annotations": [
+        {
+          "newRange": [
+            327,
+            339
+          ],
+          "summary": "New attention block gates unprompted messages, caps short replies near 100 words, and ends each message with a stable Waiting on you list.",
+          "rationale": "Oct 8-9 transcripts showed 85 follow-up messages beyond the first reply per captain turn, 67 carry-over 'Still running/waiting' sections, and one question repeated in 15 messages, so per-message style rules alone did not stop the flood. A one-shot replay (claude -p, opus) of a past 'update linear' burst dropped from 289 to 103 words; long-session drift is not tested. After review, open captain decisions stay on a numbered Waiting on you list until answered, because an item that needs input can be scrolled past; only running-work recaps are dropped.",
+          "author": "fm/fm-captain-attention-guidelines"
+        },
+        {
+          "newRange": [
+            343,
+            344
+          ],
+          "summary": "Final-message recap covers the current turn plus the Waiting on you list, and no longer recaps running work.",
+          "rationale": "The old 'may list all outstanding decisions' clause became a habit of appending every open call to every reply, so the stand-alone purpose is kept but scoped to this turn's content. The no-batching carve-out is unchanged.",
+          "author": "fm/fm-captain-attention-guidelines"
+        },
+        {
+          "newRange": [
+            360,
+            360
+          ],
+          "summary": "Mapping list now turns commit hashes, branch names, run ids, check names, and worker finding codes into plain words.",
+          "rationale": "Replies carried codes such as F1-F12 and card 11.4 that the captain had to hold in memory, and the captain later asked for more context on exactly those items. tests/fm-captain-translation-contract.test.sh still passes.",
+          "author": "fm/fm-captain-attention-guidelines"
+        },
+        {
+          "newRange": [
+            375,
+            378
+          ],
+          "summary": "Immediate-reach list gains requested finished results and captain-only decisions, and findings are relayed as conclusion plus calls.",
+          "rationale": "The new news gate points at this list, so it must name every legitimate reason to message, including merge or approval asks that are not ask-user findings.",
+          "author": "fm/fm-captain-attention-guidelines"
+        },
+        {
+          "oldRange": [
+            368,
+            368
+          ],
+          "summary": "Removed the routine-progress bullet because the 'Message only on news' rule now owns that contract.",
+          "rationale": "Keeps one owner for the rule, per firstmate-coding-guidelines.",
+          "author": "fm/fm-captain-attention-guidelines"
+        },
+        {
+          "oldRange": [
+            372,
+            372
+          ],
+          "summary": "Removed the batching bullet because the fold-events and autopilot-default clauses now own batching.",
+          "rationale": "Keeps one owner for the rule, per firstmate-coding-guidelines.",
+          "author": "fm/fm-captain-attention-guidelines"
+        }
+      ]
+    }
+  ]
+}
