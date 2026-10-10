@@ -15,7 +15,7 @@ Find defects before delivery without making the author judge its own work or mak
 This skill owns how a selected verification check works, not when verification replaces validation.
 Follow the home's check-selection preference and an explicit task choice before commissioning it.
 Review and proof are stages of that one verification check, not separate checks to stack with no-mistakes.
-Do not invoke or change no-mistakes, its configuration, or project `verify-*` skills.
+Do not invoke or change no-mistakes or its configuration, and do not change project `verify-*` skills.
 
 ## Firstmate setup
 
@@ -74,7 +74,23 @@ In the two-agent setup, firstmate hands the sealed findings to the verifier and 
 The verifier follows the task's verification artifacts: applicable `verify-*` skills, Done-when criteria, and real operator runs on the pinned head.
 Passing CI, compilation, or the author's report is not a substitute for those runs.
 Try to reproduce every reviewer suspicion, including ones the author disputes, and also test the task's required behavior when the reviewer found nothing.
-Give defects discovered during proof their own stable IDs and the same finding authority.
+Give defects discovered during proof and attack their own stable IDs and the same finding authority.
+
+Proof has two required phases, and neither is left to the verifier's judgment of applicability.
+
+1. **Product-surface run.**
+   The verifier drives the project's `verify-*` skill on the real product surface for every changed behavior an operator can reach.
+   Operator surface is any entry point an operator runs: CLI, TUI, API, or UI.
+   Unit tests, scripts that import modules, or a guard called directly prove code, not the product surface, and do not satisfy this phase.
+   The phase is skipped only with a concrete written reason that the change has nothing an operator can reach, naming the changed paths and why no operator entry point leads to them.
+   A reachable path whose real route is forbidden or unsafe, such as a live tenant or production action, runs on a disposable or scratch instance the `verify-*` skill supports.
+   When no safe instance can run, that path is missing required proof, not a no-surface skip.
+2. **Attack phase.**
+   The verifier deliberately tries to break the change with hostile inputs through the product surface, or through the public entry point of the changed code when the change has no product surface.
+   Attack every change, not only security-shaped ones.
+   Choose attacks from what the change touches: malformed, oversized, empty, and boundary inputs, injection and bypass forms, wrong order or repeated calls, concurrent use, failure of dependencies, and inputs that reach the code paths a bumped dependency, refactor, or test fix changed.
+   Record each attempt with its input, the surface it went through, the expected result, and the observed result.
+   An attack that breaks the product is a defect with the same authority as a reproduced suspicion.
 Record actual commands or operator actions, inputs, expected and observed results, the head tested, and evidence locations.
 Separate a demonstrated defect from a missing environment, credential, or incomplete attempt.
 
@@ -84,7 +100,7 @@ If a fix would require a scope change, destructive action, or another reserved d
 The QA workers never implement the fix themselves.
 Collect the fixes, pin the final head, and re-check once there using this same verification check, not a pipeline or a parallel second check.
 When code changed, perform blind review of the final diff before final proof; a combined agent that already saw run results needs a fresh blind session for that review.
-The final proof covers each reproduced defect and the affected task criteria, and does not claim old-head evidence proves new code.
+The final proof covers each reproduced defect, the affected task criteria, and both required phases for the changed paths, and does not claim old-head evidence proves new code.
 If that final check still fails or reveals another defect, report the failure rather than silently starting repeated repair rounds.
 If the source moves after proof, the report is stale for landing and firstmate must reconcile the new code before using its verdict.
 
@@ -103,8 +119,10 @@ Include:
 - Setup: changed-line count or unknown-size reason, staffing, module coverage and seams, concrete model profiles, family choice, and any dispatch exceptions.
 - Blind review: pre-run artifact pointer, review coverage, stable suspicion IDs, code evidence, triggers, consequences, and disconfirming checks.
 - Proof: verification artifacts and criteria followed, commands or operator actions, observed results, evidence pointers, and untested paths or environmental blockers.
+- Product surface: the `verify-*` skill and product surface driven, with commands or operator actions and observed results, or the concrete no-surface reason naming the changed paths.
+- Attack: each attempt's input, surface, expected result, and observed result, and the stable ID of any defect an attack found.
 - Findings: each ID's reproduced, disproved, or unreproduced classification and evidence, author fix when required, and final-head re-check result.
-- Outcome: passed, failed, or incomplete, tied to the final head; unresolved reproduced bugs mean failed, and missing review coverage, missing required proof, or a serious unresolved suspicion means incomplete, never passed.
+- Outcome: passed, failed, or incomplete, tied to the final head; unresolved reproduced bugs mean failed, and missing review coverage, missing required proof, a missing product-surface run without a concrete no-surface reason, a missing attack phase, or a serious unresolved suspicion means incomplete, never passed.
 - Captain decisions: only reserved fix decisions and serious unreproduced suspicions, with concrete consequence and the next decision needed.
 
 Before completion, firstmate follows `scout-completion` and `captain-hold-lifecycle` so unresolved decisions survive the QA workers' cleanup.
