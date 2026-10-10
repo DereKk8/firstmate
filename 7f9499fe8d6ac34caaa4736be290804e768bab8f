@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "summary": "Independent verification now includes blind code review before real proof.",
+  "files": [
+    {
+      "path": ".agents/skills/verification-review/SKILL.md",
+      "summary": "Owns the review and proof stages of one selected verification check.",
+      "annotations": [
+        {
+          "newRange": [14, 111],
+          "summary": "The skill sizes staffing, protects blind review, and requires fixes for reproduced defects.",
+          "rationale": "Review precedes proof because passing runs can soften defect detection. This remains one selected verification check, not an extra pipeline. The documentation audience check and its regression suite passed. Live model compliance and multi-agent handoff were not measured. Private preference replacements are recorded separately and must be applied by the supervisor.",
+          "author": "fm/fm-verify-code-review"
+        }
+      ]
+    },
+    {
+      "path": ".agents/skills/agent-skill-trigger-index/SKILL.md",
+      "summary": "Adds the verification check's load trigger without duplicating its procedure.",
+      "annotations": [
+        {
+          "newRange": [16, 16],
+          "summary": "The trigger loads the procedure only for a selected verification check or its report.",
+          "rationale": "The description is the always-loaded discovery surface, so adding another project-memory rule is unnecessary. The new skill is classified as agent-runtime in the inventory. Actual loading in a fresh model session remains unverified.",
+          "author": "fm/fm-verify-code-review"
+        }
+      ]
+    }
+  ]
+}
