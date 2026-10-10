@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "summary": "The verification-review procedure now requires a product-surface run and an attack phase before a verification can pass.",
+  "files": [
+    {
+      "path": ".agents/skills/verification-review/SKILL.md",
+      "summary": "Owns the verification check; this change adds two mandatory proof phases and their report fields.",
+      "annotations": [
+        {
+          "newRange": [18, 18],
+          "summary": "The opening rule now forbids changing verify-* skills, not invoking them, because the verifier must drive them.",
+          "rationale": "The old wording said 'do not invoke' the project verify skills, which contradicted the proof section and the new product-surface phase. The no-mistakes prohibition is unchanged.",
+          "author": "fm/zt-procedure-surface-attack"
+        },
+        {
+          "newRange": [77, 93],
+          "summary": "Proof gains a required product-surface run and a required attack phase, with no applicability left to the verifier's judgment.",
+          "rationale": "Today's 18 reports showed most checks proved code (pytest, direct imports) and attacked only security-shaped PRs. A reachable path blocked by a live-tenant ban must use a scratch instance, else it counts as missing proof, so the zt-pr313 style skip no longer passes. Verified with bin/fm-doc-audience-check.sh and the instruction-owner tests; agent behavior under the new text is not tested.",
+          "author": "fm/zt-procedure-surface-attack"
+        },
+        {
+          "newRange": [122, 125],
+          "summary": "The Required report lists the product-surface run or no-surface reason and every attack attempt, and their absence makes the outcome incomplete.",
+          "rationale": "This reuses the existing 'missing required proof means incomplete' rule, so passed cannot be reached without both phases and no new enforcement machinery is added.",
+          "author": "fm/zt-procedure-surface-attack"
+        }
+      ]
+    }
+  ]
+}
