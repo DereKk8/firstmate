@@ -285,6 +285,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/verification-review/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".greptile/rules.md",
       "audience": "maintainer-architecture"
     },
