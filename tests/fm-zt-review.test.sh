@@ -35,20 +35,24 @@ with_pin() {
     "$@"
 }
 
-write_unified() {
-  local n=$1 dest=$2 i
-  {
-    printf '%s\n' 'diff --git a/f b/f'
-    printf '%s\n' '--- a/f'
-    printf '%s\n' '+++ b/f'
-    printf '%s\n' "@@ -1,$n +1,$n @@"
-    i=0
-    while [ "$i" -lt "$n" ]; do
-      printf '%s\n' "+line $i"
-      i=$((i + 1))
-    done
-  } >"$dest"
+SRC=$FIX/source
+
+# commit_lines <n> writes n lines to f and commits; COMMIT is the new head.
+commit_lines() {
+  local n=$1 i=0
+  : >"$SRC/f"
+  while [ "$i" -lt "$n" ]; do
+    printf 'line %s\n' "$i" >>"$SRC/f"
+    i=$((i + 1))
+  done
+  git -C "$SRC" add f
+  git -C "$SRC" commit -qm "lines $n" --allow-empty
+  COMMIT=$(git -C "$SRC" rev-parse HEAD)
 }
+
+git init -q "$SRC"
+commit_lines 0
+BASE_COMMIT=$COMMIT
 
 staff_field() {
   local text=$1 key=$2
@@ -119,7 +123,7 @@ test_identity_shape_and_fixture_check() {
   local line rc
   line=$("$ZT" identity)
   case "$line" in
-    'Identity: zero-trust-review 2.1.0 '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+    'Identity: zero-trust-review 2.2.0 '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
     *) fail "identity line has the wrong shape: $line" ;;
   esac
   with_pin "$ZT" identity --check >/dev/null
@@ -133,83 +137,54 @@ test_identity_shape_and_fixture_check() {
 }
 
 test_staffing_follows_the_diff_size() {
-  local diff text lines size staffing rc
-  diff=$FIX/diff
-  write_unified 99 "$diff"
-  text=$("$ZT" staff "$diff")
-  lines=$(staff_field "$text" changed_lines)
-  size=$(staff_field "$text" size)
-  staffing=$(staff_field "$text" staffing)
-  assert_equals 99 "$lines" "99 additions were not counted"
-  assert_equals known "$size" "a unified diff was not a known size"
-  assert_equals one "$staffing" "99 lines required one agent"
-  "$ZT" staff-check "$diff" one >/dev/null
-  "$ZT" staff-check "$diff" sliced >/dev/null
+  local text n agents slices
+  for n in 99:1:no 100:2:no 800:2:no 801:2:yes; do
+    agents=${n#*:}
+    slices=${agents#*:}
+    agents=${agents%%:*}
+    n=${n%%:*}
+    git -C "$SRC" checkout -q "$BASE_COMMIT"
+    commit_lines "$n"
+    text=$("$ZT" staff "$SRC" "$BASE_COMMIT" "$COMMIT")
+    assert_equals "$n" "$(staff_field "$text" changed_lines)" "$n additions were not counted"
+    assert_equals known "$(staff_field "$text" size)" "$n lines were not a known size"
+    assert_equals "$agents" "$(staff_field "$text" agents)" "$n lines called for the wrong number of agents"
+    assert_equals "$slices" "$(staff_field "$text" slices)" "$n lines called for the wrong slicing"
+  done
 
-  write_unified 100 "$diff"
-  text=$("$ZT" staff "$diff")
-  assert_equals two "$(staff_field "$text" staffing)" "100 lines required two agents"
-  run_capture "$FIX/stdout" "$FIX/stderr" "$ZT" staff-check "$diff" one
-  rc=$RUN_RC
-  expect_code 1 "$rc" "one agent must be refused at 100 lines"
-  assert_grep 'below the diff rule' "$FIX/stderr" "the refusal did not name the diff rule"
-  "$ZT" staff-check "$diff" two >/dev/null
-
-  write_unified 800 "$diff"
-  text=$("$ZT" staff "$diff")
-  assert_equals two "$(staff_field "$text" staffing)" "800 lines required two agents"
-  write_unified 801 "$diff"
-  text=$("$ZT" staff "$diff")
-  assert_equals sliced "$(staff_field "$text" staffing)" "801 lines required slices"
-  run_capture "$FIX/stdout" "$FIX/stderr" "$ZT" staff-check "$diff" two
-  rc=$RUN_RC
-  expect_code 1 "$rc" "two agents must be refused above 800 lines"
-
-  printf '%s\n' 'diff --git a/f b/f' 'Binary files a/f and b/f differ' >"$diff"
-  text=$("$ZT" staff "$diff")
+  git -C "$SRC" checkout -q "$BASE_COMMIT"
+  printf '\000\001binary' >"$SRC/blob.bin"
+  git -C "$SRC" add blob.bin
+  git -C "$SRC" commit -qm binary
+  COMMIT=$(git -C "$SRC" rev-parse HEAD)
+  text=$("$ZT" staff "$SRC" "$BASE_COMMIT" "$COMMIT")
   assert_equals unknown "$(staff_field "$text" size)" "a binary diff was treated as known"
-  assert_equals sliced "$(staff_field "$text" staffing)" "an unknown size required slices"
-  run_capture "$FIX/stdout" "$FIX/stderr" "$ZT" staff-check "$diff" two
-  rc=$RUN_RC
-  expect_code 1 "$rc" "two agents must be refused for an unknown size"
-  "$ZT" staff-check "$diff" sliced >/dev/null
+  assert_equals 2 "$(staff_field "$text" agents)" "an unknown size did not call for two agents"
+  assert_equals yes "$(staff_field "$text" slices)" "an unknown size did not call for slices"
 
-  printf '1\t2\tf\n' >"$diff"
-  text=$("$ZT" staff "$diff")
-  assert_equals 3 "$(staff_field "$text" changed_lines)" "numstat lines were not added"
-  assert_equals one "$(staff_field "$text" staffing)" "a 3-line numstat required one agent"
-  printf '%s\t%s\t%s\n' - - bin >"$diff"
-  text=$("$ZT" staff "$diff")
-  assert_equals unknown "$(staff_field "$text" size)" "a binary numstat was treated as known"
-
-  printf '%s\n' '+line' >"$diff"
-  text=$("$ZT" staff "$diff")
-  assert_equals unknown "$(staff_field "$text" size)" "a bare plus line was treated as a unified diff"
-  printf '%s\n' 'diff --git a/f b/f' >"$diff"
-  text=$("$ZT" staff "$diff")
-  assert_equals unknown "$(staff_field "$text" size)" "a diff header without hunks was treated as zero lines"
-  : >"$diff"
-  text=$("$ZT" staff "$diff")
+  text=$("$ZT" staff "$SRC" "$BASE_COMMIT" "$BASE_COMMIT")
   assert_equals 0 "$(staff_field "$text" changed_lines)" "an empty diff was not zero lines"
-  assert_equals one "$(staff_field "$text" staffing)" "an empty diff required one agent"
-  pass "staffing follows the shared diff-size rule"
+  assert_equals 1 "$(staff_field "$text" agents)" "an empty diff did not call for one agent"
+  git -C "$SRC" checkout -q "$BASE_COMMIT"
+  pass "staffing follows the shared diff-size table"
 }
 
 test_brief_fields_and_marker_lines() {
-  local diff intent out
-  diff=$FIX/brief.diff
+  local intent out head bin_head
   intent=$FIX/intent
   out=$FIX/brief.md
-  write_unified 2 "$diff"
+  git -C "$SRC" checkout -q "$BASE_COMMIT"
+  commit_lines 2
+  head=$COMMIT
   printf 'do the thing' >"$intent"
   with_pin "$ZT" brief \
     --run-id run-1 \
     --repo example/repo \
     --pr "$PR_URL" \
-    --head "$HEAD_A" \
+    --head "$head" \
     --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
+    --merge-base "$BASE_COMMIT" \
+    --source "$SRC" \
     --intent-file "$intent" \
     --surface 'cli example' \
     --evidence "$FIX/evidence" >"$out"
@@ -217,9 +192,12 @@ test_brief_fields_and_marker_lines() {
     || fail "the brief is missing the skill identity line"
   grep -qxF 'Run id: run-1' "$out" || fail "the brief is missing the run id"
   grep -qxF "Repo / PR: example/repo $PR_URL" "$out" || fail "the brief is missing the repo and URL"
-  grep -qxF "Pinned head SHA: $HEAD_A" "$out" || fail "the brief is missing the pinned head"
-  grep -qxF "Base branch and merge base: main $MERGE" "$out" || fail "the brief is missing the base"
+  grep -qxF "Pinned head SHA: $head" "$out" || fail "the brief is missing the pinned head"
+  grep -qxF "Base branch and merge base: main $BASE_COMMIT" "$out" || fail "the brief is missing the base"
   grep -qxF 'Diff: 2 changed lines' "$out" || fail "the brief did not count the diff"
+  marker_body "$out" FMZTDIFF >"$FIX/diff-body"
+  git -C "$SRC" diff "$BASE_COMMIT" "$head" >"$FIX/diff-expect"
+  cmp -s "$FIX/diff-expect" "$FIX/diff-body" || fail "the brief diff is not the pinned commits' diff"
   grep -qxF 'Product surface to drive: cli example' "$out" || fail "the brief is missing the surface"
   grep -qxF "Evidence location: $FIX/evidence" "$out" || fail "the brief is missing the evidence location"
   marker_body "$out" FMZTINTENT >"$FIX/intent-body"
@@ -231,10 +209,10 @@ test_brief_fields_and_marker_lines() {
     --run-id run-1 \
     --repo example/repo \
     --pr "$PR_URL" \
-    --head "$HEAD_A" \
+    --head "$head" \
     --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
+    --merge-base "$BASE_COMMIT" \
+    --source "$SRC" \
     --intent-file "$intent" \
     --surface 'cli example' \
     --evidence "$FIX/evidence" >"$out"
@@ -242,41 +220,55 @@ test_brief_fields_and_marker_lines() {
   printf '%s\n' 'hello' >"$FIX/intent-expect"
   cmp -s "$FIX/intent-expect" "$FIX/intent-body" \
     || fail "an intent that already ends in a newline gained a blank line"
-  printf 'not a diff\n' >"$diff"
+  printf '\000\001binary' >"$SRC/blob.bin"
+  git -C "$SRC" add blob.bin
+  git -C "$SRC" commit -qm binary
+  bin_head=$(git -C "$SRC" rev-parse HEAD)
+  git -C "$SRC" checkout -q "$BASE_COMMIT"
   with_pin "$ZT" brief \
     --run-id run-1 \
     --repo example/repo \
     --pr "$PR_URL" \
-    --head "$HEAD_A" \
+    --head "$bin_head" \
     --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
+    --merge-base "$BASE_COMMIT" \
+    --source "$SRC" \
     --intent-file "$intent" \
     --surface 'cli example' \
     --evidence "$FIX/evidence" >"$out"
-  grep -qxF 'Diff: unknown size' "$out" || fail "an unreadable diff was given a line count"
+  grep -qxF 'Diff: unknown size' "$out" || fail "a binary diff was given a line count"
   pass "the brief uses the shared fields and keeps marker lines intact"
 }
 
-test_prepare_asserts_and_cleans_up() {
-  local diff intent dest rc blob
-  diff=$FIX/prep.diff
-  intent=$FIX/prep-intent
-  write_unified 1 "$diff"
-  printf 'task source\n' >"$intent"
-  dest=$FIX/blind
-  with_pin "$ZT" prepare --staff one --out "$dest" \
+# prepare_blind <dest> [extra prepare args] prepares a one-line review.
+prepare_blind() {
+  local dest=$1
+  shift
+  with_pin "$ZT" prepare --out "$dest" \
     --run-id run-1 \
     --repo example/repo \
     --pr "$PR_URL" \
-    --head "$HEAD_A" \
+    --head "$ONE_LINE" \
     --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
-    --intent-file "$intent" \
+    --merge-base "$BASE_COMMIT" \
+    --source "$SRC" \
+    --intent-file "$FIX/prep-intent" \
     --surface 'cli example' \
-    --evidence "$FIX/evidence" >"$FIX/prepare.out"
+    --evidence "$FIX/evidence" "$@"
+}
+
+git -C "$SRC" checkout -q "$BASE_COMMIT"
+commit_lines 1
+ONE_LINE=$COMMIT
+git -C "$SRC" checkout -q "$BASE_COMMIT"
+printf 'task source\n' >"$FIX/prep-intent"
+
+test_prepare_asserts_and_cleans_up() {
+  local dest rc blob
+  dest=$FIX/blind
+  prepare_blind "$dest" >"$FIX/prepare.out"
   grep -q '^directory=' "$FIX/prepare.out" || fail "prepare did not report the directory"
+  grep -qx 'agents=1' "$FIX/prepare.out" || fail "prepare did not report the staffing"
   with_pin "$ZT" assert "$dest" >"$FIX/assert.out"
   assert_equals ok "$(cat "$FIX/assert.out")" "assert did not accept the prepared directory"
   blob=$(git hash-object "$dest/skill.md")
@@ -288,33 +280,17 @@ test_prepare_asserts_and_cleans_up() {
   rm -f "$dest/extra"
 
   dest=$FIX/partial
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" prepare --staff one --out "$dest" \
-    --run-id run-1 \
-    --repo example/repo \
-    --pr "$PR_URL" \
-    --head short \
-    --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
-    --intent-file "$intent" \
-    --surface 'cli example' \
-    --evidence "$FIX/evidence"
+  run_capture "$FIX/stdout" "$FIX/stderr" prepare_blind "$dest" --merge-base short
   rc=$RUN_RC
-  expect_code 1 "$rc" "prepare must refuse a head that is not 40 hex characters"
+  expect_code 1 "$rc" "prepare must refuse a merge base that is not 40 hex characters"
   assert_absent "$dest" "a failed prepare left a blind directory behind"
+  run_capture "$FIX/stdout" "$FIX/stderr" prepare_blind "$dest" --head "$HEAD_A"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "prepare must refuse a head the source repository does not have"
+  assert_absent "$dest" "a prepare with a missing head left a blind directory behind"
 
   dest=$ROOT/zt-prepare-refused
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" prepare --staff one --out "$dest" \
-    --run-id run-1 \
-    --repo example/repo \
-    --pr "$PR_URL" \
-    --head "$HEAD_A" \
-    --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
-    --intent-file "$intent" \
-    --surface 'cli example' \
-    --evidence "$FIX/evidence"
+  run_capture "$FIX/stdout" "$FIX/stderr" prepare_blind "$dest"
   rc=$RUN_RC
   expect_code 1 "$rc" "prepare must refuse a directory inside a git checkout"
   assert_grep 'inside a git checkout' "$FIX/stderr" "the refusal did not name the git checkout"
@@ -322,89 +298,126 @@ test_prepare_asserts_and_cleans_up() {
   pass "prepare publishes only the pinned skill and removes a failed directory"
 }
 
-test_launch_refuses_a_bad_auth_path_and_a_missing_bwrap() {
-  local diff intent dest home sentinel hidden rc
-  diff=$FIX/launch.diff
-  intent=$FIX/launch-intent
+test_launch_refuses_a_bad_auth_file_and_a_missing_bwrap() {
+  local dest home sentinel hidden rc
   dest=$FIX/launch-blind
-  write_unified 1 "$diff"
-  printf 'task source\n' >"$intent"
   rm -rf "$dest"
-  with_pin "$ZT" prepare --staff one --out "$dest" \
-    --run-id run-1 \
-    --repo example/repo \
-    --pr "$PR_URL" \
-    --head "$HEAD_A" \
-    --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
-    --intent-file "$intent" \
-    --surface 'cli example' \
-    --evidence "$FIX/evidence" >/dev/null
+  prepare_blind "$dest" >/dev/null
 
   home=$FIX/home-auth
-  mkdir -p "$home/modelauth" "$home/gh-box" "$home/repo"
-  git init -q "$home/repo"
+  mkdir -p "$home/gh" "$home/modelauth"
+  printf 'token\n' >"$home/gh/hosts.yml"
+  printf 'notes\n' >"$home/modelauth/report.md"
+  printf 'cred\n' >"$FIX/auth.json"
+  ln -sf "$home/modelauth/report.md" "$home/modelauth/auth.json"
   sentinel=$FIX/auth-ran
   rm -f "$sentinel"
-  HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --staff one --diff "$diff" --auth "$home/gh-box" -- \
-      /bin/sh -c "echo ran > '$sentinel'"
-  rc=$RUN_RC
-  expect_code 1 "$rc" "an auth path containing gh must be refused"
-  assert_absent "$sentinel" "the command ran after an auth refusal"
-  HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --staff one --diff "$diff" --auth "$home/repo" -- \
-      /bin/sh -c "echo ran > '$sentinel'"
-  rc=$RUN_RC
-  expect_code 1 "$rc" "an auth path inside a git checkout must be refused"
-  assert_grep 'git checkout' "$FIX/stderr" "the auth refusal did not name the git checkout"
-  assert_absent "$sentinel" "the command ran for an auth path inside a git checkout"
+  for bad in "$home/gh/hosts.yml" "$home/modelauth/report.md" "$home/modelauth" \
+    "$home/modelauth/auth.json" "$FIX/auth.json"; do
+    HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
+      with_pin "$ZT" launch "$dest" --auth "$bad" -- /bin/sh -c "echo ran > '$sentinel'"
+    rc=$RUN_RC
+    expect_code 1 "$rc" "auth $bad must be refused"
+    assert_absent "$sentinel" "the command ran after refusing auth $bad"
+  done
 
   hidden=$(fm_test_base_path_sans "$PATH" bwrap)
   PATH="$hidden" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --staff one --diff "$diff" -- \
-      /bin/sh -c "echo ran > '$sentinel'"
+    with_pin "$ZT" launch "$dest" -- /bin/sh -c "echo ran > '$sentinel'"
   rc=$RUN_RC
   expect_code 1 "$rc" "launch must refuse when bwrap is absent"
   assert_grep 'bwrap is required' "$FIX/stderr" "the refusal did not name bwrap"
   assert_absent "$sentinel" "the command ran without bwrap"
-  pass "launch refuses a bad auth path and refuses to start without bwrap"
+  pass "launch refuses anything but a credential file under HOME, and refuses to start without bwrap"
 }
 
-test_launch_hides_the_host_checkout() {
-  local dest out rc marker outside_cmd='' outside_found=0 host_path
+# A user-writable directory outside /home, /tmp, /var/tmp, and /dev, where a
+# harmless marker shows whether the launch exposes the rest of the host.
+outside_dir() {
+  local dir
+  for dir in "${XDG_RUNTIME_DIR:-}" "/run/user/$(id -u)"; do
+    case "$dir" in
+      ''|/home/*|/tmp/*|/var/tmp/*|/dev/*) continue ;;
+    esac
+    if [ -d "$dir" ] && [ -w "$dir" ]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+  done
+  return 1
+}
+
+test_launch_hides_the_host() {
+  local dest out rc marker outside outside_marker='' outside_cmd='' host_path
   if ! bwrap_works; then
     pass "this host cannot run bwrap, so the hide check was skipped"
     return 0
   fi
+  if outside=$(outside_dir); then
+    outside_marker=$(mktemp "$outside/fm-zt-marker.XXXXXX")
+    printf 'harmless marker\n' >"$outside_marker"
+    outside_cmd="test ! -e '$outside_marker' && echo outside_marker_hidden; "
+  fi
   for host_path in /opt /srv /mnt; do
     if [ -e "$host_path" ]; then
-      outside_cmd="${outside_cmd}test ! -e '$host_path' && "
-      outside_found=1
+      outside_cmd="${outside_cmd}test ! -e '$host_path' && echo hidden:$host_path; "
     fi
   done
-  [ "$outside_found" -eq 1 ] || fail "no host path outside the reviewer runtime was available to test"
+  [ -n "$outside_cmd" ] || fail "no host path outside the reviewer runtime was available to test"
   dest=$FIX/launch-blind
   marker=$FIX/host-only
   printf 'secret\n' >"$marker"
   run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --staff one --diff "$FIX/launch.diff" -- /bin/sh -c \
-      "pwd; test -f brief.md && echo brief; test ! -e '$marker' && echo marker_hidden; test ! -d '$ROOT' && echo repo_hidden; $outside_cmd echo outside_hidden; git status >/dev/null 2>&1; echo git_status:\$?"
+    with_pin "$ZT" launch "$dest" -- /bin/sh -c \
+      "pwd; test -f brief.md && echo brief; test ! -e '$marker' && echo marker_hidden; test ! -d '$ROOT' && echo repo_hidden; $outside_cmd git status >/dev/null 2>&1; echo git_status:\$?"
   rc=$RUN_RC
+  [ -z "$outside_marker" ] || rm -f "$outside_marker"
   expect_code 0 "$rc" "launch failed on a host that can run bwrap"
   out=$(cat "$FIX/stdout")
   assert_contains "$out" '/tmp/zt-work' "the reviewer cwd was not the launch directory"
   assert_contains "$out" 'brief' "the brief was not visible in the launch directory"
   assert_contains "$out" 'marker_hidden' "a host file outside the launch directory was visible"
   assert_contains "$out" 'repo_hidden' "the repository checkout was visible"
-  assert_contains "$out" 'outside_hidden' "a host path outside the reviewer runtime was visible"
+  if [ -n "$outside_marker" ]; then
+    assert_contains "$out" 'outside_marker_hidden' "a marker in $outside was visible"
+  fi
+  for host_path in /opt /srv /mnt; do
+    if [ -e "$host_path" ]; then
+      assert_contains "$out" "hidden:$host_path" "$host_path was visible"
+    fi
+  done
   assert_contains "$out" 'git_status:128' "git status succeeded inside the launch"
   run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --staff one --diff "$FIX/launch.diff" -- /bin/sh -c 'exit 3'
+    with_pin "$ZT" launch "$dest" -- /bin/sh -c 'exit 3'
   rc=$RUN_RC
   expect_code 3 "$rc" "launch did not return the command status"
   pass "launch shows only the blind directory and returns the command status"
+}
+
+test_launch_runs_a_harness_installed_outside_usr() {
+  local dest tool rc out
+  if ! bwrap_works; then
+    pass "this host cannot run bwrap, so the harness-install check was skipped"
+    return 0
+  fi
+  dest=$FIX/launch-blind
+  tool=$FIX/installs/harness/1.0
+  mkdir -p "$tool" "$FIX/installs/other"
+  printf 'other install\n' >"$FIX/installs/other/data"
+  printf '#!/bin/sh\necho harness_ran\ntest ! -e %s && echo other_hidden\n' "'$FIX/installs/other/data'" >"$tool/harness"
+  chmod +x "$tool/harness"
+  ln -sf "$tool/harness" "$FIX/installs/harness-link"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" launch "$dest" -- "$FIX/installs/harness-link"
+  rc=$RUN_RC
+  expect_code 0 "$rc" "a harness installed outside /usr did not start"
+  out=$(cat "$FIX/stdout")
+  assert_contains "$out" 'harness_ran' "the harness did not run"
+  assert_contains "$out" 'other_hidden' "a directory beside the harness install was visible"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" launch "$dest" -- "$ZT" identity
+  rc=$RUN_RC
+  expect_code 1 "$rc" "a command inside a git checkout must be refused"
+  assert_grep 'inside a git checkout' "$FIX/stderr" "the refusal did not name the git checkout"
+  pass "launch mounts only the resolved harness directory and refuses one inside a checkout"
 }
 
 recorded_path() {
@@ -493,76 +506,28 @@ test_record_and_check_merge() {
 }
 
 test_diff_count_keeps_marker_like_code_lines() {
-  local repo diff text numstat added removed total
+  local repo base head text numstat total
   repo=$FIX/count-repo
   rm -rf "$repo"
   git init -q "$repo"
-  printf '%s\n' 'alpha' '--counter;' 'gone' >"$repo/f"
+  printf '%s\n' 'alpha' '--counter;' '-- a/sql comment' 'gone' >"$repo/f"
   git -C "$repo" add f
-  git -C "$repo" -c user.email=fmtest@example.invalid -c user.name=fmtest commit -qm base
-  printf '%s\n' 'alpha' '++counter;' 'kept' >"$repo/f"
-  git -C "$repo" diff >"$FIX/count.diff"
-  diff=$FIX/count.diff
-  numstat=$(git -C "$repo" diff --numstat)
-  added=$(printf '%s\n' "$numstat" | awk -F '\t' '{ print $1 }')
-  removed=$(printf '%s\n' "$numstat" | awk -F '\t' '{ print $2 }')
-  total=$((added + removed))
-  text=$("$ZT" staff "$diff")
+  git -C "$repo" commit -qm base
+  base=$(git -C "$repo" rev-parse HEAD)
+  printf '%s\n' 'alpha' '++counter;' '++ b/sql comment' 'kept' >"$repo/f"
+  git -C "$repo" commit -qam head
+  head=$(git -C "$repo" rev-parse HEAD)
+  numstat=$(git -C "$repo" diff --numstat "$base" "$head")
+  total=$(printf '%s\n' "$numstat" | awk -F '\t' '{ print $1 + $2 }')
+  assert_equals 6 "$total" "the fixture does not change six lines"
+  text=$("$ZT" staff "$repo" "$base" "$head")
   assert_equals "$total" "$(staff_field "$text" changed_lines)" \
     "code lines that look like diff headers were skipped"
   assert_equals known "$(staff_field "$text" size)" "a real git diff was not a known size"
-  pass "diff measurement counts code lines and skips only file headers"
+  pass "the diff count is git's own count on the pinned commits"
 }
 
-test_prepare_and_launch_enforce_staffing() {
-  local diff intent dest rc
-  diff=$FIX/staff-enforce.diff
-  intent=$FIX/staff-intent
-  write_unified 801 "$diff"
-  printf 'task source\n' >"$intent"
-  dest=$FIX/staff-weak
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" prepare --staff one --out "$dest" \
-    --run-id run-1 \
-    --repo example/repo \
-    --pr "$PR_URL" \
-    --head "$HEAD_A" \
-    --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
-    --intent-file "$intent" \
-    --surface 'cli example' \
-    --evidence "$FIX/evidence"
-  rc=$RUN_RC
-  expect_code 1 "$rc" "prepare must refuse one agent for 801 lines"
-  assert_grep 'below the diff rule' "$FIX/stderr" "prepare did not name the diff rule"
-  assert_absent "$dest" "prepare created a directory for a weak staff label"
-  dest=$FIX/staff-sliced
-  with_pin "$ZT" prepare --staff sliced --out "$dest" \
-    --run-id run-1 \
-    --repo example/repo \
-    --pr "$PR_URL" \
-    --head "$HEAD_A" \
-    --base main \
-    --merge-base "$MERGE" \
-    --diff "$diff" \
-    --intent-file "$intent" \
-    --surface 'cli example' \
-    --evidence "$FIX/evidence" >/dev/null
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" launch "$dest" --staff one --diff "$diff" -- \
-    /bin/sh -c "echo ran"
-  rc=$RUN_RC
-  expect_code 1 "$rc" "launch must refuse one agent for 801 lines"
-  assert_grep 'below the diff rule' "$FIX/stderr" "launch did not name the diff rule"
-  assert_not_contains "$(cat "$FIX/stdout")" ran "the command ran after a weak launch staff label"
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" launch "$dest" --diff "$diff" -- \
-    /bin/sh -c "echo ran"
-  rc=$RUN_RC
-  expect_code 1 "$rc" "launch must refuse a missing staff label"
-  assert_not_contains "$(cat "$FIX/stdout")" ran "the command ran without a staff label"
-  pass "prepare and launch refuse a weaker staff label than the diff requires"
-}
-
-test_launch_admits_only_credential_files() {
+test_launch_admits_only_named_credential_files() {
   local dest home auth rc out
   if ! bwrap_works; then
     pass "this host cannot run bwrap, so the credential-file check was skipped"
@@ -572,30 +537,20 @@ test_launch_admits_only_credential_files() {
   home=$FIX/cred-home
   auth=$home/modelauth
   rm -rf "$home"
-  mkdir -p "$auth/nested-repo"
+  mkdir -p "$auth/sessions"
   printf 'SECRET_PRIOR_REVIEW_FINDINGS\n' >"$auth/prior-report.md"
-  printf 'secret code\n' >"$auth/nested-repo/code.py"
-  git init -q "$auth/nested-repo"
+  printf 'old session\n' >"$auth/sessions/1.jsonl"
   printf 'credential-marker\n' >"$auth/auth.json"
-  ln -s prior-report.md "$auth/auth-link.json"
   HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --staff one --diff "$FIX/launch.diff" --auth "$auth" -- \
-      /bin/sh -c "test -f /tmp/zt-home/modelauth/auth.json && echo cred_visible; test ! -e /tmp/zt-home/modelauth/prior-report.md && echo prior_hidden; test ! -e /tmp/zt-home/modelauth/nested-repo && echo repo_hidden"
+    with_pin "$ZT" launch "$dest" --auth "$auth/auth.json" -- \
+      /bin/sh -c "test -f /tmp/zt-home/modelauth/auth.json && echo cred_visible; test ! -e /tmp/zt-home/modelauth/prior-report.md && echo prior_hidden; test ! -e /tmp/zt-home/modelauth/sessions && echo sessions_hidden"
   rc=$RUN_RC
-  expect_code 0 "$rc" "launch failed when the auth directory held a credential file"
+  expect_code 0 "$rc" "launch failed with one credential file"
   out=$(cat "$FIX/stdout")
   assert_contains "$out" 'cred_visible' "the credential file was not visible"
-  assert_contains "$out" 'prior_hidden' "a prior report in the auth directory was visible"
-  assert_contains "$out" 'repo_hidden' "a nested repository in the auth directory was visible"
-  rm -f "$auth/auth.json"
-  HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --staff one --diff "$FIX/launch.diff" --auth "$auth" -- \
-      /bin/sh -c "echo ran"
-  rc=$RUN_RC
-  expect_code 1 "$rc" "an auth directory with no credential file must be refused"
-  assert_grep 'credential file' "$FIX/stderr" "the refusal did not name the credential file"
-  assert_not_contains "$(cat "$FIX/stdout")" ran "the command ran when no credential file was admitted"
-  pass "launch admits only reviewer credential files from an auth directory"
+  assert_contains "$out" 'prior_hidden' "a prior report beside the credential file was visible"
+  assert_contains "$out" 'sessions_hidden' "session history beside the credential file was visible"
+  pass "launch admits only the named reviewer credential files"
 }
 
 test_identity_shape_and_fixture_check
@@ -603,8 +558,8 @@ test_staffing_follows_the_diff_size
 test_diff_count_keeps_marker_like_code_lines
 test_brief_fields_and_marker_lines
 test_prepare_asserts_and_cleans_up
-test_launch_refuses_a_bad_auth_path_and_a_missing_bwrap
-test_launch_hides_the_host_checkout
-test_launch_admits_only_credential_files
-test_prepare_and_launch_enforce_staffing
+test_launch_refuses_a_bad_auth_file_and_a_missing_bwrap
+test_launch_hides_the_host
+test_launch_runs_a_harness_installed_outside_usr
+test_launch_admits_only_named_credential_files
 test_record_and_check_merge

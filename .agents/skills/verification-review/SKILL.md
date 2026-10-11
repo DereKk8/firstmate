@@ -20,16 +20,18 @@ Do not invoke or change no-mistakes or its configuration, and do not change a pr
 ## Pin, brief, and staffing
 
 Read the head from the forge with `bin/fm-review-diff.sh` when the task has a pull request.
-Pass `bin/fm-zt-review.sh prepare` an intent file taken from the task source.
-`prepare` writes the shared brief fields and the pinned skill bytes into a directory that is not a git checkout.
-`bin/fm-zt-review.sh staff-check` is the staffing decision, and `prepare` and `launch` refuse a missing or weaker staff label.
+Pass `bin/fm-zt-review.sh prepare` the pinned merge base and head, a local repository that has both commits, and an intent file taken from the task source.
+`prepare` writes the shared brief fields, git's diff of those commits, and the pinned skill bytes into a directory that is not a git checkout.
+`prepare` and `bin/fm-zt-review.sh staff` print the agent count and whether the reviewer slices, from git's line count on those commits and the shared staffing table.
+No script enforces that staffing: firstmate, as coordinator, assigns the reviewer and the verifier roles and the module slices.
+Firstmate records each role's task and the slice list in the source task's backlog note, and passes the saved blind review to the verifier.
 Resolve both seats through `harness-adapters`, the current dispatch profiles, and `quota-array-dispatch`.
 Stop when that path cannot fill the seat the shared skill requires.
 
 ## Launch and proof
 
 Start the blind reviewer only with `bin/fm-zt-review.sh launch` on the prepared directory.
-That launch exposes the prepared directory, a private home, the command runtime, and only the reviewer harness credential files.
+That launch exposes the prepared directory, a private home, the system runtime, the directory of the resolved reviewer command, and only the credential files passed with `--auth`.
 It does not mount the host root.
 The verifier is an ordinary scout, because proof has to drive the product, and its instructions include the `show-skill` bytes.
 Those instructions forbid product edits, commits, pushes, and merges.

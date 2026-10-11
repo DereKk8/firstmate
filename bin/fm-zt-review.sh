@@ -2,21 +2,26 @@
 # Firstmate mechanics for the shared zero-trust review.
 # The review rules stay in DereKk8/project-skills
 # shared/zero-trust-review/SKILL.md at the pinned identity below.
-# This script does not restate those rules. It staffs from the diff size,
-# writes the shared brief, launches the blind reviewer in a directory that
-# is not a repository, checks the report shape, and refuses a merge unless
-# the review recorded for that pull request URL is a PASS of the live head.
+# This script does not restate those rules. It counts the pinned diff,
+# prints the staffing that count calls for, writes the shared brief,
+# launches the blind reviewer in a directory that is not a repository,
+# checks the report shape, and refuses a merge unless the review recorded
+# for that pull request URL is a PASS of the live head.
 #
-# The blind launch requires bwrap. It mounts the operating-system runtime
-# the command needs (/usr, and /nix/store only when the command itself is
-# there), a private home, and temporary directories. It does not mount the
-# host root. Optional --auth directories contribute only regular files
-# named auth.json, .credentials.json, or gemini-credentials.json. Other
-# files in those directories are not mounted. An auth path inside a git
-# checkout, or whose path contains gh, git, glab, projects, or treehouse,
-# is refused. Without bwrap the launch refuses and does not start the
-# command. prepare and launch both refuse a staff label weaker than the
-# diff requires.
+# The diff and its size come from git on the pinned commits: --source names
+# a local repository that has both the merge base and the head. git's own
+# --numstat gives the count, and a binary file makes the size unknown.
+# staff prints agents=1|2 and slices=yes|no from the shared table. It does
+# not enforce them: the coordinator assigns the roles and the slices.
+#
+# The blind launch requires bwrap. It mounts /usr, /etc, and the /bin,
+# /lib, and /lib64 links, then the directory that holds the resolved
+# command (all of /nix/store when the command is there), a private home,
+# and temporary directories. It does not mount the host root. Each --auth
+# names one credential file under HOME whose name is auth.json,
+# .credentials.json, or gemini-credentials.json. It is mounted read-only
+# at the same place under the private home. Without bwrap the launch
+# refuses and does not start the command.
 #
 # A missing review record for the pull request URL does not change merge.
 # The record is keyed by that URL, so a review stored from another task
@@ -28,15 +33,13 @@
 #   fm-zt-review.sh identity
 #   fm-zt-review.sh identity --check
 #   fm-zt-review.sh show-skill
-#   fm-zt-review.sh staff <diff-file>
-#   fm-zt-review.sh staff-check <diff-file> <one|two|sliced>
+#   fm-zt-review.sh staff <source-dir> <merge-base> <head>
 #   fm-zt-review.sh brief --run-id ID --repo REPO --pr URL --head SHA \
-#       --base BRANCH --merge-base SHA --diff FILE --intent-file FILE \
+#       --base BRANCH --merge-base SHA --source DIR --intent-file FILE \
 #       --surface TEXT --evidence TEXT
-#   fm-zt-review.sh prepare --staff one|two|sliced --out DIR [same brief flags]
+#   fm-zt-review.sh prepare --out DIR [same brief flags]
 #   fm-zt-review.sh assert <dir>
-#   fm-zt-review.sh launch <dir> --staff one|two|sliced --diff FILE \
-#       [--auth DIR]... -- <command> [args]
+#   fm-zt-review.sh launch <dir> [--auth FILE]... -- <command> [args]
 #   fm-zt-review.sh record-report <task-id> <report-file> <pr-url>
 #   fm-zt-review.sh check-merge <task-id> <pr-url> <live-head>
 #
@@ -65,7 +68,7 @@ pin_version() {
     printf '%s\n' "$FM_ZT_VERSION"
     return 0
   fi
-  printf '%s\n' '2.1.0'
+  printf '%s\n' '2.2.0'
 }
 
 pin_commit() {
@@ -74,7 +77,7 @@ pin_commit() {
     printf '%s\n' "$FM_ZT_COMMIT"
     return 0
   fi
-  printf '%s\n' 'b0eae5769571e8a809dd1d5e10b1d76ea6837e70'
+  printf '%s\n' 'cc3992c1f790fcf5de5c0a48849fc79533c1e8e3'
 }
 
 pin_blob() {
@@ -83,7 +86,7 @@ pin_blob() {
     printf '%s\n' "$FM_ZT_BLOB"
     return 0
   fi
-  printf '%s\n' 'f08cd046fe592828e7ddf72d148dad548429410c'
+  printf '%s\n' '0489404d2b1dedc4b25dc42d4adef3ea8a2aea2c'
 }
 
 identity_line() {
@@ -132,123 +135,43 @@ inside_worktree() {
   git -C "$1" rev-parse --is-inside-work-tree >/dev/null 2>&1
 }
 
-# Prints size=<known|unknown> and changed_lines=<n or empty> on stdout.
+# Prints size=<known|unknown> and changed_lines=<n or empty> on stdout,
+# from git --numstat on the pinned commits. A binary file has no line
+# count, so it makes the size unknown.
 measure_diff() {
-  local file=$1 mode
-  [ -f "$file" ] && [ ! -L "$file" ] || die "diff is not a regular file: $file"
-  mode=$(awk '
-    BEGIN { nonempty = 0; unified = 0; bad_numstat = 0; numstat = 0 }
-    {
-      if ($0 ~ /^diff --git / || $0 ~ /^@@/) unified = 1
-      if (length($0) == 0) next
-      nonempty = 1
-      if ($0 ~ /^[0-9-]+\t[0-9-]+\t/) numstat++
-      else bad_numstat = 1
+  local src=$1 merge_base=$2 head=$3 numstat
+  hex40 "$merge_base" || die "merge base is not 40 hex characters"
+  hex40 "$head" || die "head is not 40 hex characters"
+  numstat=$(git -C "$src" diff --numstat --no-ext-diff --no-textconv "$merge_base" "$head") \
+    || die "could not diff $merge_base to $head in $src"
+  printf '%s\n' "$numstat" | awk -F '\t' '
+    BEGIN { total = 0; unknown = 0 }
+    NF >= 3 {
+      if ($1 == "-" || $2 == "-") unknown = 1
+      else total += $1 + $2
     }
     END {
-      if (unified) { print "unified"; exit }
-      if (nonempty == 0) { print "empty"; exit }
-      if (numstat > 0 && bad_numstat == 0) { print "numstat"; exit }
-      print "unknown"
+      if (unknown) { print "size=unknown"; print "changed_lines="; exit }
+      print "size=known"
+      print "changed_lines=" total
     }
-  ' "$file")
-  case "$mode" in
-    empty)
-      printf 'size=known\nchanged_lines=0\n'
-      ;;
-    unknown)
-      printf 'size=unknown\nchanged_lines=\n'
-      ;;
-    unified)
-      awk '
-        BEGIN { add = 0; del = 0; unknown = 0; hunks = 0; headers = 0 }
-        /^diff --git / { headers++; next }
-        /^@@/ { hunks++; next }
-        /^Binary files / || /^GIT binary patch/ { unknown = 1 }
-        /^\+\+\+ (b\/|"b\/|\/dev\/null)/ { next }
-        /^--- (a\/|"a\/|\/dev\/null)/ { next }
-        /^\+/ { add++ }
-        /^-/ { del++ }
-        END {
-          if (unknown || (headers > 0 && hunks == 0)) {
-            print "size=unknown"
-            print "changed_lines="
-            exit
-          }
-          print "size=known"
-          print "changed_lines=" (add + del)
-        }
-      ' "$file"
-      ;;
-    numstat)
-      awk -F '\t' '
-        BEGIN { total = 0; unknown = 0 }
-        NF >= 2 {
-          if ($1 == "-" || $2 == "-") unknown = 1
-          else total += $1 + $2
-        }
-        END {
-          if (unknown) { print "size=unknown"; print "changed_lines="; exit }
-          print "size=known"
-          print "changed_lines=" total
-        }
-      ' "$file"
-      ;;
-    *)
-      die "could not measure diff $file"
-      ;;
-  esac
+  '
 }
 
-required_staffing() {
-  local size=$1 lines=$2
-  if [ "$size" != known ]; then
-    printf '%s\n' sliced
-    return 0
-  fi
-  if [ "$lines" -lt 100 ]; then
-    printf '%s\n' one
-  elif [ "$lines" -le 800 ]; then
-    printf '%s\n' two
-  else
-    printf '%s\n' sliced
-  fi
-}
-
-staff_rank() {
-  case "$1" in
-    one) printf '1\n' ;;
-    two) printf '2\n' ;;
-    sliced) printf '3\n' ;;
-    *) return 1 ;;
-  esac
-}
-
+# The shared staffing table: under 100 lines one agent, 100 to 800 two
+# agents, and over 800 or an unknown size two agents with module slices.
 print_staff() {
-  local file=$1 size lines staffing measure
-  measure=$(measure_diff "$file")
+  local measure size lines agents=2 slices=no
+  measure=$(measure_diff "$1" "$2" "$3")
   size=${measure#size=}
   size=${size%%$'\n'*}
   lines=${measure#*$'\n'changed_lines=}
-  staffing=$(required_staffing "$size" "${lines:-0}")
-  printf 'changed_lines=%s\nsize=%s\nstaffing=%s\n' "$lines" "$size" "$staffing"
-}
-
-require_staffing() {
-  local file=$1 requested=$2 measure lines size need need_rank got_rank
-  staff_rank "$requested" >/dev/null || die "staffing must be one, two, or sliced"
-  measure=$(print_staff "$file")
-  lines=$(printf '%s\n' "$measure" | awk -F= '$1 == "changed_lines" { print $2 }')
-  size=$(printf '%s\n' "$measure" | awk -F= '$1 == "size" { print $2 }')
-  need=$(printf '%s\n' "$measure" | awk -F= '$1 == "staffing" { print $2 }')
-  need_rank=$(staff_rank "$need")
-  got_rank=$(staff_rank "$requested")
-  if [ "$got_rank" -lt "$need_rank" ]; then
-    if [ "$size" = known ]; then
-      die "staffing $requested is below the diff rule ($lines changed lines require $need)"
-    fi
-    die "staffing $requested is below the diff rule (unknown size requires $need)"
+  if [ "$size" != known ] || [ "$lines" -gt 800 ]; then
+    slices=yes
+  elif [ "$lines" -lt 100 ]; then
+    agents=1
   fi
+  printf 'changed_lines=%s\nsize=%s\nagents=%s\nslices=%s\n' "$lines" "$size" "$agents" "$slices"
 }
 
 # The closing marker has to start a line. Add a newline only when the
@@ -288,22 +211,26 @@ require_text_arg() {
 }
 
 write_brief() {
-  local run_id=$1 repo=$2 pr=$3 head=$4 base=$5 merge_base=$6 diff_file=$7 intent_file=$8 surface=$9 evidence=${10} dest=${11}
+  local run_id=$1 repo=$2 pr=$3 head=$4 base=$5 merge_base=$6 src=$7 intent_file=$8 surface=$9 evidence=${10} dest=${11}
   local measure size lines diff_mark intent_mark
   require_text_arg --run-id "$run_id"
   require_text_arg --repo "$repo"
   require_text_arg --pr "$pr"
   require_text_arg --base "$base"
+  require_text_arg --source "$src"
   require_text_arg --surface "$surface"
   require_text_arg --evidence "$evidence"
   hex40 "$head" || die "--head is not 40 hex characters"
   hex40 "$merge_base" || die "--merge-base is not 40 hex characters"
   [ -f "$intent_file" ] && [ ! -L "$intent_file" ] || die "intent is not a regular file: $intent_file"
-  measure=$(measure_diff "$diff_file")
+  measure=$(measure_diff "$src" "$merge_base" "$head")
   size=${measure#size=}
   size=${size%%$'\n'*}
   lines=${measure#*$'\n'changed_lines=}
-  diff_mark=$(unique_marker 'FMZTDIFF' "$diff_file") || die "could not mark the diff"
+  DIFF_TMP=$(mktemp)
+  git -C "$src" diff --no-ext-diff --no-textconv --no-color "$merge_base" "$head" >"$DIFF_TMP" \
+    || die "could not diff $merge_base to $head in $src"
+  diff_mark=$(unique_marker 'FMZTDIFF' "$DIFF_TMP") || die "could not mark the diff"
   intent_mark=$(unique_marker 'FMZTINTENT' "$intent_file") || die "could not mark the intent"
   {
     printf 'Skill identity: %s\n' "$(identity_line)"
@@ -317,8 +244,8 @@ write_brief() {
       printf 'Diff: unknown size\n'
     fi
     printf '%s\n' "$diff_mark"
-    cat -- "$diff_file"
-    finish_marker_line "$diff_file"
+    cat -- "$DIFF_TMP"
+    finish_marker_line "$DIFF_TMP"
     printf '%s\n' "$diff_mark"
     printf 'Stated intent:\n'
     printf '%s\n' "$intent_mark"
@@ -328,6 +255,8 @@ write_brief() {
     printf 'Product surface to drive: %s\n' "$surface"
     printf 'Evidence location: %s\n' "$evidence"
   } >"$dest"
+  rm -f -- "$DIFF_TMP"
+  DIFF_TMP=
 }
 
 assert_blind() {
@@ -347,81 +276,48 @@ assert_blind() {
     || die "brief is missing the pinned skill identity"
 }
 
-cleanup_prepare() {
+cleanup() {
   if [ -n "${PREPARE_DIR:-}" ]; then
     rm -rf -- "$PREPARE_DIR"
   fi
-  if [ -n "${PREPARE_BYTES:-}" ]; then
-    rm -f -- "$PREPARE_BYTES"
-  fi
-}
-
-cleanup_brief() {
-  if [ -n "${BRIEF_TMP:-}" ]; then
-    rm -f -- "$BRIEF_TMP"
-  fi
-}
-
-auth_ok() {
-  local path=$1 resolved home rel
-  [ -d "$path" ] && [ ! -L "$path" ] || die "auth path is not a real directory: $path"
-  resolved=$(CDPATH='' cd -- "$path" && pwd -P)
-  home=$(CDPATH='' cd -- "$HOME" && pwd -P)
-  case "$resolved" in
-    "$home"/*) ;;
-    *) die "auth path must be inside HOME: $resolved" ;;
-  esac
-  rel=${resolved#"$home"/}
-  case "$rel" in
-    *gh*|*git*|*glab*|*projects*|*treehouse*)
-      die "auth path is not a model-auth directory: $rel"
-      ;;
-  esac
-  if inside_worktree "$resolved"; then
-    die "auth path is inside a git checkout: $resolved"
-  fi
-  printf '%s\n' "$rel"
+  local tmp
+  for tmp in "${PREPARE_BYTES:-}" "${BRIEF_TMP:-}" "${DIFF_TMP:-}"; do
+    if [ -n "$tmp" ]; then
+      rm -f -- "$tmp"
+    fi
+  done
 }
 
 # Reviewer harness credential files named by the harness references:
 # auth.json (codex, grok, muse, pi), .credentials.json (claude), and
-# gemini-credentials.json (gemini). Session history and other files are
-# not credential files.
-credential_basename_ok() {
-  case "$1" in
-    auth.json|.credentials.json|gemini-credentials.json) return 0 ;;
-    *) return 1 ;;
+# gemini-credentials.json (gemini). Prints the path relative to HOME.
+auth_file_ok() {
+  local path=$1 resolved home
+  [ -f "$path" ] && [ ! -L "$path" ] || die "auth is not a regular file: $path"
+  case "${path##*/}" in
+    auth.json|.credentials.json|gemini-credentials.json) ;;
+    *) die "auth is not a reviewer credential file: $path" ;;
   esac
+  resolved=$(CDPATH='' cd -- "$(dirname -- "$path")" && pwd -P)/${path##*/}
+  home=$(CDPATH='' cd -- "$HOME" && pwd -P)
+  case "$resolved" in
+    "$home"/*) ;;
+    *) die "auth file must be inside HOME: $resolved" ;;
+  esac
+  printf '%s\n' "${resolved#"$home"/}"
 }
 
 launch_blind() {
   local dir=$1
   shift
-  local -a auth_rels=() auth_roots=() cred_srcs=() cred_dests=() bwrap_cmd=()
-  local -A made_dirs=()
-  local rel root staff='' diff='' file_rel base found dest parent
-  local cmd_real os_path target i j
-  local -a chain=()
+  local -a auth_srcs=() auth_rels=() bwrap_cmd=()
+  local resolved cmd_real cmd_dir os_path target i home
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --auth)
-        [ "$#" -ge 2 ] || die "launch --auth needs a directory"
-        rel=$(auth_ok "$2")
-        root=$(CDPATH='' cd -- "$2" && pwd -P)
-        auth_rels+=("$rel")
-        auth_roots+=("$root")
-        shift 2
-        ;;
-      --staff)
-        [ "$#" -ge 2 ] || die "launch --staff needs one|two|sliced"
-        [ -z "$staff" ] || die "launch --staff was given twice"
-        staff=$2
-        shift 2
-        ;;
-      --diff)
-        [ "$#" -ge 2 ] || die "launch --diff needs a file"
-        [ -z "$diff" ] || die "launch --diff was given twice"
-        diff=$2
+        [ "$#" -ge 2 ] || die "launch --auth needs a credential file"
+        auth_rels+=("$(auth_file_ok "$2")")
+        auth_srcs+=("$2")
         shift 2
         ;;
       --)
@@ -429,32 +325,13 @@ launch_blind() {
         break
         ;;
       *)
-        die "launch expected --auth, --staff, --diff, or -- before the command"
+        die "launch expected --auth or -- before the command"
         ;;
     esac
   done
-  [ -n "$staff" ] || die "launch needs --staff one|two|sliced"
-  [ -n "$diff" ] || die "launch needs --diff"
   [ "$#" -ge 1 ] || die "launch needs a command after --"
-  require_staffing "$diff" "$staff"
-  i=0
-  while [ "$i" -lt "${#auth_roots[@]}" ]; do
-    found=0
-    while IFS= read -r file_rel; do
-      [ -n "$file_rel" ] || continue
-      base=${file_rel##*/}
-      credential_basename_ok "$base" || continue
-      [ -f "${auth_roots[$i]}/$file_rel" ] && [ ! -L "${auth_roots[$i]}/$file_rel" ] || continue
-      cred_srcs+=("${auth_roots[$i]}/$file_rel")
-      cred_dests+=("/tmp/zt-home/${auth_rels[$i]}/$file_rel")
-      found=1
-    done < <(find "${auth_roots[$i]}" -type f -printf '%P\n')
-    [ "$found" -eq 1 ] || die "auth directory has no reviewer credential file: ${auth_roots[$i]}"
-    i=$((i + 1))
-  done
   assert_blind "$dir"
   command -v bwrap >/dev/null 2>&1 || die "bwrap is required to launch a blind reviewer, and it is not on PATH"
-  local resolved
   resolved=$(CDPATH='' cd -- "$dir" && pwd -P)
   [ -d /usr ] && [ ! -L /usr ] || die "launch needs a real /usr directory for the reviewer runtime"
   cmd_real=$1
@@ -463,6 +340,8 @@ launch_blind() {
     [ -n "$cmd_real" ] || die "launch command was not found: $1"
   fi
   cmd_real=$(readlink -f -- "$cmd_real")
+  cmd_dir=$(dirname -- "$cmd_real")
+  shift
   bwrap_cmd=(
     bwrap
     --ro-bind /usr /usr
@@ -478,23 +357,38 @@ launch_blind() {
   if [ -d /etc ] && [ ! -L /etc ]; then
     bwrap_cmd+=(--ro-bind /etc /etc)
   fi
-  case "$cmd_real" in
-    /nix/store/*)
-      [ -d /nix/store ] && [ ! -L /nix/store ] || die "launch command is in /nix/store, and that directory is not real"
-      bwrap_cmd+=(--ro-bind /nix/store /nix/store)
-      bwrap_cmd+=(--setenv PATH "$(dirname -- "$cmd_real"):${PATH}")
-      ;;
-  esac
   bwrap_cmd+=(
     --dev /dev
     --proc /proc
     --tmpfs /home
     --tmpfs /tmp
     --tmpfs /var/tmp
+  )
+  # A harness installed outside /usr is a binary in its own directory, or a
+  # store path whose closure is the rest of /nix/store.
+  case "$cmd_real" in
+    /usr/*|/bin/*|/lib/*|/lib64/*) ;;
+    /nix/store/*)
+      bwrap_cmd+=(--ro-bind /nix/store /nix/store)
+      ;;
+    *)
+      home=$(CDPATH='' cd -- "$HOME" && pwd -P)
+      case "$home/" in
+        "$cmd_dir"/*) die "launch command directory would expose HOME: $cmd_dir" ;;
+      esac
+      [ "$cmd_dir" != / ] || die "launch command directory would expose the host root"
+      if inside_worktree "$cmd_dir"; then
+        die "launch command is inside a git checkout: $cmd_real"
+      fi
+      bwrap_cmd+=(--ro-bind "$cmd_dir" "$cmd_dir")
+      ;;
+  esac
+  bwrap_cmd+=(
     --dir /tmp/zt-home
     --bind "$resolved" /tmp/zt-work
     --chdir /tmp/zt-work
     --setenv HOME /tmp/zt-home
+    --setenv PATH "$cmd_dir:${PATH}"
     --setenv GIT_DIR /fm-zt-no-repository
     --unsetenv GH_TOKEN
     --unsetenv GITHUB_TOKEN
@@ -502,37 +396,21 @@ launch_blind() {
     --unsetenv GITLAB_TOKEN
     --unsetenv GL_TOKEN
   )
-  made_dirs[/tmp/zt-home]=1
   i=0
-  while [ "$i" -lt "${#cred_dests[@]}" ]; do
-    dest=${cred_dests[$i]}
-    chain=()
-    parent=$(dirname -- "$dest")
-    while [ "$parent" != /tmp/zt-home ] && [ "$parent" != / ]; do
-      chain+=("$parent")
-      parent=$(dirname -- "$parent")
-    done
-    j=${#chain[@]}
-    while [ "$j" -gt 0 ]; do
-      j=$((j - 1))
-      if [ -z "${made_dirs[${chain[$j]}]+x}" ]; then
-        bwrap_cmd+=(--dir "${chain[$j]}")
-        made_dirs[${chain[$j]}]=1
-      fi
-    done
-    bwrap_cmd+=(--ro-bind "${cred_srcs[$i]}" "$dest")
+  while [ "$i" -lt "${#auth_srcs[@]}" ]; do
+    bwrap_cmd+=(--ro-bind "${auth_srcs[$i]}" "/tmp/zt-home/${auth_rels[$i]}")
     i=$((i + 1))
   done
-  bwrap_cmd+=("$@")
+  bwrap_cmd+=("$cmd_real" "$@")
   "${bwrap_cmd[@]}"
 }
 
 parse_brief_opts() {
   RUN_ID='' REPO='' PR_URL='' HEAD_SHA='' BASE_BRANCH='' MERGE_BASE=''
-  DIFF_FILE='' INTENT_FILE='' SURFACE='' EVIDENCE='' OUT_DIR='' STAFF=''
+  SOURCE_DIR='' INTENT_FILE='' SURFACE='' EVIDENCE='' OUT_DIR=''
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --run-id|--repo|--pr|--head|--base|--merge-base|--diff|--intent-file|--surface|--evidence|--out|--staff)
+      --run-id|--repo|--pr|--head|--base|--merge-base|--source|--intent-file|--surface|--evidence|--out)
         [ "$#" -ge 2 ] || die "missing value for $1"
         case "$1" in
           --run-id) RUN_ID=$2 ;;
@@ -541,12 +419,11 @@ parse_brief_opts() {
           --head) HEAD_SHA=$2 ;;
           --base) BASE_BRANCH=$2 ;;
           --merge-base) MERGE_BASE=$2 ;;
-          --diff) DIFF_FILE=$2 ;;
+          --source) SOURCE_DIR=$2 ;;
           --intent-file) INTENT_FILE=$2 ;;
           --surface) SURFACE=$2 ;;
           --evidence) EVIDENCE=$2 ;;
           --out) OUT_DIR=$2 ;;
-          --staff) STAFF=$2 ;;
         esac
         shift 2
         ;;
@@ -673,33 +550,23 @@ case "$cmd" in
     skill_bytes
     ;;
   staff)
-    [ "$#" -eq 1 ] || die "staff needs one diff file"
-    print_staff "$1"
-    ;;
-  staff-check)
-    [ "$#" -eq 2 ] || die "staff-check needs a diff file and one|two|sliced"
-    require_staffing "$1" "$2"
-    print_staff "$1"
+    [ "$#" -eq 3 ] || die "staff needs a source repository, a merge base, and a head"
+    print_staff "$1" "$2" "$3"
     ;;
   brief)
     parse_brief_opts "$@"
     [ -z "$OUT_DIR" ] || die "brief does not take --out"
-    [ -z "$STAFF" ] || die "brief does not take --staff"
     BRIEF_TMP=
-    trap cleanup_brief EXIT
+    DIFF_TMP=
+    trap cleanup EXIT
     BRIEF_TMP=$(mktemp)
     write_brief "$RUN_ID" "$REPO" "$PR_URL" "$HEAD_SHA" "$BASE_BRANCH" "$MERGE_BASE" \
-      "$DIFF_FILE" "$INTENT_FILE" "$SURFACE" "$EVIDENCE" "$BRIEF_TMP"
+      "$SOURCE_DIR" "$INTENT_FILE" "$SURFACE" "$EVIDENCE" "$BRIEF_TMP"
     cat -- "$BRIEF_TMP"
-    rm -f -- "$BRIEF_TMP"
-    BRIEF_TMP=
-    trap - EXIT
     ;;
   prepare)
     parse_brief_opts "$@"
     [ -n "$OUT_DIR" ] || die "prepare needs --out"
-    [ -n "$STAFF" ] || die "prepare needs --staff one|two|sliced"
-    require_staffing "$DIFF_FILE" "$STAFF"
     [ ! -e "$OUT_DIR" ] || die "prepare refuses an existing path: $OUT_DIR"
     parent=$(dirname -- "$OUT_DIR")
     [ -d "$parent" ] || die "prepare parent is not a directory: $parent"
@@ -709,19 +576,19 @@ case "$cmd" in
     fi
     PREPARE_BYTES=
     PREPARE_DIR=
-    trap cleanup_prepare EXIT
+    DIFF_TMP=
+    trap cleanup EXIT
     PREPARE_BYTES=$(mktemp)
     skill_bytes >"$PREPARE_BYTES"
     mkdir -- "$OUT_DIR"
     PREPARE_DIR=$OUT_DIR
     write_brief "$RUN_ID" "$REPO" "$PR_URL" "$HEAD_SHA" "$BASE_BRANCH" "$MERGE_BASE" \
-      "$DIFF_FILE" "$INTENT_FILE" "$SURFACE" "$EVIDENCE" "$OUT_DIR/brief.md"
+      "$SOURCE_DIR" "$INTENT_FILE" "$SURFACE" "$EVIDENCE" "$OUT_DIR/brief.md"
     mv -- "$PREPARE_BYTES" "$OUT_DIR/skill.md"
     PREPARE_BYTES=
     assert_blind "$OUT_DIR"
     PREPARE_DIR=
-    trap - EXIT
-    measure=$(print_staff "$DIFF_FILE")
+    measure=$(print_staff "$SOURCE_DIR" "$MERGE_BASE" "$HEAD_SHA")
     printf 'directory=%s\n%s\n' "$(CDPATH='' cd -- "$OUT_DIR" && pwd -P)" "$measure"
     ;;
   assert)
