@@ -1,0 +1,78 @@
+{
+  "version": 1,
+  "summary": "A merge needs a PASS review of that pull request's live head, and the blind launch no longer mounts the host root.",
+  "files": [
+    {
+      "path": "bin/fm-zt-review.sh",
+      "summary": "Staffs, launches, and records the shared zero-trust review.",
+      "annotations": [
+        {
+          "newRange": [163, 180],
+          "summary": "measure_diff skips only git file headers, so marker-like code lines still count.",
+          "rationale": "Skipping every line that starts with +++ also skipped added source such as +++counter;, so the diff looked smaller and could be staffed with one agent. tests/fm-zt-review.test.sh compares a real git diff with numstat. A diff header with no hunks is unknown size. The proc-path suspicion was not changed.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [237, 255],
+          "summary": "prepare and launch call require_staffing and refuse a weaker label.",
+          "rationale": "staff-check was only a separate command, so an 801-line diff could still be prepared and launched as one agent. The new tests refuse that label and accept sliced. Slice records are not stored.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [390, 394],
+          "summary": "launch admits only auth.json, .credentials.json, and gemini-credentials.json.",
+          "rationale": "Binding the whole auth directory let a prior report and a nested repository reach the reviewer. These basenames are the credential files named for claude, codex, grok, muse, pi, and gemini. The launch test shows the credential file and hides the siblings. Other credential stores stay with the secrets follow-up.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [460, 510],
+          "summary": "launch_blind mounts the command runtime and does not mount the host root.",
+          "rationale": "Binding / left /opt, /srv, and /mnt readable. The launch test shows those paths are absent while /bin/sh still runs. /nix/store is mounted only when the command itself is there. The network is still shared, so a public URL in the brief can still be fetched.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [746, 778],
+          "summary": "check-merge requires a PASS verdict for the live head, keyed by URL.",
+          "rationale": "A task-id file hid a review recorded by another task, and a PRODUCT_FAIL report was stored without its verdict so the merge proceeded. record-report also refuses a Repo / PR line that is not the URL argument. tests/fm-pr-merge.test.sh shows the forge merge does not run in those cases. A missing record still merges.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": "bin/fm-pr-merge.sh",
+      "summary": "Asks the review helper before either forge merge.",
+      "annotations": [
+        {
+          "newRange": [1336, 1343],
+          "summary": "refuse_stale_review_head asks the helper and discards its stdout.",
+          "rationale": "The helper now rejects a non-PASS record and finds a review saved under another task. Stdout stays discarded so existing merge output is unchanged. The new merge tests observe that the forge merge does not run when the helper refuses.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": ".agents/skills/verification-review/SKILL.md",
+      "summary": "Points at the shared review and states the launch and merge limits.",
+      "annotations": [
+        {
+          "newRange": [42, 44],
+          "summary": "The pointer says a merge needs a PASS review of the live head.",
+          "rationale": "The previous sentence only mentioned a different head, so a failed verdict on the same head still looked acceptable. The sentence now matches check-merge. The shared rule tables stay in the pinned skill.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": "docs/architecture.md",
+      "summary": "States the merge refusal for a review that is not a PASS of the live head.",
+      "annotations": [
+        {
+          "newRange": [386, 388],
+          "summary": "The architecture sentence requires a PASS verdict for the live head.",
+          "rationale": "The old sentence treated any recorded head as verified, so a PRODUCT_FAIL record could satisfy it. The sentence now matches the helper. bin/fm-pr-merge.sh still owns the comparison.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    }
+  ]
+}
