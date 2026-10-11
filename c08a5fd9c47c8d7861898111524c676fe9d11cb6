@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "summary": "The review skill now loads the shared zero-trust rules, and a merge stops when the live head is not the reviewed head.",
+  "files": [
+    {
+      "path": "bin/fm-zt-review.sh",
+      "summary": "Staffs the review, writes the shared brief, launches the blind reviewer, and records the verified head.",
+      "annotations": [
+        {
+          "newRange": [189, 201],
+          "summary": "required_staffing returns one, two, or sliced from the shared line-count table.",
+          "rationale": "A diff of 100 lines needs two agents, and 801 lines or an unknown size needs slices, because the shared rule counts every added and deleted line. staff-check refuses a weaker setup and accepts a stronger one. tests/fm-zt-review.test.sh covers 99, 100, 800, 801, and an unknown diff.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [355, 409],
+          "summary": "launch_blind starts the reviewer in bwrap with only the prepared directory mounted.",
+          "rationale": "The reviewer must not browse a repository checkout, so the launch hides /home, /tmp, and /var/tmp and bind-mounts only the prepared directory. A real bwrap run in tests/fm-zt-review.test.sh showed only that directory. The network stays open, so a public forge URL in the brief can still be fetched, and /nix is not hidden.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [617, 640],
+          "summary": "check-merge refuses when the live head differs from the recorded final tested head.",
+          "rationale": "A review is tied to one head, so a later push must not merge on that record. The same task with a different pull request URL is not a review of this URL and is allowed. tests/fm-zt-review.test.sh observed the refusal, the match, and the other-URL case.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": "bin/fm-pr-merge.sh",
+      "summary": "Refuses the forge merge when a review of this URL recorded a different head.",
+      "annotations": [
+        {
+          "newRange": [99, 102],
+          "summary": "The header states that a recorded review binds the merge to that head.",
+          "rationale": "The comparison has to live in this script because this is the only merge path. The change stays a few lines because the record and the comparison live in the new fork-only helper.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [1336, 1343],
+          "summary": "refuse_stale_review_head calls check-merge and discards its stdout.",
+          "rationale": "A missing helper file must stop the merge, because otherwise a fork could drop the comparison and still merge. Stdout is discarded so existing merge tests that snapshot output stay stable. The full merge suite passed, including the queue-outcome case.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [1396, 1396],
+          "summary": "The GitHub path checks the reviewed head after the live head is verified.",
+          "rationale": "The check runs only after the live head read succeeds, so a path that never verified a head is not turned into a different refusal. The suite's queue-outcome test still names the observed open state.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [1448, 1448],
+          "summary": "The GitLab path checks the reviewed head before glab mr merge.",
+          "rationale": "GitLab already binds the live head with --sha. This adds the comparison to the head the review recorded. The GitLab mismatch test observed the refusal and no mr merge line.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": ".agents/skills/verification-review/SKILL.md",
+      "summary": "Keeps firstmate's staffing, briefing, launch, and recording steps, and no longer restates the review rules.",
+      "annotations": [
+        {
+          "newRange": [31, 32],
+          "summary": "The skill launches the blind reviewer only through fm-zt-review.sh.",
+          "rationale": "An instruction inside a full checkout does not keep other inputs out, so the launch itself is the door. The verifier stays an ordinary scout because proof has to drive the product, and that edit ban is still an instruction.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [43, 43],
+          "summary": "The skill records that a different head for the same URL is refused.",
+          "rationale": "record-report is what stores the final tested head, and the merge script is what enforces it. PASS is not treated as permission to merge.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": "tests/fm-zt-review.test.sh",
+      "summary": "Proves staffing, the brief, the blind launch, and the recorded head through the script's own commands.",
+      "annotations": [
+        {
+          "newRange": [372, 398],
+          "summary": "The launch test runs real bwrap and checks the directory listing.",
+          "rationale": "The hide has to be enforced by the launch, so the test runs bwrap and reads the command's own listing. The test skips only when bwrap itself is absent. The refusal without bwrap is a separate case and always runs.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": "tests/fm-pr-merge.test.sh",
+      "summary": "Proves the merge refuses a stale reviewed head and still merges when the head matches.",
+      "annotations": [
+        {
+          "newRange": [3837, 3867],
+          "summary": "record_verified_head stores a report through the production record-report command.",
+          "rationale": "The merge test has to use the real record, so it asks the script for the identity line and then calls record-report. It does not write the record file by hand.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    }
+  ]
+}
