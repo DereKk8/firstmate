@@ -3832,6 +3832,122 @@ test_allow_missing_follows_the_allow_red_rules() {
   pass "fm-pr-merge --allow-missing is single use, attended-only, and GitHub-only like --allow-red"
 }
 
+# A review record is the public output of fm-zt-review.sh record-report.
+# The merge must refuse when that record names this URL and a different head.
+record_verified_head() {
+  local case_dir=$1 task_id=$2 pr_url=$3 head=$4
+  local ident report
+  ident=$("$ROOT/bin/fm-zt-review.sh" identity)
+  report=$case_dir/review-report.md
+  {
+    printf '%s\n' "$ident"
+    printf '%s\n' '## Pinned head'
+    printf '%s\n' 'Repo / PR: example'
+    printf 'Final tested head: %s\n' "$head"
+    printf '%s\n' '## Setup'
+    printf '%s\n' 'staffing recorded for the merge check'
+    printf '%s\n' '## Blind-review suspicions'
+    printf '%s\n' 'sealed review is elsewhere'
+    printf '%s\n' '## Product-surface run'
+    printf '%s\n' 'the product was driven'
+    printf '%s\n' '## Attack phase'
+    printf '%s\n' 'one hostile input was tried'
+    printf '%s\n' '## Findings'
+    printf '%s\n' 'no reproduced defect'
+    printf '%s\n' '## Verdict'
+    printf '%s\n' 'PASS'
+    printf '%s\n' '## Decisions for the engineering lead'
+    printf '%s\n' 'none'
+    printf '%s\n' '## Evidence location'
+    printf '%s\n' "$case_dir/evidence"
+  } >"$report"
+  FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
+    "$ROOT/bin/fm-zt-review.sh" record-report "$task_id" "$report" "$pr_url" \
+    >"$case_dir/record.out"
+}
+
+test_review_head_mismatch_refuses_before_the_github_merge() {
+  local case_dir rc live reviewed
+  live=1111111111111111111111111111111111111111
+  reviewed=2222222222222222222222222222222222222222
+  case_dir=$(make_case review-head-mismatch)
+  add_gh_mocks "$case_dir" "$live"
+  : > "$case_dir/gh-axi.log"
+  record_verified_head "$case_dir" task-x1 https://github.com/example/repo/pull/91 "$reviewed"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/91 \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "review-head-mismatch: a different reviewed head must refuse"
+  assert_grep 'not the reviewed head' "$case_dir/stderr" \
+    "review-head-mismatch: the refusal did not name the reviewed head"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "review-head-mismatch: gh pr merge ran for a stale review"
+  pass "fm-pr-merge refuses a GitHub merge when the live head is not the reviewed head"
+}
+
+test_review_head_match_still_merges() {
+  local case_dir rc live
+  live=3333333333333333333333333333333333333333
+  case_dir=$(make_case review-head-match)
+  add_gh_mocks "$case_dir" "$live"
+  : > "$case_dir/gh-axi.log"
+  record_verified_head "$case_dir" task-x1 https://github.com/example/repo/pull/92 "$live"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/92 \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "review-head-match: the reviewed head must still merge"
+  assert_logged_gh_merge "$case_dir" 92 example/repo --squash
+  pass "fm-pr-merge merges when the live head is the reviewed head"
+}
+
+test_review_for_another_url_does_not_block_the_merge() {
+  local case_dir rc live other
+  live=4444444444444444444444444444444444444444
+  other=5555555555555555555555555555555555555555
+  case_dir=$(make_case review-other-url)
+  add_gh_mocks "$case_dir" "$live"
+  : > "$case_dir/gh-axi.log"
+  record_verified_head "$case_dir" task-x1 https://github.com/example/repo/pull/93 "$other"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/94 \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "review-other-url: a record for a different URL must not block"
+  assert_logged_gh_merge "$case_dir" 94 example/repo --squash
+  pass "fm-pr-merge ignores a review record for a different pull request"
+}
+
+test_gitlab_review_head_mismatch_refuses_before_the_merge() {
+  local case_dir rc reviewed
+  reviewed=6666666666666666666666666666666666666666
+  case_dir=$(make_gitlab_case gitlab-review-head-mismatch)
+  record_verified_head "$case_dir" task-x1 "$MR_URL" "$reviewed"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$MR_URL" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "gitlab-review-head-mismatch: a different reviewed head must refuse"
+  assert_grep 'not the reviewed head' "$case_dir/stderr" \
+    "gitlab-review-head-mismatch: the refusal did not name the reviewed head"
+  assert_no_grep 'mr merge' "$case_dir/glab.log" \
+    "gitlab-review-head-mismatch: glab mr merge ran for a stale review"
+  pass "fm-pr-merge refuses a GitLab merge when the live head is not the reviewed head"
+}
+
 test_gitlab_head_override_args_refuse_before_recording
 test_secondmate_merge_reports_upward_once
 test_secondmate_merge_reports_on_the_local_route
@@ -3886,3 +4002,7 @@ test_allow_missing_follows_the_allow_red_rules
 test_required_producer_identity
 test_app_bound_required_status_context_matches_by_name
 test_required_partial_reads_report_all_failures
+test_review_head_mismatch_refuses_before_the_github_merge
+test_review_head_match_still_merges
+test_review_for_another_url_does_not_block_the_merge
+test_gitlab_review_head_mismatch_refuses_before_the_merge
