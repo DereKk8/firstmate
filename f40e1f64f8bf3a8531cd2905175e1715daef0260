@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "summary": "Replaces firstmate's own review rules with a pointer to the shared zero-trust review 2.2.0, a blind reviewer launch, and a merge check bound to the reviewed head.",
+  "files": [
+    {
+      "path": "bin/fm-zt-review.sh",
+      "summary": "Owns the firstmate mechanics: pin, staffing count, brief, blind launch, report shape, and the review record.",
+      "annotations": [
+        {
+          "newRange": [141, 175],
+          "summary": "measure_diff and print_staff count lines with git --numstat on the pinned commits and print agents and slices from the shared table.",
+          "rationale": "The earlier custom diff parser skipped code lines that start like diff headers, so a diff could get too few agents. git already counts lines, so the parser is gone. Nothing enforces the printed staffing, because the shared rule makes staffing a coordinator role assignment. Verified by tests/fm-zt-review.test.sh test_diff_count_keeps_marker_like_code_lines, which counts 6 where the previous head counted 4.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [213, 260],
+          "summary": "write_brief puts git's diff of the pinned merge base and head into the brief, so the diff text and the pinned head cannot disagree.",
+          "rationale": "A coordinator-supplied diff file could differ from the head named in the brief. The test compares the marked diff body with git diff of the same commits.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [294, 406],
+          "summary": "launch_blind mounts the system runtime, the resolved command directory, named credential files, and the prepared directory, and never the host root.",
+          "rationale": "Binding the host root exposed /opt, /run, and other readable paths, and binding whole auth directories exposed session files and reports. A harness installed under HOME could not start at all, because /home is hidden, so the command directory is now mounted read-only unless it is HOME, the root, or inside a git checkout. Verified with a marker under /run/user, and with real claude, codex, and grok runs: claude -p listed only brief.md and skill.md. Network access is still open.",
+          "author": "fm/fm-zt-shared-pointer"
+        },
+        {
+          "newRange": [605, 648],
+          "summary": "record-report stores the verdict keyed by the pull request URL, and check-merge refuses unless that record is PASS at the live head.",
+          "rationale": "A record keyed by task id was invisible to the ship task's merge, and a dropped verdict let a PRODUCT_FAIL review merge. record-report also refuses a report whose Repo / PR line names another URL. Verified by test_record_and_check_merge and by running the same steps against the first PR head, which merged all three cases.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": "bin/fm-pr-merge.sh",
+      "summary": "Calls the review record check before either forge merge.",
+      "annotations": [
+        {
+          "newRange": [1334, 1344],
+          "summary": "refuse_stale_review_head runs fm-zt-review.sh check-merge, and a missing helper refuses the merge.",
+          "rationale": "fm-pr-merge.sh is the only merge path, so the comparison must sit here. A pull request with no review record merges as before. Verified by tests/fm-pr-merge.test.sh, 113 passing cases.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    },
+    {
+      "path": ".agents/skills/verification-review/SKILL.md",
+      "summary": "Becomes a pointer to the shared skill plus firstmate's staffing, launch, and record mechanics.",
+      "annotations": [
+        {
+          "newRange": [12, 46],
+          "summary": "The skill states that firstmate, as coordinator, assigns both roles and the slices, and that no script enforces staffing.",
+          "rationale": "The fix-round audit found a launch-time staffing gate enforced labels, not seats, so it was removed and the role handoff is stated here instead.",
+          "author": "fm/fm-zt-shared-pointer"
+        }
+      ]
+    }
+  ]
+}
