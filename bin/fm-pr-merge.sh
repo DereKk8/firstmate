@@ -96,10 +96,10 @@
 # recorded value stale. Reading that state needs glab and jq, and either one
 # absent stops the merge before any state is recorded.
 #
-# When bin/fm-zt-review.sh has recorded a review for this same URL, the live
-# head must equal the head that report verified. refuse_stale_review_head calls
-# that helper before either forge merge. A missing helper refuses the merge.
-# A task with no review record for this URL merges as before.
+# When bin/fm-zt-review.sh has recorded a review for this same URL, that
+# record must be a PASS verdict for the live head. refuse_stale_review_head
+# calls that helper before either forge merge. A missing helper refuses
+# the merge. A pull request with no review record merges as before.
 #
 # Before either forge merge, the task's existing per-task control lock
 # serializes the captain-hold check through the forge command. A still-held or

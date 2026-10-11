@@ -76,12 +76,12 @@ marker_body() {
 }
 
 write_report() {
-  local dest=$1 head=$2 verdict=$3 ident
+  local dest=$1 head=$2 verdict=$3 url=${4:-$PR_URL} ident
   ident=$(with_pin "$ZT" identity)
   {
     printf '%s\n' "$ident"
     printf '%s\n' '## Pinned head'
-    printf '%s\n' 'Repo / PR: example'
+    printf '%s\n' "Repo / PR: $url"
     printf 'Final tested head: %s\n' "$head"
     printf '%s\n' '## Setup'
     printf '%s\n' 'one agent'
@@ -185,6 +185,9 @@ test_staffing_follows_the_diff_size() {
   printf '%s\n' '+line' >"$diff"
   text=$("$ZT" staff "$diff")
   assert_equals unknown "$(staff_field "$text" size)" "a bare plus line was treated as a unified diff"
+  printf '%s\n' 'diff --git a/f b/f' >"$diff"
+  text=$("$ZT" staff "$diff")
+  assert_equals unknown "$(staff_field "$text" size)" "a diff header without hunks was treated as zero lines"
   : >"$diff"
   text=$("$ZT" staff "$diff")
   assert_equals 0 "$(staff_field "$text" changed_lines)" "an empty diff was not zero lines"
@@ -262,7 +265,7 @@ test_prepare_asserts_and_cleans_up() {
   write_unified 1 "$diff"
   printf 'task source\n' >"$intent"
   dest=$FIX/blind
-  with_pin "$ZT" prepare --out "$dest" \
+  with_pin "$ZT" prepare --staff one --out "$dest" \
     --run-id run-1 \
     --repo example/repo \
     --pr "$PR_URL" \
@@ -285,7 +288,7 @@ test_prepare_asserts_and_cleans_up() {
   rm -f "$dest/extra"
 
   dest=$FIX/partial
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" prepare --out "$dest" \
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" prepare --staff one --out "$dest" \
     --run-id run-1 \
     --repo example/repo \
     --pr "$PR_URL" \
@@ -301,7 +304,7 @@ test_prepare_asserts_and_cleans_up() {
   assert_absent "$dest" "a failed prepare left a blind directory behind"
 
   dest=$ROOT/zt-prepare-refused
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" prepare --out "$dest" \
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" prepare --staff one --out "$dest" \
     --run-id run-1 \
     --repo example/repo \
     --pr "$PR_URL" \
@@ -327,7 +330,7 @@ test_launch_refuses_a_bad_auth_path_and_a_missing_bwrap() {
   write_unified 1 "$diff"
   printf 'task source\n' >"$intent"
   rm -rf "$dest"
-  with_pin "$ZT" prepare --out "$dest" \
+  with_pin "$ZT" prepare --staff one --out "$dest" \
     --run-id run-1 \
     --repo example/repo \
     --pr "$PR_URL" \
@@ -345,13 +348,13 @@ test_launch_refuses_a_bad_auth_path_and_a_missing_bwrap() {
   sentinel=$FIX/auth-ran
   rm -f "$sentinel"
   HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --auth "$home/gh-box" -- \
+    with_pin "$ZT" launch "$dest" --staff one --diff "$diff" --auth "$home/gh-box" -- \
       /bin/sh -c "echo ran > '$sentinel'"
   rc=$RUN_RC
   expect_code 1 "$rc" "an auth path containing gh must be refused"
   assert_absent "$sentinel" "the command ran after an auth refusal"
   HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --auth "$home/repo" -- \
+    with_pin "$ZT" launch "$dest" --staff one --diff "$diff" --auth "$home/repo" -- \
       /bin/sh -c "echo ran > '$sentinel'"
   rc=$RUN_RC
   expect_code 1 "$rc" "an auth path inside a git checkout must be refused"
@@ -360,7 +363,7 @@ test_launch_refuses_a_bad_auth_path_and_a_missing_bwrap() {
 
   hidden=$(fm_test_base_path_sans "$PATH" bwrap)
   PATH="$hidden" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" -- \
+    with_pin "$ZT" launch "$dest" --staff one --diff "$diff" -- \
       /bin/sh -c "echo ran > '$sentinel'"
   rc=$RUN_RC
   expect_code 1 "$rc" "launch must refuse when bwrap is absent"
@@ -370,17 +373,24 @@ test_launch_refuses_a_bad_auth_path_and_a_missing_bwrap() {
 }
 
 test_launch_hides_the_host_checkout() {
-  local dest out rc marker
+  local dest out rc marker outside_cmd='' outside_found=0 host_path
   if ! bwrap_works; then
     pass "this host cannot run bwrap, so the hide check was skipped"
     return 0
   fi
+  for host_path in /opt /srv /mnt; do
+    if [ -e "$host_path" ]; then
+      outside_cmd="${outside_cmd}test ! -e '$host_path' && "
+      outside_found=1
+    fi
+  done
+  [ "$outside_found" -eq 1 ] || fail "no host path outside the reviewer runtime was available to test"
   dest=$FIX/launch-blind
   marker=$FIX/host-only
   printf 'secret\n' >"$marker"
   run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" -- /bin/sh -c \
-      "pwd; test -f brief.md && echo brief; test ! -e '$marker' && echo marker_hidden; test ! -d '$ROOT' && echo repo_hidden; git status >/dev/null 2>&1; echo git_status:\$?"
+    with_pin "$ZT" launch "$dest" --staff one --diff "$FIX/launch.diff" -- /bin/sh -c \
+      "pwd; test -f brief.md && echo brief; test ! -e '$marker' && echo marker_hidden; test ! -d '$ROOT' && echo repo_hidden; $outside_cmd echo outside_hidden; git status >/dev/null 2>&1; echo git_status:\$?"
   rc=$RUN_RC
   expect_code 0 "$rc" "launch failed on a host that can run bwrap"
   out=$(cat "$FIX/stdout")
@@ -388,56 +398,213 @@ test_launch_hides_the_host_checkout() {
   assert_contains "$out" 'brief' "the brief was not visible in the launch directory"
   assert_contains "$out" 'marker_hidden' "a host file outside the launch directory was visible"
   assert_contains "$out" 'repo_hidden' "the repository checkout was visible"
+  assert_contains "$out" 'outside_hidden' "a host path outside the reviewer runtime was visible"
   assert_contains "$out" 'git_status:128' "git status succeeded inside the launch"
   run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" -- /bin/sh -c 'exit 3'
+    with_pin "$ZT" launch "$dest" --staff one --diff "$FIX/launch.diff" -- /bin/sh -c 'exit 3'
   rc=$RUN_RC
   expect_code 3 "$rc" "launch did not return the command status"
   pass "launch shows only the blind directory and returns the command status"
 }
 
+recorded_path() {
+  local line
+  line=$(grep -m1 '^recorded=' "$1")
+  printf '%s\n' "${line#recorded=}"
+}
+
 test_record_and_check_merge() {
-  local report rc text
+  local report rc text path other_url before after
   report=$FIX/report.md
+  other_url=https://github.com/example/repo/pull/10
   write_report "$report" "$HEAD_A" PASS
   with_pin "$ZT" record-report task-1 "$report" "$PR_URL" >"$FIX/record.out"
-  assert_present "$STATE/task-1.zt-verified" "record-report did not write the review record"
-  text=$(cat "$STATE/task-1.zt-verified")
+  path=$(recorded_path "$FIX/record.out")
+  assert_present "$path" "record-report did not write the review record"
+  case "$path" in
+    "$STATE"/task-1.zt-verified) fail "the review record is still keyed by the task id" ;;
+  esac
+  text=$(cat "$path")
   assert_contains "$text" "pr=$PR_URL" "the record is missing the pull request URL"
   assert_contains "$text" "head=$HEAD_A" "the record is missing the tested head"
-  text=$(with_pin "$ZT" check-merge task-1 "$PR_URL" "$HEAD_A")
-  assert_contains "$text" "reviewed-head=$HEAD_A" "a matching head was not accepted"
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge task-1 "$PR_URL" "$HEAD_B"
+  assert_contains "$text" "verdict=PASS" "the record dropped the verdict"
+  text=$(with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_A")
+  assert_contains "$text" "reviewed-head=$HEAD_A" "a PASS recorded by another task was not accepted"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_B"
   rc=$RUN_RC
   expect_code 1 "$rc" "a different live head must be refused"
   assert_grep 'not the reviewed head' "$FIX/stderr" "the refusal did not name the reviewed head"
-  text=$(with_pin "$ZT" check-merge task-1 https://github.com/example/repo/pull/10 "$HEAD_B")
+  text=$(with_pin "$ZT" check-merge task-1 "$other_url" "$HEAD_B")
   assert_equals no-review "$text" "a record for another URL blocked the merge"
-  rm -f "$STATE/task-1.zt-verified"
+  rm -f "$path"
   text=$(with_pin "$ZT" check-merge task-1 "$PR_URL" "$HEAD_A")
   assert_equals no-review "$text" "a missing record blocked the merge"
 
-  printf 'pr=%s\nhead=%s\nextra=1\n' "$PR_URL" "$HEAD_A" >"$STATE/task-1.zt-verified"
+  write_report "$report" "$HEAD_A" PASS
+  with_pin "$ZT" record-report task-1 "$report" "$PR_URL" >"$FIX/record.out"
+  path=$(recorded_path "$FIX/record.out")
+  printf 'pr=%s\nhead=%s\nverdict=PASS\nextra=1\n' "$PR_URL" "$HEAD_A" >"$path"
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge task-1 "$PR_URL" "$HEAD_A"
   rc=$RUN_RC
   expect_code 1 "$rc" "a malformed record must refuse the merge"
-  rm -f "$STATE/task-2.zt-verified"
+  rm -f "$path"
   write_report "$report" "$HEAD_A" NOPE
+  before=$(find "$STATE" -name '*.zt-verified' | awk 'END { print NR }')
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "$PR_URL"
   rc=$RUN_RC
   expect_code 1 "$rc" "a report with a foreign verdict word must be refused"
-  assert_absent "$STATE/task-2.zt-verified" "a refused report still wrote a review record"
+  after=$(find "$STATE" -name '*.zt-verified' | awk 'END { print NR }')
+  assert_equals "$before" "$after" "a refused report still wrote a review record"
   write_report "$report" "$HEAD_A" $'PASS\nALSO'
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "$PR_URL"
   rc=$RUN_RC
   expect_code 1 "$rc" "two verdict words must be refused"
-  pass "record-report stores the tested head and check-merge binds the merge to it"
+
+  write_report "$report" "$HEAD_A" PASS "https://github.com/example/repo/pull/1"
+  before=$(find "$STATE" -name '*.zt-verified' | awk 'END { print NR }')
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "https://github.com/example/repo/pull/2"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "a report for a different pull request must be refused"
+  assert_grep 'Repo / PR' "$FIX/stderr" "the refusal did not name the report pull request"
+  after=$(find "$STATE" -name '*.zt-verified' | awk 'END { print NR }')
+  assert_equals "$before" "$after" "a mismatched report still wrote a review record"
+
+  write_report "$report" "$HEAD_A" PRODUCT_FAIL
+  with_pin "$ZT" record-report scout-task-99 "$report" "$PR_URL" >"$FIX/record.out"
+  path=$(recorded_path "$FIX/record.out")
+  assert_contains "$(cat "$path")" "verdict=PRODUCT_FAIL" "a failed verdict was not stored"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_A"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "a PRODUCT_FAIL review must refuse the matching head"
+  assert_grep 'not PASS' "$FIX/stderr" "the refusal did not name the verdict"
+  write_report "$report" "$HEAD_A" INCOMPLETE
+  with_pin "$ZT" record-report scout-task-99 "$report" "$PR_URL" >/dev/null
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_A"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "an INCOMPLETE review must refuse the matching head"
+
+  write_report "$report" "$HEAD_A" PASS
+  with_pin "$ZT" record-report scout-task-99 "$report" "$PR_URL" >/dev/null
+  write_report "$report" "$HEAD_B" PASS "$other_url"
+  with_pin "$ZT" record-report scout-task-99 "$report" "$other_url" >/dev/null
+  text=$(with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_A")
+  assert_contains "$text" "reviewed-head=$HEAD_A" "a later record for another URL removed the first review"
+  pass "record-report stores the verdict by pull request URL and check-merge requires PASS"
+}
+
+test_diff_count_keeps_marker_like_code_lines() {
+  local repo diff text numstat added removed total
+  repo=$FIX/count-repo
+  rm -rf "$repo"
+  git init -q "$repo"
+  printf '%s\n' 'alpha' '--counter;' 'gone' >"$repo/f"
+  git -C "$repo" add f
+  git -C "$repo" -c user.email=fmtest@example.invalid -c user.name=fmtest commit -qm base
+  printf '%s\n' 'alpha' '++counter;' 'kept' >"$repo/f"
+  git -C "$repo" diff >"$FIX/count.diff"
+  diff=$FIX/count.diff
+  numstat=$(git -C "$repo" diff --numstat)
+  added=$(printf '%s\n' "$numstat" | awk -F '\t' '{ print $1 }')
+  removed=$(printf '%s\n' "$numstat" | awk -F '\t' '{ print $2 }')
+  total=$((added + removed))
+  text=$("$ZT" staff "$diff")
+  assert_equals "$total" "$(staff_field "$text" changed_lines)" \
+    "code lines that look like diff headers were skipped"
+  assert_equals known "$(staff_field "$text" size)" "a real git diff was not a known size"
+  pass "diff measurement counts code lines and skips only file headers"
+}
+
+test_prepare_and_launch_enforce_staffing() {
+  local diff intent dest rc
+  diff=$FIX/staff-enforce.diff
+  intent=$FIX/staff-intent
+  write_unified 801 "$diff"
+  printf 'task source\n' >"$intent"
+  dest=$FIX/staff-weak
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" prepare --staff one --out "$dest" \
+    --run-id run-1 \
+    --repo example/repo \
+    --pr "$PR_URL" \
+    --head "$HEAD_A" \
+    --base main \
+    --merge-base "$MERGE" \
+    --diff "$diff" \
+    --intent-file "$intent" \
+    --surface 'cli example' \
+    --evidence "$FIX/evidence"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "prepare must refuse one agent for 801 lines"
+  assert_grep 'below the diff rule' "$FIX/stderr" "prepare did not name the diff rule"
+  assert_absent "$dest" "prepare created a directory for a weak staff label"
+  dest=$FIX/staff-sliced
+  with_pin "$ZT" prepare --staff sliced --out "$dest" \
+    --run-id run-1 \
+    --repo example/repo \
+    --pr "$PR_URL" \
+    --head "$HEAD_A" \
+    --base main \
+    --merge-base "$MERGE" \
+    --diff "$diff" \
+    --intent-file "$intent" \
+    --surface 'cli example' \
+    --evidence "$FIX/evidence" >/dev/null
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" launch "$dest" --staff one --diff "$diff" -- \
+    /bin/sh -c "echo ran"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "launch must refuse one agent for 801 lines"
+  assert_grep 'below the diff rule' "$FIX/stderr" "launch did not name the diff rule"
+  assert_not_contains "$(cat "$FIX/stdout")" ran "the command ran after a weak launch staff label"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" launch "$dest" --diff "$diff" -- \
+    /bin/sh -c "echo ran"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "launch must refuse a missing staff label"
+  assert_not_contains "$(cat "$FIX/stdout")" ran "the command ran without a staff label"
+  pass "prepare and launch refuse a weaker staff label than the diff requires"
+}
+
+test_launch_admits_only_credential_files() {
+  local dest home auth rc out
+  if ! bwrap_works; then
+    pass "this host cannot run bwrap, so the credential-file check was skipped"
+    return 0
+  fi
+  dest=$FIX/launch-blind
+  home=$FIX/cred-home
+  auth=$home/modelauth
+  rm -rf "$home"
+  mkdir -p "$auth/nested-repo"
+  printf 'SECRET_PRIOR_REVIEW_FINDINGS\n' >"$auth/prior-report.md"
+  printf 'secret code\n' >"$auth/nested-repo/code.py"
+  git init -q "$auth/nested-repo"
+  printf 'credential-marker\n' >"$auth/auth.json"
+  ln -s prior-report.md "$auth/auth-link.json"
+  HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
+    with_pin "$ZT" launch "$dest" --staff one --diff "$FIX/launch.diff" --auth "$auth" -- \
+      /bin/sh -c "test -f /tmp/zt-home/modelauth/auth.json && echo cred_visible; test ! -e /tmp/zt-home/modelauth/prior-report.md && echo prior_hidden; test ! -e /tmp/zt-home/modelauth/nested-repo && echo repo_hidden"
+  rc=$RUN_RC
+  expect_code 0 "$rc" "launch failed when the auth directory held a credential file"
+  out=$(cat "$FIX/stdout")
+  assert_contains "$out" 'cred_visible' "the credential file was not visible"
+  assert_contains "$out" 'prior_hidden' "a prior report in the auth directory was visible"
+  assert_contains "$out" 'repo_hidden' "a nested repository in the auth directory was visible"
+  rm -f "$auth/auth.json"
+  HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
+    with_pin "$ZT" launch "$dest" --staff one --diff "$FIX/launch.diff" --auth "$auth" -- \
+      /bin/sh -c "echo ran"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "an auth directory with no credential file must be refused"
+  assert_grep 'credential file' "$FIX/stderr" "the refusal did not name the credential file"
+  assert_not_contains "$(cat "$FIX/stdout")" ran "the command ran when no credential file was admitted"
+  pass "launch admits only reviewer credential files from an auth directory"
 }
 
 test_identity_shape_and_fixture_check
 test_staffing_follows_the_diff_size
+test_diff_count_keeps_marker_like_code_lines
 test_brief_fields_and_marker_lines
 test_prepare_asserts_and_cleans_up
 test_launch_refuses_a_bad_auth_path_and_a_missing_bwrap
 test_launch_hides_the_host_checkout
+test_launch_admits_only_credential_files
+test_prepare_and_launch_enforce_staffing
 test_record_and_check_merge

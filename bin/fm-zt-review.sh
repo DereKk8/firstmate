@@ -4,19 +4,25 @@
 # shared/zero-trust-review/SKILL.md at the pinned identity below.
 # This script does not restate those rules. It staffs from the diff size,
 # writes the shared brief, launches the blind reviewer in a directory that
-# is not a repository, checks the report shape, and refuses a merge whose
-# live head is not the head that report verified.
+# is not a repository, checks the report shape, and refuses a merge unless
+# the review recorded for that pull request URL is a PASS of the live head.
 #
-# The blind launch requires bwrap. It mounts the host root read-only, then
-# covers /home, /tmp, and /var/tmp so a project checkout is not in the
-# process's filesystem, and bind-mounts only the launch directory. Optional
-# --auth directories are read-only binds under the sandbox home. An auth
-# path inside a git checkout, or whose path contains gh, git, glab,
-# projects, or treehouse, is refused. Without bwrap the launch refuses
-# and does not start the command.
+# The blind launch requires bwrap. It mounts the operating-system runtime
+# the command needs (/usr, and /nix/store only when the command itself is
+# there), a private home, and temporary directories. It does not mount the
+# host root. Optional --auth directories contribute only regular files
+# named auth.json, .credentials.json, or gemini-credentials.json. Other
+# files in those directories are not mounted. An auth path inside a git
+# checkout, or whose path contains gh, git, glab, projects, or treehouse,
+# is refused. Without bwrap the launch refuses and does not start the
+# command. prepare and launch both refuse a staff label weaker than the
+# diff requires.
 #
-# A missing review record does not change merge. A record whose pull
-# request URL matches and whose head does not is a refusal.
+# A missing review record for the pull request URL does not change merge.
+# The record is keyed by that URL, so a review stored from another task
+# is the one the merge sees. record-report refuses a report whose
+# "Repo / PR" line is not that same URL. A record whose verdict is not
+# PASS, or whose head is not the live head, is a refusal.
 #
 # Usage:
 #   fm-zt-review.sh identity
@@ -27,9 +33,10 @@
 #   fm-zt-review.sh brief --run-id ID --repo REPO --pr URL --head SHA \
 #       --base BRANCH --merge-base SHA --diff FILE --intent-file FILE \
 #       --surface TEXT --evidence TEXT
-#   fm-zt-review.sh prepare --out DIR [same brief flags]
+#   fm-zt-review.sh prepare --staff one|two|sliced --out DIR [same brief flags]
 #   fm-zt-review.sh assert <dir>
-#   fm-zt-review.sh launch <dir> [--auth DIR]... -- <command> [args]
+#   fm-zt-review.sh launch <dir> --staff one|two|sliced --diff FILE \
+#       [--auth DIR]... -- <command> [args]
 #   fm-zt-review.sh record-report <task-id> <report-file> <pr-url>
 #   fm-zt-review.sh check-merge <task-id> <pr-url> <live-head>
 #
@@ -154,13 +161,20 @@ measure_diff() {
       ;;
     unified)
       awk '
-        BEGIN { add = 0; del = 0; unknown = 0 }
+        BEGIN { add = 0; del = 0; unknown = 0; hunks = 0; headers = 0 }
+        /^diff --git / { headers++; next }
+        /^@@/ { hunks++; next }
         /^Binary files / || /^GIT binary patch/ { unknown = 1 }
-        /^\+\+\+/ || /^---/ { next }
+        /^\+\+\+ (b\/|"b\/|\/dev\/null)/ { next }
+        /^--- (a\/|"a\/|\/dev\/null)/ { next }
         /^\+/ { add++ }
         /^-/ { del++ }
         END {
-          if (unknown) { print "size=unknown"; print "changed_lines="; exit }
+          if (unknown || (headers > 0 && hunks == 0)) {
+            print "size=unknown"
+            print "changed_lines="
+            exit
+          }
           print "size=known"
           print "changed_lines=" (add + del)
         }
@@ -218,6 +232,23 @@ print_staff() {
   lines=${measure#*$'\n'changed_lines=}
   staffing=$(required_staffing "$size" "${lines:-0}")
   printf 'changed_lines=%s\nsize=%s\nstaffing=%s\n' "$lines" "$size" "$staffing"
+}
+
+require_staffing() {
+  local file=$1 requested=$2 measure lines size need need_rank got_rank
+  staff_rank "$requested" >/dev/null || die "staffing must be one, two, or sliced"
+  measure=$(print_staff "$file")
+  lines=$(printf '%s\n' "$measure" | awk -F= '$1 == "changed_lines" { print $2 }')
+  size=$(printf '%s\n' "$measure" | awk -F= '$1 == "size" { print $2 }')
+  need=$(printf '%s\n' "$measure" | awk -F= '$1 == "staffing" { print $2 }')
+  need_rank=$(staff_rank "$need")
+  got_rank=$(staff_rank "$requested")
+  if [ "$got_rank" -lt "$need_rank" ]; then
+    if [ "$size" = known ]; then
+      die "staffing $requested is below the diff rule ($lines changed lines require $need)"
+    fi
+    die "staffing $requested is below the diff rule (unknown size requires $need)"
+  fi
 }
 
 # The closing marker has to start a line. Add a newline only when the
@@ -352,18 +383,45 @@ auth_ok() {
   printf '%s\n' "$rel"
 }
 
+# Reviewer harness credential files named by the harness references:
+# auth.json (codex, grok, muse, pi), .credentials.json (claude), and
+# gemini-credentials.json (gemini). Session history and other files are
+# not credential files.
+credential_basename_ok() {
+  case "$1" in
+    auth.json|.credentials.json|gemini-credentials.json) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 launch_blind() {
   local dir=$1
   shift
-  local -a auth_rels=() auth_paths=() bwrap_cmd=()
-  local rel
+  local -a auth_rels=() auth_roots=() cred_srcs=() cred_dests=() bwrap_cmd=()
+  local -A made_dirs=()
+  local rel root staff='' diff='' file_rel base found dest parent
+  local cmd_real os_path target i j
+  local -a chain=()
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --auth)
         [ "$#" -ge 2 ] || die "launch --auth needs a directory"
         rel=$(auth_ok "$2")
+        root=$(CDPATH='' cd -- "$2" && pwd -P)
         auth_rels+=("$rel")
-        auth_paths+=("$(CDPATH='' cd -- "$2" && pwd -P)")
+        auth_roots+=("$root")
+        shift 2
+        ;;
+      --staff)
+        [ "$#" -ge 2 ] || die "launch --staff needs one|two|sliced"
+        [ -z "$staff" ] || die "launch --staff was given twice"
+        staff=$2
+        shift 2
+        ;;
+      --diff)
+        [ "$#" -ge 2 ] || die "launch --diff needs a file"
+        [ -z "$diff" ] || die "launch --diff was given twice"
+        diff=$2
         shift 2
         ;;
       --)
@@ -371,18 +429,63 @@ launch_blind() {
         break
         ;;
       *)
-        die "launch expected --auth or -- before the command"
+        die "launch expected --auth, --staff, --diff, or -- before the command"
         ;;
     esac
   done
+  [ -n "$staff" ] || die "launch needs --staff one|two|sliced"
+  [ -n "$diff" ] || die "launch needs --diff"
   [ "$#" -ge 1 ] || die "launch needs a command after --"
+  require_staffing "$diff" "$staff"
+  i=0
+  while [ "$i" -lt "${#auth_roots[@]}" ]; do
+    found=0
+    while IFS= read -r file_rel; do
+      [ -n "$file_rel" ] || continue
+      base=${file_rel##*/}
+      credential_basename_ok "$base" || continue
+      [ -f "${auth_roots[$i]}/$file_rel" ] && [ ! -L "${auth_roots[$i]}/$file_rel" ] || continue
+      cred_srcs+=("${auth_roots[$i]}/$file_rel")
+      cred_dests+=("/tmp/zt-home/${auth_rels[$i]}/$file_rel")
+      found=1
+    done < <(find "${auth_roots[$i]}" -type f -printf '%P\n')
+    [ "$found" -eq 1 ] || die "auth directory has no reviewer credential file: ${auth_roots[$i]}"
+    i=$((i + 1))
+  done
   assert_blind "$dir"
   command -v bwrap >/dev/null 2>&1 || die "bwrap is required to launch a blind reviewer, and it is not on PATH"
-  local resolved i
+  local resolved
   resolved=$(CDPATH='' cd -- "$dir" && pwd -P)
+  [ -d /usr ] && [ ! -L /usr ] || die "launch needs a real /usr directory for the reviewer runtime"
+  cmd_real=$1
+  if [ "${cmd_real#/}" = "$cmd_real" ]; then
+    cmd_real=$(command -v -- "$1" 2>/dev/null || true)
+    [ -n "$cmd_real" ] || die "launch command was not found: $1"
+  fi
+  cmd_real=$(readlink -f -- "$cmd_real")
   bwrap_cmd=(
     bwrap
-    --ro-bind / /
+    --ro-bind /usr /usr
+  )
+  for os_path in /bin /lib /lib64; do
+    if [ -d "$os_path" ] && [ ! -L "$os_path" ]; then
+      bwrap_cmd+=(--ro-bind "$os_path" "$os_path")
+    elif [ -L "$os_path" ]; then
+      target=$(readlink -- "$os_path")
+      bwrap_cmd+=(--symlink "$target" "$os_path")
+    fi
+  done
+  if [ -d /etc ] && [ ! -L /etc ]; then
+    bwrap_cmd+=(--ro-bind /etc /etc)
+  fi
+  case "$cmd_real" in
+    /nix/store/*)
+      [ -d /nix/store ] && [ ! -L /nix/store ] || die "launch command is in /nix/store, and that directory is not real"
+      bwrap_cmd+=(--ro-bind /nix/store /nix/store)
+      bwrap_cmd+=(--setenv PATH "$(dirname -- "$cmd_real"):${PATH}")
+      ;;
+  esac
+  bwrap_cmd+=(
     --dev /dev
     --proc /proc
     --tmpfs /home
@@ -399,9 +502,25 @@ launch_blind() {
     --unsetenv GITLAB_TOKEN
     --unsetenv GL_TOKEN
   )
+  made_dirs[/tmp/zt-home]=1
   i=0
-  while [ "$i" -lt "${#auth_rels[@]}" ]; do
-    bwrap_cmd+=(--ro-bind "${auth_paths[$i]}" "/tmp/zt-home/${auth_rels[$i]}")
+  while [ "$i" -lt "${#cred_dests[@]}" ]; do
+    dest=${cred_dests[$i]}
+    chain=()
+    parent=$(dirname -- "$dest")
+    while [ "$parent" != /tmp/zt-home ] && [ "$parent" != / ]; do
+      chain+=("$parent")
+      parent=$(dirname -- "$parent")
+    done
+    j=${#chain[@]}
+    while [ "$j" -gt 0 ]; do
+      j=$((j - 1))
+      if [ -z "${made_dirs[${chain[$j]}]+x}" ]; then
+        bwrap_cmd+=(--dir "${chain[$j]}")
+        made_dirs[${chain[$j]}]=1
+      fi
+    done
+    bwrap_cmd+=(--ro-bind "${cred_srcs[$i]}" "$dest")
     i=$((i + 1))
   done
   bwrap_cmd+=("$@")
@@ -410,10 +529,10 @@ launch_blind() {
 
 parse_brief_opts() {
   RUN_ID='' REPO='' PR_URL='' HEAD_SHA='' BASE_BRANCH='' MERGE_BASE=''
-  DIFF_FILE='' INTENT_FILE='' SURFACE='' EVIDENCE='' OUT_DIR=''
+  DIFF_FILE='' INTENT_FILE='' SURFACE='' EVIDENCE='' OUT_DIR='' STAFF=''
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --run-id|--repo|--pr|--head|--base|--merge-base|--diff|--intent-file|--surface|--evidence|--out)
+      --run-id|--repo|--pr|--head|--base|--merge-base|--diff|--intent-file|--surface|--evidence|--out|--staff)
         [ "$#" -ge 2 ] || die "missing value for $1"
         case "$1" in
           --run-id) RUN_ID=$2 ;;
@@ -427,6 +546,7 @@ parse_brief_opts() {
           --surface) SURFACE=$2 ;;
           --evidence) EVIDENCE=$2 ;;
           --out) OUT_DIR=$2 ;;
+          --staff) STAFF=$2 ;;
         esac
         shift 2
         ;;
@@ -455,20 +575,28 @@ report_ok() {
     $0 == "## Verdict" { if (stage != 6 || seen == 0) { bad = "order"; exit } stage = 7; seen = 0; next }
     $0 == "## Decisions for the engineering lead" { if (stage != 7 || seen != 1) { bad = "verdict"; exit } stage = 8; seen = 0; next }
     $0 == "## Evidence location" { if (stage != 8 || seen == 0) { bad = "order"; exit } stage = 9; seen = 0; next }
+    $0 ~ /^Repo \/ PR: / {
+      if (seen_pr == 1) { bad = "pr"; exit }
+      seen_pr = 1
+      repo_pr = substr($0, 12)
+    }
     stage == 7 {
       if ($0 == "") next
+      if ($0 ~ /^Repo \/ PR: /) next
       if (seen == 1) { bad = "verdict"; exit }
       if ($0 != "PASS" && $0 != "PRODUCT_FAIL" && $0 != "INFRA_FAIL" && $0 != "FLAKY" && $0 != "BLOCKED" && $0 != "ENVIRONMENT_NOT_READY" && $0 != "INCOMPLETE") { bad = "verdict"; exit }
       seen = 1
       verdict = $0
       next
     }
-    stage > 0 && stage != 7 && $0 != "" { seen = 1 }
+    stage > 0 && stage != 7 && $0 != "" && $0 !~ /^Repo \/ PR: / { seen = 1 }
     END {
       if (bad != "") { print "bad " bad; exit }
+      if (seen_pr != 1) { print "bad pr"; exit }
       if (stage != 9 || seen == 0 || tested == "") { print "bad order"; exit }
       print tested
       print verdict
+      print repo_pr
     }
   ' "$report") || die "could not read report $report"
   case "$head" in
@@ -477,22 +605,27 @@ report_ok() {
   printf '%s\n' "$head"
 }
 
-record_path() {
-  local id=$1
-  fm_pr_task_id_valid "$id" || die "invalid task id"
-  printf '%s\n' "$STATE/$id.zt-verified"
+review_record_path() {
+  local url=$1 sum
+  sum=$(printf '%s' "$url" | sha256sum)
+  sum=${sum%% *}
+  [ "${#sum}" -eq 64 ] || die "could not name the review record"
+  case "$sum" in
+    *[!0-9a-f]*) die "could not name the review record" ;;
+  esac
+  printf '%s\n' "$STATE/zt-pr-$sum.zt-verified"
 }
 
 write_record() {
-  local path=$1 pr=$2 head=$3 tmp
+  local path=$1 pr=$2 head=$3 verdict=$4 tmp
   mkdir -p -- "$STATE"
   tmp=$path.tmp.$$
-  printf 'pr=%s\nhead=%s\n' "$pr" "$head" >"$tmp"
+  printf 'pr=%s\nhead=%s\nverdict=%s\n' "$pr" "$head" "$verdict" >"$tmp"
   mv -f -- "$tmp" "$path"
 }
 
 read_record() {
-  local path=$1 pr='' head='' line key value
+  local path=$1 pr='' head='' verdict='' line key value
   [ -f "$path" ] && [ ! -L "$path" ] || return 2
   while IFS= read -r line || [ -n "$line" ]; do
     key=${line%%=*}
@@ -506,13 +639,21 @@ read_record() {
         [ -z "$head" ] || return 1
         head=$value
         ;;
+      verdict)
+        [ -z "$verdict" ] || return 1
+        verdict=$value
+        ;;
       *)
         return 1
         ;;
     esac
   done <"$path"
   [ -n "$pr" ] && hex40 "$head" || return 1
-  printf '%s\n%s\n' "$pr" "$head"
+  case "$verdict" in
+    PASS|PRODUCT_FAIL|INFRA_FAIL|FLAKY|BLOCKED|ENVIRONMENT_NOT_READY|INCOMPLETE) ;;
+    *) return 1 ;;
+  esac
+  printf '%s\n%s\n%s\n' "$pr" "$head" "$verdict"
 }
 
 cmd=${1:-}
@@ -537,25 +678,13 @@ case "$cmd" in
     ;;
   staff-check)
     [ "$#" -eq 2 ] || die "staff-check needs a diff file and one|two|sliced"
-    requested=$2
-    staff_rank "$requested" >/dev/null || die "staffing must be one, two, or sliced"
-    measure=$(print_staff "$1")
-    lines=$(printf '%s\n' "$measure" | awk -F= '$1 == "changed_lines" { print $2 }')
-    size=$(printf '%s\n' "$measure" | awk -F= '$1 == "size" { print $2 }')
-    need=$(printf '%s\n' "$measure" | awk -F= '$1 == "staffing" { print $2 }')
-    need_rank=$(staff_rank "$need")
-    got_rank=$(staff_rank "$requested")
-    if [ "$got_rank" -lt "$need_rank" ]; then
-      if [ "$size" = known ]; then
-        die "staffing $requested is below the diff rule ($lines changed lines require $need)"
-      fi
-      die "staffing $requested is below the diff rule (unknown size requires $need)"
-    fi
-    printf '%s\n' "$measure"
+    require_staffing "$1" "$2"
+    print_staff "$1"
     ;;
   brief)
     parse_brief_opts "$@"
     [ -z "$OUT_DIR" ] || die "brief does not take --out"
+    [ -z "$STAFF" ] || die "brief does not take --staff"
     BRIEF_TMP=
     trap cleanup_brief EXIT
     BRIEF_TMP=$(mktemp)
@@ -569,6 +698,8 @@ case "$cmd" in
   prepare)
     parse_brief_opts "$@"
     [ -n "$OUT_DIR" ] || die "prepare needs --out"
+    [ -n "$STAFF" ] || die "prepare needs --staff one|two|sliced"
+    require_staffing "$DIFF_FILE" "$STAFF"
     [ ! -e "$OUT_DIR" ] || die "prepare refuses an existing path: $OUT_DIR"
     parent=$(dirname -- "$OUT_DIR")
     [ -d "$parent" ] || die "prepare parent is not a directory: $parent"
@@ -610,16 +741,19 @@ case "$cmd" in
     require_text_arg "pr-url" "$3"
     parsed=$(report_ok "$2")
     tested=$(printf '%s\n' "$parsed" | awk 'NR == 1 { print; exit }')
-    path=$(record_path "$1")
-    write_record "$path" "$3" "$tested"
-    printf 'recorded=%s\nhead=%s\n' "$path" "$tested"
+    verdict=$(printf '%s\n' "$parsed" | awk 'NR == 2 { print; exit }')
+    report_pr=$(printf '%s\n' "$parsed" | awk 'NR == 3 { print; exit }')
+    [ "$report_pr" = "$3" ] || die "report Repo / PR is $report_pr, not $3"
+    path=$(review_record_path "$3")
+    write_record "$path" "$3" "$tested" "$verdict"
+    printf 'recorded=%s\nhead=%s\nverdict=%s\n' "$path" "$tested" "$verdict"
     ;;
   check-merge)
     [ "$#" -eq 3 ] || die "check-merge needs a task id, a pull request URL, and a live head"
     fm_pr_task_id_valid "$1" || die "invalid task id"
     require_text_arg "pr-url" "$2"
     hex40 "$3" || die "live head is not 40 hex characters"
-    path=$(record_path "$1")
+    path=$(review_record_path "$2")
     if [ ! -e "$path" ]; then
       printf 'no-review\n'
       exit 0
@@ -629,9 +763,12 @@ case "$cmd" in
     fi
     recorded_pr=$(printf '%s\n' "$parsed" | awk 'NR == 1 { print; exit }')
     recorded_head=$(printf '%s\n' "$parsed" | awk 'NR == 2 { print; exit }')
+    recorded_verdict=$(printf '%s\n' "$parsed" | awk 'NR == 3 { print; exit }')
     if [ "$recorded_pr" != "$2" ]; then
-      printf 'no-review\n'
-      exit 0
+      die "review record $path does not match $2, so the merge is refused"
+    fi
+    if [ "$recorded_verdict" != PASS ]; then
+      die "refusing to merge $2 because the review verdict is $recorded_verdict, not PASS"
     fi
     if [ "$recorded_head" != "$3" ]; then
       die "refusing to merge $2 because the live head $3 is not the reviewed head $recorded_head"
