@@ -96,6 +96,11 @@
 # recorded value stale. Reading that state needs glab and jq, and either one
 # absent stops the merge before any state is recorded.
 #
+# When bin/fm-zt-review.sh has recorded a review for this same URL, that
+# record must be a PASS verdict for the live head. refuse_stale_review_head
+# calls that helper before either forge merge. A missing helper refuses
+# the merge. A pull request with no review record merges as before.
+#
 # Before either forge merge, the task's existing per-task control lock
 # serializes the captain-hold check through the forge command. A still-held or
 # unreadable row refuses before that command, so a captain approval must be
@@ -1326,6 +1331,17 @@ gitlab_confirm_merged() {
   [ "$state" = merged ]
 }
 
+# The review record lives beside this script. A missing file refuses, so a
+# fork that dropped the helper cannot merge past a comparison it no longer runs.
+refuse_stale_review_head() {
+  local helper=$SCRIPT_DIR/fm-zt-review.sh
+  if [ ! -f "$helper" ]; then
+    printf 'error: refusing to merge %s because the review-head helper is missing\n' "$URL" >&2
+    return 1
+  fi
+  "$helper" check-merge "$ID" "$URL" "$FM_PR_MERGE_HEAD" >/dev/null
+}
+
 # Record before either forge call. This arms the merge poll without claiming a
 # landed outcome, so even a provider read failure after a real merge cannot
 # leave teardown without the PR identity it needs to verify the result.
@@ -1377,6 +1393,7 @@ case "$PROVIDER" in
       fi
       exit 1
     fi
+    refuse_stale_review_head || exit 1
     # The away record is locked first, so this last presence and authority read
     # and the forge command below share one live-owner critical section.
     hold_away_record_for_merge || exit 1
@@ -1428,6 +1445,7 @@ case "$PROVIDER" in
     ;;
   gitlab)
     gitlab_verify_mergeable || exit 1
+    refuse_stale_review_head || exit 1
     # --sha binds the merge to the head this run verified, so a push that lands
     # in between is refused by GitLab instead of merged unverified. --yes only
     # skips the interactive confirmation, which no supervised run can answer;

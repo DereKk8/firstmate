@@ -2,128 +2,45 @@
 name: verification-review
 description: >-
   Load before commissioning a selected independent verification check of a finished change, and before acting on its review or QA report.
-  Owns strict blind code review followed by real proof, diff-sized staffing, reviewer model-family choice, binding reproduced bugs, and the verification report.
+  Loads the shared zero-trust-review skill at the identity pinned by bin/fm-zt-review.sh, and owns only how firstmate staffs, briefs, launches, and records the roles.
   Not an automatic extra review, a no-mistakes validation run, or an architecture-refactoring review.
 user-invocable: false
 metadata:
   internal: true
 ---
 
-# Verification with code review
+# Verification with the shared zero-trust review
 
-Find defects before delivery without making the author judge its own work or making a successful run soften the review.
-This skill owns how a selected verification check works, not when verification replaces validation.
-Follow the home's check-selection preference and an explicit task choice before commissioning it.
-Review and proof are stages of that one verification check, not separate checks to stack with no-mistakes.
-Do not invoke or change no-mistakes or its configuration, and do not change project `verify-*` skills.
+The review rules live in DereKk8/project-skills at shared/zero-trust-review/SKILL.md.
+Run `bin/fm-zt-review.sh identity --check` before a review, and follow the bytes `bin/fm-zt-review.sh show-skill` prints.
+This file owns only how firstmate staffs, briefs, launches, and records the roles.
+Follow the home's check-selection preference and an explicit task choice before commissioning this check.
+Do not invoke or change no-mistakes or its configuration, and do not change a project's `verify-*` skills.
 
-## Firstmate setup
+## Pin, brief, and staffing
 
-Pin the accepted task intent, source head SHA, resolved project base branch, and merge-base SHA.
-Use the authoritative source head, following `bin/fm-review-diff.sh` for a task PR, rather than a possibly stale local copy.
-Generate the complete merge-base-to-head diff and its numstat from those pinned commits.
-Count additions plus deletions across the whole change, including tests and documentation, without removing inconvenient files to shrink the check.
-Binary changes or an unreadable or incomplete diff have unknown size and require an explicit coverage limitation, never a zero-line assumption.
+Read the head from the forge with `bin/fm-review-diff.sh` when the task has a pull request.
+Pass `bin/fm-zt-review.sh prepare` the pinned merge base and head, a local repository that has both commits, and an intent file taken from the task source.
+`prepare` writes the shared brief fields, git's diff of those commits, and the pinned skill bytes into a directory that is not a git checkout.
+`prepare` and `bin/fm-zt-review.sh staff` print the agent count and whether the reviewer slices, from git's line count on those commits and the shared staffing table.
+No script enforces that staffing: firstmate, as coordinator, assigns the reviewer and the verifier roles and the module slices.
+Firstmate records each role's task and the slice list in the source task's backlog note, and passes the saved blind review to the verifier.
+Resolve both seats through `harness-adapters`, the current dispatch profiles, and `quota-array-dispatch`.
+Stop when that path cannot fill the seat the shared skill requires.
 
-The starting thresholds below are tuning defaults, not evidence that a small diff is safe.
+## Launch and proof
 
-| Changed lines | Setup |
-| --- | --- |
-| Under 100 | One strong agent, separate from the author, reviews first, seals its findings, then runs proof. |
-| 100 through 800 | Two strong agents: a blind reviewer and a separate verifier. |
-| Over 800, or unknown size | Two strong agents: a blind reviewer reviews bounded module slices, then a separate verifier runs proof. |
+Start the blind reviewer only with `bin/fm-zt-review.sh launch` on the prepared directory.
+That launch exposes the prepared directory, a private home, the system runtime, the directory of the resolved reviewer command, and only the credential files passed with `--auth`.
+It does not mount the host root.
+The verifier is an ordinary scout, because proof has to drive the product, and its instructions include the `show-skill` bytes.
+Those instructions forbid product edits, commits, pushes, and merges.
+The verifier still has a repository copy, so that ban is an instruction.
+A re-check is a new blind launch and a new `bin/fm-zt-review.sh record-report`.
+Send one fix to the author, and stop if the re-check fails.
 
-For a large diff, assign every changed file to a review slice and make the reviewer cover the seams between slices against the full pinned diff.
-Split the review by module, not the implementation into extra tasks, and do not increase the agent count merely because there are many modules.
-Uninspected files or seams remain a named limitation, not a clean review.
+## Report and merge
 
-Prefer strong-tier models for both roles across any supported model family and verified harness.
-Use `harness-adapters`, current dispatch profiles, and `quota-array-dispatch` for catalog, account, effort, and runway decisions rather than a fixed vendor or model list.
-Choose a reviewer from a different model family than the author when an eligible, available strong-tier option exists.
-A different provider, account, or harness serving the same model family is not a cross-family review.
-Record the author's family, the reviewer's family, and the concrete reason when cross-family review is unavailable or the author's family is unknown.
-State any override of a resolved profile needed for that choice under the existing dispatch contract.
-Do not silently weaken the reasoning class to fill a seat when quota or authentication blocks the selected setup.
-
-Use ordinary scout briefs, isolated copies, reports, steering, supervision, and completion under the existing task lifecycle.
-Firstmate commissions and coordinates the roles; the author and QA workers do not delegate or decide findings themselves.
-The QA workers may run scratch-safe proof but must not edit the product, commit fixes, push, open a PR, merge, or run a pipeline.
-Give each role only its stage inputs, even when the ordinary scaffold or home additions would otherwise expose source reports or proof results.
-
-## Blind review
-
-The reviewer sees only the pinned diff and accepted task intent as project evidence, plus the role and safety instructions needed to work.
-Do not give the reviewer author explanations, verification artifacts outside the diff, prior findings, run logs, test results, CI verdicts, or access to the author's conversation.
-The reviewer does not browse the source copy, history, or reports, and does not run proof commands.
-If the diff lacks evidence needed to judge a suspicion, record what is missing for the verifier rather than relaxing the input boundary.
-Keep the reviewer blind on any final-head re-check as well.
-
-Read the diff skeptically against the intent, including changed tests and documentation.
-Look for counterexamples and broken contracts in normal, boundary, failure, concurrency, compatibility, and security paths wherever the change makes them relevant.
-Do not assume a patch is correct because the author produced it, a test was added, or the happy path looks plausible.
-Be strict about concrete defects, not harsh through invented findings, style preferences, or unrelated redesigns.
-For each suspicion, assign a stable ID and give the pinned file and line or symbol, expected versus possible behavior, triggering conditions, consequence, and a way to disprove it.
-A review with no suspicions still records the coverage and remaining uncertainty.
-
-Finish and save the blind review before proof starts.
-In the one-agent setup, preserve that pre-run record unchanged before exposing verification artifacts or executing commands.
-In the two-agent setup, firstmate hands the sealed findings to the verifier and never sends proof results back to the reviewer.
-
-## Proof and finding authority
-
-The verifier follows the task's verification artifacts: applicable `verify-*` skills, Done-when criteria, and real operator runs on the pinned head.
-Passing CI, compilation, or the author's report is not a substitute for those runs.
-Try to reproduce every reviewer suspicion, including ones the author disputes, and also test the task's required behavior when the reviewer found nothing.
-Give defects discovered during proof and attack their own stable IDs and the same finding authority.
-
-Proof has two required phases, and neither is left to the verifier's judgment of applicability.
-
-1. **Product-surface run.**
-   The verifier drives the project's `verify-*` skill on the real product surface for every changed behavior an operator can reach.
-   Operator surface is any entry point an operator runs: CLI, TUI, API, or UI.
-   Unit tests, scripts that import modules, or a guard called directly prove code, not the product surface, and do not satisfy this phase.
-   The phase is skipped only with a concrete written reason that the change has nothing an operator can reach, naming the changed paths and why no operator entry point leads to them.
-   A reachable path whose real route is forbidden or unsafe, such as a live tenant or production action, runs on a disposable or scratch instance the `verify-*` skill supports.
-   When no safe instance can run, that path is missing required proof, not a no-surface skip.
-2. **Attack phase.**
-   The verifier deliberately tries to break the change with hostile inputs through the product surface, or through the public entry point of the changed code when the change has no product surface.
-   Attack every change, not only security-shaped ones.
-   Choose attacks from what the change touches: malformed, oversized, empty, and boundary inputs, injection and bypass forms, wrong order or repeated calls, concurrent use, failure of dependencies, and inputs that reach the code paths a bumped dependency, refactor, or test fix changed.
-   Record each attempt with its input, the surface it went through, the expected result, and the observed result.
-   An attack that breaks the product is a defect with the same authority as a reproduced suspicion.
-Record actual commands or operator actions, inputs, expected and observed results, the head tested, and evidence locations.
-Separate a demonstrated defect from a missing environment, credential, or incomplete attempt.
-
-Classify every suspicion as reproduced, disproved, or unreproduced with the evidence for that classification.
-A reproduced bug binds the author: firstmate sends it for an in-scope fix, and the author cannot decline or dismiss it on its own judgment.
-If a fix would require a scope change, destructive action, or another reserved decision, firstmate escalates that decision and the defect remains open.
-The QA workers never implement the fix themselves.
-Collect the fixes, pin the final head, and re-check once there using this same verification check, not a pipeline or a parallel second check.
-When code changed, perform blind review of the final diff before final proof; a combined agent that already saw run results needs a fresh blind session for that review.
-The final proof covers each reproduced defect, the affected task criteria, and both required phases for the changed paths, and does not claim old-head evidence proves new code.
-If that final check still fails or reveals another defect, report the failure rather than silently starting repeated repair rounds.
-If the source moves after proof, the report is stale for landing and firstmate must reconcile the new code before using its verdict.
-
-An unreproduced suspicion stays in the report with its attempted reproduction, missing evidence, and consequence.
-Only serious unreproduced suspicions reach the captain: credible risks of security exposure, irreversible data loss, or failure of a core required behavior that the available proof cannot rule out.
-A lack of reproduction is not evidence that such a risk is harmless.
-Routine unreproduced suspicions remain recorded without creating extra approval requests.
-A disproved suspicion retains the counterevidence so the decision has a trail.
-
-## Required report
-
-Write the consolidated result to the verifier's ordinary scout report path, linking the sealed blind review rather than overwriting it.
-Include:
-
-- Identity: project, source task or recorded PR URL, accepted intent, base branch, merge base, initially reviewed head, and final tested head.
-- Setup: changed-line count or unknown-size reason, staffing, module coverage and seams, concrete model profiles, family choice, and any dispatch exceptions.
-- Blind review: pre-run artifact pointer, review coverage, stable suspicion IDs, code evidence, triggers, consequences, and disconfirming checks.
-- Proof: verification artifacts and criteria followed, commands or operator actions, observed results, evidence pointers, and untested paths or environmental blockers.
-- Product surface: the `verify-*` skill and product surface driven, with commands or operator actions and observed results, or the concrete no-surface reason naming the changed paths.
-- Attack: each attempt's input, surface, expected result, and observed result, and the stable ID of any defect an attack found.
-- Findings: each ID's reproduced, disproved, or unreproduced classification and evidence, author fix when required, and final-head re-check result.
-- Outcome: passed, failed, or incomplete, tied to the final head; unresolved reproduced bugs mean failed, and missing review coverage, missing required proof, a missing product-surface run without a concrete no-surface reason, a missing attack phase, or a serious unresolved suspicion means incomplete, never passed.
-- Captain decisions: only reserved fix decisions and serious unreproduced suspicions, with concrete consequence and the next decision needed.
-
-Before completion, firstmate follows `scout-completion` and `captain-hold-lifecycle` so unresolved decisions survive the QA workers' cleanup.
-A passed report is evidence for the selected verification check, not permission to merge or a claim that no bugs exist.
+`bin/fm-zt-review.sh record-report` accepts only a report in the shared order with one shared verdict word.
+Before completion, follow `scout-completion` and `captain-hold-lifecycle`.
+`bin/fm-pr-merge.sh` refuses the merge unless the review recorded for that same URL is a PASS verdict for the live head.
