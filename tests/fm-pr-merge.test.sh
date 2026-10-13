@@ -4524,6 +4524,26 @@ test_gitlab_review_head_mismatch_refuses_before_the_merge() {
   pass "fm-pr-merge refuses a GitLab merge when the live head is not the reviewed head"
 }
 
+test_forgejo_review_head_mismatch_refuses_before_the_merge() {
+  local case_dir rc reviewed
+  reviewed=7777777777777777777777777777777777777777
+  case_dir=$(make_forgejo_case forgejo-review-head-mismatch)
+  record_verified_head "$case_dir" task-x1 "$FJ_URL" "$reviewed"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 "$FJ_URL" \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "forgejo-review-head-mismatch: a different reviewed head must refuse"
+  assert_grep 'not the reviewed head' "$case_dir/stderr" \
+    "forgejo-review-head-mismatch: the refusal did not name the reviewed head"
+  [ -z "$(tea_merge_line "$case_dir/tea.log")" ] \
+    || fail "forgejo-review-head-mismatch: tea merge ran for a stale review"
+  pass "fm-pr-merge refuses a Forgejo merge when the live head is not the reviewed head"
+}
+
 test_failed_review_refuses_before_the_github_merge() {
   local case_dir rc live verdict
   live=4444444444444444444444444444444444444444
@@ -4678,5 +4698,6 @@ test_review_head_mismatch_refuses_before_the_github_merge
 test_review_head_match_still_merges
 test_review_for_another_url_does_not_block_the_merge
 test_gitlab_review_head_mismatch_refuses_before_the_merge
+test_forgejo_review_head_mismatch_refuses_before_the_merge
 test_failed_review_refuses_before_the_github_merge
 test_review_recorded_by_another_task_binds_the_merge
