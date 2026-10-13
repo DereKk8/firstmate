@@ -1,0 +1,23 @@
+$ FM_BRIEF_TICKET=ENG-TASKS-191 bin/fm-brief.sh provisioning-auth-sender oulow --mode no-mistakes --base-branch release/1.2
+scaffolded: /tmp/fm-brief-lab.yug9/data/provisioning-auth-sender/brief.md (ship, mode=no-mistakes; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+17:Base branch: release/1.2
+23:1. First action: create your branch: `git checkout -b feature/ENG-TASKS-191-provisioning-auth-sender --`
+27:1. Never push to the base branch `release/1.2` or the default branch. Never merge a PR.
+95:The authoritative external ticket for this task is `ENG-TASKS-191`.
+98:For PR-based delivery, the PR title must include the Notion Task ID `ENG-TASKS-191`, and you own the PR title.
+104:Ship branch: feature/ENG-TASKS-191-provisioning-auth-sender
+109:This task's base branch is `release/1.2`, not the repository default: pass `--base-branch release/1.2` on every `no-mistakes axi run` that starts a run, so the pipeline rebases onto, opens its PR against, and watches CI for that branch.
+
+$ bin/fm-brief.sh plain-task plain --mode direct-PR --base-branch feature/hub
+scaffolded: /tmp/fm-brief-lab.yug9/data/plain-task/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+exit=0
+17:Base branch: feature/hub
+23:1. First action: create your branch: `git checkout -b fm/plain-task --`
+26:1. Never push to the base branch `feature/hub` or the default branch (push only your `fm/plain-task` branch). Never merge a PR.
+102:When it is implemented and committed, push your branch and open a PR with `gh-axi` that is ready for review, not a draft, against the base branch `feature/hub` (`--base feature/hub`), not the repository default.
+
+$ bin/fm-brief.sh bad-base plain --mode local-only --base-branch feature/hub   (adversarial)
+error: fm-brief.sh --base-branch: a base branch cannot ship mode=local-only, whose landing fast-forwards local main; ship no-mistakes or direct-PR, which open a pull request against the base
+exit=1
+ls: cannot access '/tmp/fm-brief-lab.yug9/data/bad-base/brief.md': No such file or directory

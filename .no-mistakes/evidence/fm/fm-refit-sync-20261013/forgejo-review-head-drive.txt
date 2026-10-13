@@ -1,0 +1,34 @@
+=== CASE stale-head: reviewed_head=dddddddddddddddddddddddddddddddddddddddd verdict=PASS live_head=cccccccccccccccccccccccccccccccccccccccc
+$ bin/fm-pr-merge.sh task-x1 https://forgejo.example/fixture/fixture-repo/pulls/9   -> exit 1
+--- stdout
+armed: state/task-x1.check.sh
+--- stderr
+verified: https://forgejo.example/fixture/fixture-repo/pulls/9 is open and mergeable, with a successful combined status at head cccccccccccccccccccccccccccccccccccccccc
+error: refusing to merge https://forgejo.example/fixture/fixture-repo/pulls/9 because the live head cccccccccccccccccccccccccccccccccccccccc is not the reviewed head dddddddddddddddddddddddddddddddddddddddd
+--- forge merge call in tea.log: 
+
+=== CASE matching-head: reviewed_head=cccccccccccccccccccccccccccccccccccccccc verdict=PASS live_head=cccccccccccccccccccccccccccccccccccccccc
+$ bin/fm-pr-merge.sh task-x1 https://forgejo.example/fixture/fixture-repo/pulls/9   -> exit 0
+--- stdout
+armed: state/task-x1.check.sh
+--- stderr
+verified: https://forgejo.example/fixture/fixture-repo/pulls/9 is open and mergeable, with a successful combined status at head cccccccccccccccccccccccccccccccccccccccc
+--- forge merge call in tea.log: api --login fm-fixture --repo fixture/fixture-repo -X POST /repos/{owner}/{repo}/pulls/9/merge -f Do=merge -f head_commit_id=cccccccccccccccccccccccccccccccccccccccc
+
+=== CASE matching-head-product-fail: reviewed_head=cccccccccccccccccccccccccccccccccccccccc verdict=PRODUCT_FAIL live_head=cccccccccccccccccccccccccccccccccccccccc
+$ bin/fm-pr-merge.sh task-x1 https://forgejo.example/fixture/fixture-repo/pulls/9   -> exit 1
+--- stdout
+armed: state/task-x1.check.sh
+--- stderr
+verified: https://forgejo.example/fixture/fixture-repo/pulls/9 is open and mergeable, with a successful combined status at head cccccccccccccccccccccccccccccccccccccccc
+error: refusing to merge https://forgejo.example/fixture/fixture-repo/pulls/9 because the review verdict is PRODUCT_FAIL, not PASS
+--- forge merge call in tea.log: 
+
+=== CASE no-review-record: reviewed_head=x verdict=none live_head=cccccccccccccccccccccccccccccccccccccccc
+$ bin/fm-pr-merge.sh task-x1 https://forgejo.example/fixture/fixture-repo/pulls/9   -> exit 0
+--- stdout
+armed: state/task-x1.check.sh
+--- stderr
+verified: https://forgejo.example/fixture/fixture-repo/pulls/9 is open and mergeable, with a successful combined status at head cccccccccccccccccccccccccccccccccccccccc
+--- forge merge call in tea.log: api --login fm-fixture --repo fixture/fixture-repo -X POST /repos/{owner}/{repo}/pulls/9/merge -f Do=merge -f head_commit_id=cccccccccccccccccccccccccccccccccccccccc
+

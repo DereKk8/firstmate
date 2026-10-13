@@ -1,0 +1,8 @@
+ok - fm-project-mode: an entry with no forge token reports forge none and keeps its two-word default output
+ok - fm-project-mode: forge=forgejo placed after the mode token binds forgejo without a warning
+ok - fm-project-mode: forge=forgejo binds in any token order and keeps +yolo
+ok - fm-project-mode: forge=forgejo on local-only is refused like every forge
+ok - fm-project-mode: the colon spelling forge:forgejo is not a forge binding
+ok - fm-project-mode: a value outside none|gerrit|forgejo is refused and the refusal names forge=forgejo
+ok - fm-project-mode: a missing project or absent registry defaults --forge to none
+# fm-project-mode.test.sh: all assertions passed
