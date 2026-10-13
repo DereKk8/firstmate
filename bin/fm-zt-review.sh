@@ -14,14 +14,11 @@
 # staff prints agents=1|2 and slices=yes|no from the shared table. It does
 # not enforce them: the coordinator assigns the roles and the slices.
 #
-# The blind launch requires bwrap. It mounts /usr, /etc, and the /bin,
-# /lib, and /lib64 links, then the directory that holds the resolved
-# command (all of /nix/store when the command is there), a private home,
-# and temporary directories. It does not mount the host root. Each --auth
-# names one credential file under HOME whose name is auth.json,
-# .credentials.json, or gemini-credentials.json. It is mounted read-only
-# at the same place under the private home. Without bwrap the launch
-# refuses and does not start the command.
+# The blind launch checks the directory with the blind-directory checks
+# (a real directory outside any git checkout that holds only brief.md and
+# skill.md), then runs the command with that directory as its working
+# directory and without the common forge tokens. It is not a sandbox: the
+# command keeps the caller's filesystem access.
 #
 # A missing review record for the pull request URL does not change merge.
 # The record is keyed by that URL, so a review stored from another task
@@ -39,7 +36,7 @@
 #       --surface TEXT --evidence TEXT
 #   fm-zt-review.sh prepare --out DIR [same brief flags]
 #   fm-zt-review.sh assert <dir>
-#   fm-zt-review.sh launch <dir> [--auth FILE]... -- <command> [args]
+#   fm-zt-review.sh launch <dir> -- <command> [args]
 #   fm-zt-review.sh record-report <task-id> <report-file> <pr-url>
 #   fm-zt-review.sh check-merge <task-id> <pr-url> <live-head>
 #
@@ -288,121 +285,16 @@ cleanup() {
   done
 }
 
-# Reviewer harness credential files named by the harness references:
-# auth.json (codex, grok, muse, pi), .credentials.json (claude), and
-# gemini-credentials.json (gemini). Prints the path relative to HOME.
-auth_file_ok() {
-  local path=$1 resolved home
-  [ -f "$path" ] && [ ! -L "$path" ] || die "auth is not a regular file: $path"
-  case "${path##*/}" in
-    auth.json|.credentials.json|gemini-credentials.json) ;;
-    *) die "auth is not a reviewer credential file: $path" ;;
-  esac
-  resolved=$(CDPATH='' cd -- "$(dirname -- "$path")" && pwd -P)/${path##*/}
-  home=$(CDPATH='' cd -- "$HOME" && pwd -P)
-  case "$resolved" in
-    "$home"/*) ;;
-    *) die "auth file must be inside HOME: $resolved" ;;
-  esac
-  printf '%s\n' "${resolved#"$home"/}"
-}
-
 launch_blind() {
   local dir=$1
   shift
-  local -a auth_srcs=() auth_rels=() bwrap_cmd=()
-  local resolved cmd_real cmd_dir os_path target i home
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --auth)
-        [ "$#" -ge 2 ] || die "launch --auth needs a credential file"
-        auth_rels+=("$(auth_file_ok "$2")")
-        auth_srcs+=("$2")
-        shift 2
-        ;;
-      --)
-        shift
-        break
-        ;;
-      *)
-        die "launch expected --auth or -- before the command"
-        ;;
-    esac
-  done
+  [ "$#" -ge 1 ] && [ "$1" = -- ] || die "launch expected -- before the command"
+  shift
   [ "$#" -ge 1 ] || die "launch needs a command after --"
   assert_blind "$dir"
-  command -v bwrap >/dev/null 2>&1 || die "bwrap is required to launch a blind reviewer, and it is not on PATH"
-  resolved=$(CDPATH='' cd -- "$dir" && pwd -P)
-  [ -d /usr ] && [ ! -L /usr ] || die "launch needs a real /usr directory for the reviewer runtime"
-  cmd_real=$1
-  if [ "${cmd_real#/}" = "$cmd_real" ]; then
-    cmd_real=$(command -v -- "$1" 2>/dev/null || true)
-    [ -n "$cmd_real" ] || die "launch command was not found: $1"
-  fi
-  cmd_real=$(readlink -f -- "$cmd_real")
-  cmd_dir=$(dirname -- "$cmd_real")
-  shift
-  bwrap_cmd=(
-    bwrap
-    --ro-bind /usr /usr
-  )
-  for os_path in /bin /lib /lib64; do
-    if [ -d "$os_path" ] && [ ! -L "$os_path" ]; then
-      bwrap_cmd+=(--ro-bind "$os_path" "$os_path")
-    elif [ -L "$os_path" ]; then
-      target=$(readlink -- "$os_path")
-      bwrap_cmd+=(--symlink "$target" "$os_path")
-    fi
-  done
-  if [ -d /etc ] && [ ! -L /etc ]; then
-    bwrap_cmd+=(--ro-bind /etc /etc)
-  fi
-  bwrap_cmd+=(
-    --dev /dev
-    --proc /proc
-    --tmpfs /home
-    --tmpfs /tmp
-    --tmpfs /var/tmp
-  )
-  # A harness installed outside /usr is a binary in its own directory, or a
-  # store path whose closure is the rest of /nix/store.
-  case "$cmd_real" in
-    /usr/*|/bin/*|/lib/*|/lib64/*) ;;
-    /nix/store/*)
-      bwrap_cmd+=(--ro-bind /nix/store /nix/store)
-      ;;
-    *)
-      home=$(CDPATH='' cd -- "$HOME" && pwd -P)
-      case "$home/" in
-        "$cmd_dir"/*) die "launch command directory would expose HOME: $cmd_dir" ;;
-      esac
-      [ "$cmd_dir" != / ] || die "launch command directory would expose the host root"
-      if inside_worktree "$cmd_dir"; then
-        die "launch command is inside a git checkout: $cmd_real"
-      fi
-      bwrap_cmd+=(--ro-bind "$cmd_dir" "$cmd_dir")
-      ;;
-  esac
-  bwrap_cmd+=(
-    --dir /tmp/zt-home
-    --bind "$resolved" /tmp/zt-work
-    --chdir /tmp/zt-work
-    --setenv HOME /tmp/zt-home
-    --setenv PATH "$cmd_dir:${PATH}"
-    --setenv GIT_DIR /fm-zt-no-repository
-    --unsetenv GH_TOKEN
-    --unsetenv GITHUB_TOKEN
-    --unsetenv GH_ENTERPRISE_TOKEN
-    --unsetenv GITLAB_TOKEN
-    --unsetenv GL_TOKEN
-  )
-  i=0
-  while [ "$i" -lt "${#auth_srcs[@]}" ]; do
-    bwrap_cmd+=(--ro-bind "${auth_srcs[$i]}" "/tmp/zt-home/${auth_rels[$i]}")
-    i=$((i + 1))
-  done
-  bwrap_cmd+=("$cmd_real" "$@")
-  "${bwrap_cmd[@]}"
+  cd -- "$dir"
+  GIT_DIR=/fm-zt-no-repository exec env -u GH_TOKEN -u GITHUB_TOKEN -u GH_ENTERPRISE_TOKEN \
+    -u GITLAB_TOKEN -u GL_TOKEN "$@"
 }
 
 parse_brief_opts() {

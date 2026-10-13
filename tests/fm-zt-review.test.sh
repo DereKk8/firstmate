@@ -13,7 +13,6 @@ REPO=$FIX/skill-repo
 STATE=$FIX/state
 HEAD_A=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 HEAD_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-MERGE=cccccccccccccccccccccccccccccccccccccccc
 PR_URL=https://github.com/example/repo/pull/9
 
 git init -q "$REPO"
@@ -104,19 +103,6 @@ write_report() {
     printf '%s\n' '## Evidence location'
     printf '%s\n' "$FIX/evidence"
   } >"$dest"
-}
-
-bwrap_works() {
-  local probe
-  command -v bwrap >/dev/null 2>&1 || return 1
-  probe=$(mktemp -d /tmp/fm-zt-bwrap.XXXXXX)
-  if bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp \
-    --bind "$probe" /tmp/zt-work --chdir /tmp/zt-work /bin/true >/dev/null 2>&1; then
-    rm -rf "$probe"
-    return 0
-  fi
-  rm -rf "$probe"
-  return 1
 }
 
 test_identity_shape_and_fixture_check() {
@@ -298,126 +284,39 @@ test_prepare_asserts_and_cleans_up() {
   pass "prepare publishes only the pinned skill and removes a failed directory"
 }
 
-test_launch_refuses_a_bad_auth_file_and_a_missing_bwrap() {
-  local dest home sentinel hidden rc
+test_launch_runs_in_the_blind_directory() {
+  local dest out rc sentinel
   dest=$FIX/launch-blind
   rm -rf "$dest"
   prepare_blind "$dest" >/dev/null
-
-  home=$FIX/home-auth
-  mkdir -p "$home/gh" "$home/modelauth"
-  printf 'token\n' >"$home/gh/hosts.yml"
-  printf 'notes\n' >"$home/modelauth/report.md"
-  printf 'cred\n' >"$FIX/auth.json"
-  ln -sf "$home/modelauth/report.md" "$home/modelauth/auth.json"
-  sentinel=$FIX/auth-ran
-  rm -f "$sentinel"
-  for bad in "$home/gh/hosts.yml" "$home/modelauth/report.md" "$home/modelauth" \
-    "$home/modelauth/auth.json" "$FIX/auth.json"; do
-    HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
-      with_pin "$ZT" launch "$dest" --auth "$bad" -- /bin/sh -c "echo ran > '$sentinel'"
-    rc=$RUN_RC
-    expect_code 1 "$rc" "auth $bad must be refused"
-    assert_absent "$sentinel" "the command ran after refusing auth $bad"
-  done
-
-  hidden=$(fm_test_base_path_sans "$PATH" bwrap)
-  PATH="$hidden" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" -- /bin/sh -c "echo ran > '$sentinel'"
-  rc=$RUN_RC
-  expect_code 1 "$rc" "launch must refuse when bwrap is absent"
-  assert_grep 'bwrap is required' "$FIX/stderr" "the refusal did not name bwrap"
-  assert_absent "$sentinel" "the command ran without bwrap"
-  pass "launch refuses anything but a credential file under HOME, and refuses to start without bwrap"
-}
-
-# A user-writable directory outside /home, /tmp, /var/tmp, and /dev, where a
-# harmless marker shows whether the launch exposes the rest of the host.
-outside_dir() {
-  local dir
-  for dir in "${XDG_RUNTIME_DIR:-}" "/run/user/$(id -u)"; do
-    case "$dir" in
-      ''|/home/*|/tmp/*|/var/tmp/*|/dev/*) continue ;;
-    esac
-    if [ -d "$dir" ] && [ -w "$dir" ]; then
-      printf '%s\n' "$dir"
-      return 0
-    fi
-  done
-  return 1
-}
-
-test_launch_hides_the_host() {
-  local dest out rc marker outside outside_marker='' outside_cmd='' host_path
-  if ! bwrap_works; then
-    pass "this host cannot run bwrap, so the hide check was skipped"
-    return 0
-  fi
-  if outside=$(outside_dir); then
-    outside_marker=$(mktemp "$outside/fm-zt-marker.XXXXXX")
-    printf 'harmless marker\n' >"$outside_marker"
-    outside_cmd="test ! -e '$outside_marker' && echo outside_marker_hidden; "
-  fi
-  for host_path in /opt /srv /mnt; do
-    if [ -e "$host_path" ]; then
-      outside_cmd="${outside_cmd}test ! -e '$host_path' && echo hidden:$host_path; "
-    fi
-  done
-  [ -n "$outside_cmd" ] || fail "no host path outside the reviewer runtime was available to test"
-  dest=$FIX/launch-blind
-  marker=$FIX/host-only
-  printf 'secret\n' >"$marker"
   run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" -- /bin/sh -c \
-      "pwd; test -f brief.md && echo brief; test ! -e '$marker' && echo marker_hidden; test ! -d '$ROOT' && echo repo_hidden; $outside_cmd git status >/dev/null 2>&1; echo git_status:\$?"
+    with_pin "$ZT" launch "$dest" -- /bin/sh -c 'pwd -P; test -f brief.md && echo brief; git status >/dev/null 2>&1; echo git_status:$?'
   rc=$RUN_RC
-  [ -z "$outside_marker" ] || rm -f "$outside_marker"
-  expect_code 0 "$rc" "launch failed on a host that can run bwrap"
+  expect_code 0 "$rc" "launch failed"
   out=$(cat "$FIX/stdout")
-  assert_contains "$out" '/tmp/zt-work' "the reviewer cwd was not the launch directory"
+  assert_contains "$out" "$(cd "$dest" && pwd -P)" "the reviewer cwd was not the launch directory"
   assert_contains "$out" 'brief' "the brief was not visible in the launch directory"
-  assert_contains "$out" 'marker_hidden' "a host file outside the launch directory was visible"
-  assert_contains "$out" 'repo_hidden' "the repository checkout was visible"
-  if [ -n "$outside_marker" ]; then
-    assert_contains "$out" 'outside_marker_hidden' "a marker in $outside was visible"
-  fi
-  for host_path in /opt /srv /mnt; do
-    if [ -e "$host_path" ]; then
-      assert_contains "$out" "hidden:$host_path" "$host_path was visible"
-    fi
-  done
   assert_contains "$out" 'git_status:128' "git status succeeded inside the launch"
   run_capture "$FIX/stdout" "$FIX/stderr" \
     with_pin "$ZT" launch "$dest" -- /bin/sh -c 'exit 3'
   rc=$RUN_RC
   expect_code 3 "$rc" "launch did not return the command status"
-  pass "launch shows only the blind directory and returns the command status"
-}
 
-test_launch_runs_a_harness_installed_outside_usr() {
-  local dest tool rc out
-  if ! bwrap_works; then
-    pass "this host cannot run bwrap, so the harness-install check was skipped"
-    return 0
-  fi
-  dest=$FIX/launch-blind
-  tool=$FIX/installs/harness/1.0
-  mkdir -p "$tool" "$FIX/installs/other"
-  printf 'other install\n' >"$FIX/installs/other/data"
-  printf '#!/bin/sh\necho harness_ran\ntest ! -e %s && echo other_hidden\n' "'$FIX/installs/other/data'" >"$tool/harness"
-  chmod +x "$tool/harness"
-  ln -sf "$tool/harness" "$FIX/installs/harness-link"
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" launch "$dest" -- "$FIX/installs/harness-link"
+  sentinel=$FIX/launch-ran
+  rm -f "$sentinel"
+  run_capture "$FIX/stdout" "$FIX/stderr" \
+    with_pin "$ZT" launch "$dest" --auth "$FIX/auth.json" -- /bin/sh -c "echo ran > '$sentinel'"
   rc=$RUN_RC
-  expect_code 0 "$rc" "a harness installed outside /usr did not start"
-  out=$(cat "$FIX/stdout")
-  assert_contains "$out" 'harness_ran' "the harness did not run"
-  assert_contains "$out" 'other_hidden' "a directory beside the harness install was visible"
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" launch "$dest" -- "$ZT" identity
+  expect_code 1 "$rc" "launch must refuse an unknown option"
+  assert_absent "$sentinel" "the command ran after an unknown option"
+  printf 'extra\n' >"$dest/notes.md"
+  run_capture "$FIX/stdout" "$FIX/stderr" \
+    with_pin "$ZT" launch "$dest" -- /bin/sh -c "echo ran > '$sentinel'"
   rc=$RUN_RC
-  expect_code 1 "$rc" "a command inside a git checkout must be refused"
-  assert_grep 'inside a git checkout' "$FIX/stderr" "the refusal did not name the git checkout"
-  pass "launch mounts only the resolved harness directory and refuses one inside a checkout"
+  expect_code 1 "$rc" "launch must refuse a directory with an extra file"
+  assert_absent "$sentinel" "the command ran in a directory with an extra file"
+  rm -f "$dest/notes.md"
+  pass "launch runs the command in the blind directory, returns its status, and refuses a bad directory or option"
 }
 
 recorded_path() {
@@ -527,39 +426,10 @@ test_diff_count_keeps_marker_like_code_lines() {
   pass "the diff count is git's own count on the pinned commits"
 }
 
-test_launch_admits_only_named_credential_files() {
-  local dest home auth rc out
-  if ! bwrap_works; then
-    pass "this host cannot run bwrap, so the credential-file check was skipped"
-    return 0
-  fi
-  dest=$FIX/launch-blind
-  home=$FIX/cred-home
-  auth=$home/modelauth
-  rm -rf "$home"
-  mkdir -p "$auth/sessions"
-  printf 'SECRET_PRIOR_REVIEW_FINDINGS\n' >"$auth/prior-report.md"
-  printf 'old session\n' >"$auth/sessions/1.jsonl"
-  printf 'credential-marker\n' >"$auth/auth.json"
-  HOME="$home" run_capture "$FIX/stdout" "$FIX/stderr" \
-    with_pin "$ZT" launch "$dest" --auth "$auth/auth.json" -- \
-      /bin/sh -c "test -f /tmp/zt-home/modelauth/auth.json && echo cred_visible; test ! -e /tmp/zt-home/modelauth/prior-report.md && echo prior_hidden; test ! -e /tmp/zt-home/modelauth/sessions && echo sessions_hidden"
-  rc=$RUN_RC
-  expect_code 0 "$rc" "launch failed with one credential file"
-  out=$(cat "$FIX/stdout")
-  assert_contains "$out" 'cred_visible' "the credential file was not visible"
-  assert_contains "$out" 'prior_hidden' "a prior report beside the credential file was visible"
-  assert_contains "$out" 'sessions_hidden' "session history beside the credential file was visible"
-  pass "launch admits only the named reviewer credential files"
-}
-
 test_identity_shape_and_fixture_check
 test_staffing_follows_the_diff_size
 test_diff_count_keeps_marker_like_code_lines
 test_brief_fields_and_marker_lines
 test_prepare_asserts_and_cleans_up
-test_launch_refuses_a_bad_auth_file_and_a_missing_bwrap
-test_launch_hides_the_host
-test_launch_runs_a_harness_installed_outside_usr
-test_launch_admits_only_named_credential_files
+test_launch_runs_in_the_blind_directory
 test_record_and_check_merge

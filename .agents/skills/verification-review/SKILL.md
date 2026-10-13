@@ -31,8 +31,8 @@ Stop when that path cannot fill the seat the shared skill requires.
 ## Launch and proof
 
 Start the blind reviewer only with `bin/fm-zt-review.sh launch` on the prepared directory.
-That launch exposes the prepared directory, a private home, the system runtime, the directory of the resolved reviewer command, and only the credential files passed with `--auth`.
-It does not mount the host root.
+That launch checks the prepared directory is blind and starts the reviewer with it as the working directory.
+It is not a sandbox, so the reviewer keeps the caller's filesystem access.
 The verifier is an ordinary scout, because proof has to drive the product, and its instructions include the `show-skill` bytes.
 Those instructions forbid product edits, commits, pushes, and merges.
 The verifier still has a repository copy, so that ban is an instruction.
