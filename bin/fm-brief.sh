@@ -663,14 +663,23 @@ SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
 
 IFS= read -r -d '' FINDINGS_RULE <<'EOF' || true
 8. Own every finding you discover: a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs.
-   Append a status line reporting each finding to firstmate at once.
-   Fix it now where you can, in your change; a discovered defect is not scope creep or a generalization the captain did not ask for.
-   If it does not belong in your change, say so in that status line so firstmate dispatches its fix immediately.
+   Fix it now, in your change; a discovered defect is not scope creep or a generalization the captain did not ask for.
+   Append `working [at=<epoch>]: finding: {what, and how you fixed it}` at once; a finding you cannot fix inside your change is reported the same way so firstmate dispatches its fix immediately.
+   While a no-mistakes run is active, findings of that run belong to the pipeline and its ask-user escalation, not to this rule.
    Never defer a finding, note it for later, or leave it as a TODO.
-   If its fix needs an authorization you lack, report `needs-decision` with the fix ready.
+   If its fix needs an authorization you lack, append `needs-decision` with the fix ready.
    Your final report lists every finding and how it was fixed, with no "deferred" or "follow-up" category.
 EOF
 FINDINGS_RULE=${FINDINGS_RULE%$'\n'}
+
+IFS= read -r -d '' SCOUT_FINDINGS_RULE <<'EOF' || true
+8. Own every finding you discover: a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs.
+   Your worktree is discarded, so do not fix it there.
+   List each finding in your report with its ready fix (file, line, change); firstmate dispatches each fix when the report lands.
+   Send no status line per finding and do not stop at a finding; only a fix that needs an authorization nobody present has goes in the report as a decision with the fix ready.
+   Never defer a finding or leave it unlisted.
+EOF
+SCOUT_FINDINGS_RULE=${SCOUT_FINDINGS_RULE%$'\n'}
 
 if [ -n "$BASE_BRANCH" ]; then
   SETUP_BASE="You are in a disposable git worktree of $REPO, at a detached HEAD on a clean copy of its base branch.
@@ -719,7 +728,8 @@ $CREWMATE_PAUSE_INSTRUCTIONS
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
-$FINDINGS_RULE
+
+$SCOUT_FINDINGS_RULE
 
 $WAIT_BLOCK$INBOX_SECTION
 
@@ -729,7 +739,7 @@ The report must stand alone: what you did, what you found, the evidence (command
 $LAVISH_LINE
 Before reporting done, read and follow \`$FM_ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md\` and pass its shared completion gate for the report and any visual review.
 When the report is complete, append \`done [at=<epoch>]: {one-line conclusion}\` to the status file and stop.
-If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
+If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), list each with its ready fix in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
 EOF
 append_brief_include
 echo "scaffolded: $BRIEF (scout; replace {TASK} and {FIRSTMATE_SPEC})"
@@ -800,6 +810,7 @@ $ASK_USER_BLOCK
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
+
 $FINDINGS_RULE
 
 $WAIT_BLOCK$INBOX_SECTION

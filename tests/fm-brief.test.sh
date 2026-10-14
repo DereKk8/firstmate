@@ -1600,6 +1600,7 @@ test_branch_prefix_command_is_shell_safe() {
   marker="$repo/branch-prefix-shell-safe-marker"
   id='brief-branch-safe-g3'
   # Relative marker: an absolute TMP_ROOT with a dot-led component is not a valid ref name.
+  # shellcheck disable=SC2016 # The literal $(...) is the payload under test.
   prefix='$(touch${IFS}branch-prefix-shell-safe-marker)'
   mkdir -p "$home/data"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --branch-prefix "$prefix" >/dev/null 2>&1 \
@@ -1665,6 +1666,10 @@ test_crewmate_scaffolds_forbid_pool_administration() {
   [ -n "$ship_rule" ] || fail "ship brief emitted no shared-infrastructure rule to compare"
   [ "$ship_rule" = "$scout_rule" ] \
     || fail "ship and scout shared-infrastructure rules have drifted apart"
+
+  assert_grep "Your worktree is discarded, so do not fix it there." "$brief" "scout brief missing the scout findings rule"
+  assert_grep "List each finding in your report with its ready fix" "$brief" "scout brief missing the findings-in-report rule"
+  assert_no_grep "how it was fixed" "$brief" "scout brief carries the ship findings wording"
 
   # The daemon half of the rule survived the fold.
   assert_grep "no-mistakes" "$brief" "scout brief lost the shared no-mistakes daemon rule"

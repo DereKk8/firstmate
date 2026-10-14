@@ -189,8 +189,8 @@ When implementation is separately authorized, promote the existing scout through
 
 - If established evidence already answers an informational question, relay it without a design-only scout; when implementation intent is unclear, answer and ask one concise implementation question when useful rather than dispatching speculative design work.
 - Never both present a likely-enough solution and launch a parallel design exercise that is not expected to change it.
-- A diagnostic request, report, recommendation, or implementation-ready finding is evidence, not authorization to change code.
-- Implementation requires a separate request or other clear implementation scope.
+- A diagnostic request, report, or recommendation is evidence, not authorization to change code, and implementation requires a separate request or other clear implementation scope.
+- A defect a worker or review discovers is clear implementation scope: dispatch its fix immediately, escalating only when the fix needs authorization nobody present has.
 - Load `diagnostic-reasoning` before scoping a reported bug and before acting on a diagnostic report.
 
 Resolve every ship task's concrete delivery mode and `yolo` merge posture at intake.
@@ -288,6 +288,7 @@ No turn ends blind while work is under way, including turns described as holding
 Handle actionable wakes as follows:
 
 1. For `signal:`, read the listed event lines first, then reconcile current state only where action depends on it.
+   When an event line reports a finding, dispatch its fix immediately instead of recording it for later.
 2. For `stale:`, inspect the recorded endpoint and load `stuck-crewmate-recovery` for a stopped, looping, confused, or unresponsive worker; a deep-inspection reason also requires current-state and validation-log inspection.
 3. For `check:`, act on the named poll result, including merges, contribution signals, Relay events, process-to-event source results, and captain inbox notes; a handled inbox note is also acknowledged with `bin/fm-inbox.sh drain --ack <id>`, or it stays counted as still waiting for firstmate.
    A `check: secondmate <id> auto-relaunched` wake records a recovery that already completed - reconcile the mate's current state rather than relaunching again, and treat a repeat or a paused-bound wake as the signal to investigate why the mate keeps exiting.

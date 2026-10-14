@@ -158,7 +158,7 @@ The worker must separately confirm that each rationale covers a deliberate remov
 The mechanical check is in addition to the seam code review, not a replacement for it, because the human/LLM review still covers judgment calls the script cannot catch.
 
 **Optional judgment:** run the test suite over the integrated whole to catch cross-feature interaction bugs between independently validated features.
-Treat pre-existing, environment-caused failures that reproduce on the untouched upstream tree as noise and record them in the report.
+Fix a pre-existing failure that reproduces on the untouched upstream tree, or dispatch its fix immediately, and record the fix in the report; never treat it as noise.
 
 Ask the captain for validation approval + model before running anything.
 Never merge without the captain's explicit word.
