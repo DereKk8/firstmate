@@ -661,6 +661,17 @@ IFS= read -r -d '' SHARED_INFRA_RULE <<'EOF' || true
 EOF
 SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
 
+IFS= read -r -d '' FINDINGS_RULE <<'EOF' || true
+8. Own every finding you discover: a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs.
+   Append a status line reporting each finding to firstmate at once.
+   Fix it now where you can, in your change; a discovered defect is not scope creep or a generalization the captain did not ask for.
+   If it does not belong in your change, say so in that status line so firstmate dispatches its fix immediately.
+   Never defer a finding, note it for later, or leave it as a TODO.
+   If its fix needs an authorization you lack, report `needs-decision` with the fix ready.
+   Your final report lists every finding and how it was fixed, with no "deferred" or "follow-up" category.
+EOF
+FINDINGS_RULE=${FINDINGS_RULE%$'\n'}
+
 if [ -n "$BASE_BRANCH" ]; then
   SETUP_BASE="You are in a disposable git worktree of $REPO, at a detached HEAD on a clean copy of its base branch.
 Base branch: $BASE_BRANCH"
@@ -708,6 +719,7 @@ $CREWMATE_PAUSE_INSTRUCTIONS
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
+$FINDINGS_RULE
 
 $WAIT_BLOCK$INBOX_SECTION
 
@@ -788,6 +800,7 @@ $ASK_USER_BLOCK
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
+$FINDINGS_RULE
 
 $WAIT_BLOCK$INBOX_SECTION
 
