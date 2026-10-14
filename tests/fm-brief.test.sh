@@ -355,6 +355,7 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep 'never a bare number such as "PR 108"' "$brief" "$id: brief missing the full-PR-URL rule"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
+    assert_grep "A finding in Firstmate itself" "$brief" "$id: brief missing the Firstmate-itself exception"
     assert_grep "Own every finding you discover" "$brief" "$id: brief missing the fix-findings-now rule"
     assert_grep 'no "deferred" or "follow-up" category' "$brief" "$id: brief missing the findings final-report rule"
     assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
@@ -1669,6 +1670,7 @@ test_crewmate_scaffolds_forbid_pool_administration() {
 
   assert_grep "Your worktree is discarded, so do not fix it there." "$brief" "scout brief missing the scout findings rule"
   assert_grep "List each finding in your report with its ready fix" "$brief" "scout brief missing the findings-in-report rule"
+  assert_grep "A finding in Firstmate itself" "$brief" "scout brief missing the Firstmate-itself exception"
   assert_no_grep "how it was fixed" "$brief" "scout brief carries the ship findings wording"
 
   # The daemon half of the rule survived the fold.
