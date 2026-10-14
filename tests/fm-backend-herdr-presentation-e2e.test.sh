@@ -1517,6 +1517,193 @@ done
 assert_focus_is "$CAPTAIN_FOCUS" "multi-home teardown"
 pass "real Herdr lab: multi-home exact-pane teardowns restore captain focus without workspace close authority"
 
+# A projected workspace that is proven gone from its exact recorded session is
+# replaced by a fresh nested projection, not by a flat tab inside the launcher's
+# own workspace. Every case that is not proven gone keeps its flat fallback.
+GONE_HOME="$TMP_ROOT/home-2ndmate-gone"
+mkdir -p "$GONE_HOME/state" "$GONE_HOME/config" "$GONE_HOME/data"
+printf 'gone\n' > "$GONE_HOME/.fm-secondmate-home"
+touch "$GONE_HOME/state/.last-watcher-beat"
+: > "$GONE_HOME/config/herdr-presentation-spaces"
+GONE_PARENT_OUT=$(lab workspace create --cwd "$PROJECT_DIR" --label 2ndmate-gone --no-focus) \
+  || fail "could not create the gone-projection parent fixture"
+GONE_PARENT_WSID=$(printf '%s' "$GONE_PARENT_OUT" | jq -r '.result.workspace.workspace_id // empty')
+[ -n "$GONE_PARENT_WSID" ] || fail "gone-projection parent fixture returned no workspace id"
+
+# The label of the nearest top-level workspace at or before <workspace-id>.
+workspace_owner_label() {  # <workspace-id>
+  lab workspace list | jq -r --arg ws "$1" '
+    .result.workspaces as $s
+    | ([range(0; $s | length) | select($s[.].workspace_id == $ws)][0]) as $i
+    | [range(0; $i + 1) | select(($s[.].label | startswith("└ ") | not))] | last as $p
+    | $s[$p].label'
+}
+
+relaunch_task() {  # <id> <home>
+  FM_GATE_REFUSE_BYPASS=1 FM_SPAWN_NO_GUARD=1 FM_HOME="$2" FM_ROOT_OVERRIDE="$ROOT" \
+    "$ROOT/bin/fm-spawn.sh" "$1" --relaunch --harness "sh -c 'while :; do sleep 60; done'"
+}
+
+# Spawns <id> projected under the gone-projection parent, remembers its first
+# binding, then closes its workspace out from under it.
+spawn_projected_then_lose_workspace() {  # <id>
+  local id=$1 meta="$GONE_HOME/state/$1.meta"
+  write_ship_brief "$GONE_HOME" "$id" "Gone-projection fixture $id."
+  spawn_task "$id" "$GONE_HOME" "$RECOVERY_PROJECT_DIR" > "$TMP_ROOT/$id-first.out" 2> "$TMP_ROOT/$id-first.err" \
+    || fail "$id projected fixture spawn failed: $(cat "$TMP_ROOT/$id-first.err")"
+  remember_meta_worktree "$meta" >/dev/null
+  GONE_OLD_WSID=$(grep '^herdr_workspace_id=' "$meta" | cut -d= -f2-)
+  GONE_OLD_PANE=$(grep '^herdr_pane_id=' "$meta" | cut -d= -f2-)
+  GONE_OLD_TOKEN=$(grep '^projection_id=' "$GONE_HOME/state/$id.herdr-presentation" | cut -d= -f2-)
+  [ "$(workspace_owner_label "$GONE_OLD_WSID")" = 2ndmate-gone ] && [ "$GONE_OLD_WSID" != "$GONE_PARENT_WSID" ] \
+    || fail "$id fixture was not projected under its owning parent"
+  lab workspace close "$GONE_OLD_WSID" >/dev/null \
+    || fail "$id fixture could not remove its projected workspace"
+  if lab workspace get "$GONE_OLD_WSID" >/dev/null 2>&1 || lab pane get "$GONE_OLD_PANE" >/dev/null 2>&1; then
+    fail "$id fixture's projected workspace did not disappear"
+  fi
+}
+
+assert_reprojected_under_owner() {  # <id> <case-name>
+  local id=$1 name=$2 meta="$GONE_HOME/state/$1.meta" journal="$GONE_HOME/state/$1.herdr-presentation" wsid pane label
+  wsid=$(grep '^herdr_workspace_id=' "$meta" | cut -d= -f2-)
+  pane=$(grep '^herdr_pane_id=' "$meta" | cut -d= -f2-)
+  label=$(lab workspace get "$wsid" | jq -r '.result.workspace.label')
+  [ "$wsid" != "$GONE_OLD_WSID" ] && [ "$wsid" != "$GONE_PARENT_WSID" ] \
+    || fail "$name landed flat in the owner's workspace $wsid instead of a new projection"
+  case "$label" in
+    "└ $id · p:"*) ;;
+    *) fail "$name workspace is not a nested projection: $label" ;;
+  esac
+  [ "${label##* · p:}" != "$GONE_OLD_TOKEN" ] || fail "$name reused the vanished projection's token"
+  [ "$(workspace_owner_label "$wsid")" = 2ndmate-gone ] \
+    || fail "$name projection is not inside its owner's child block"
+  [ "$(grep '^version=' "$journal" | cut -d= -f2-)" = 2 ] \
+    && [ "$(grep '^workspace_id=' "$journal" | cut -d= -f2-)" = "$wsid" ] \
+    && [ "$(grep '^pane_id=' "$journal" | cut -d= -f2-)" = "$pane" ] \
+    && [ "$(grep '^parent_workspace_id=' "$journal" | cut -d= -f2-)" = "$GONE_PARENT_WSID" ] \
+    && [ "${label##* · p:}" = "$(grep '^projection_id=' "$journal" | cut -d= -f2-)" ] \
+    || fail "$name did not publish a fresh exact binding under the owning parent"
+  [ "$(lab workspace get "$GONE_PARENT_WSID" | jq -r '.result.workspace.label')" = 2ndmate-gone ] \
+    || fail "$name changed the owning parent"
+}
+
+# 1. A fresh spawn that finds the journal of a vanished workspace.
+GONE_START=$(log_line_count)
+spawn_projected_then_lose_workspace gone-fresh
+GONE_FOCUS=$(focus_snapshot)
+spawn_task gone-fresh "$GONE_HOME" "$RECOVERY_PROJECT_DIR" > "$TMP_ROOT/gone-fresh-again.out" 2> "$TMP_ROOT/gone-fresh-again.err" \
+  || fail "gone-fresh respawn failed: $(cat "$TMP_ROOT/gone-fresh-again.err")"
+remember_meta_worktree "$GONE_HOME/state/gone-fresh.meta" >/dev/null
+assert_reprojected_under_owner gone-fresh "respawn after the projected workspace vanished"
+if grep -F "ordinary flat layout" "$TMP_ROOT/gone-fresh-again.err" >/dev/null 2>&1; then
+  fail "respawn after the projected workspace vanished still reported a flat fallback"
+fi
+assert_focus_is "$GONE_FOCUS" "respawn after the projected workspace vanished"
+assert_no_ordering_lifecycle_calls_since "$GONE_START" "respawn after the projected workspace vanished"
+teardown_task gone-fresh "$GONE_HOME" > "$TMP_ROOT/gone-fresh-td.out" 2> "$TMP_ROOT/gone-fresh-td.err" \
+  || fail "gone-fresh teardown failed: $(cat "$TMP_ROOT/gone-fresh-td.err")"
+[ ! -e "$GONE_HOME/state/gone-fresh.herdr-presentation" ] \
+  || fail "teardown of the re-projected task did not retire its journal"
+
+# 2. A relaunch that rebinds the proven-gone endpoint.
+spawn_projected_then_lose_workspace gone-rebind
+GONE_FOCUS=$(focus_snapshot)
+GONE_START=$(log_line_count)
+relaunch_task gone-rebind "$GONE_HOME" > "$TMP_ROOT/gone-rebind-again.out" 2> "$TMP_ROOT/gone-rebind-again.err" \
+  || fail "gone-rebind relaunch failed: $(cat "$TMP_ROOT/gone-rebind-again.err")"
+assert_reprojected_under_owner gone-rebind "relaunch after the projected workspace vanished"
+assert_focus_is "$GONE_FOCUS" "relaunch after the projected workspace vanished"
+assert_no_ordering_lifecycle_calls_since "$GONE_START" "relaunch after the projected workspace vanished"
+teardown_task gone-rebind "$GONE_HOME" > "$TMP_ROOT/gone-rebind-td.out" 2> "$TMP_ROOT/gone-rebind-td.err" \
+  || fail "gone-rebind teardown failed: $(cat "$TMP_ROOT/gone-rebind-td.err")"
+[ ! -e "$GONE_HOME/state/gone-rebind.herdr-presentation" ] \
+  || fail "teardown of the re-projected relaunch did not retire its journal"
+
+# 3. Anything not proven gone keeps today's flat behavior.
+# 3a. A task that was never projected has no journal and no binding to replace.
+printf 'off\n' > "$GONE_HOME/config/herdr-presentation-spaces"
+write_ship_brief "$GONE_HOME" gone-flat 'Flat-origin relaunch fixture.'
+spawn_task gone-flat "$GONE_HOME" "$RECOVERY_PROJECT_DIR" > "$TMP_ROOT/gone-flat.out" 2> "$TMP_ROOT/gone-flat.err" \
+  || fail "gone-flat fixture spawn failed: $(cat "$TMP_ROOT/gone-flat.err")"
+remember_meta_worktree "$GONE_HOME/state/gone-flat.meta" >/dev/null
+: > "$GONE_HOME/config/herdr-presentation-spaces"
+[ "$(grep '^herdr_workspace_id=' "$GONE_HOME/state/gone-flat.meta" | cut -d= -f2-)" = "$GONE_PARENT_WSID" ] \
+  || fail "flat-origin fixture was not placed in the owner's workspace"
+lab tab close "$(grep '^herdr_tab_id=' "$GONE_HOME/state/gone-flat.meta" | cut -d= -f2-)" >/dev/null \
+  || fail "could not remove the flat-origin fixture's tab"
+relaunch_task gone-flat "$GONE_HOME" > "$TMP_ROOT/gone-flat-again.out" 2> "$TMP_ROOT/gone-flat-again.err" \
+  || fail "flat-origin relaunch failed: $(cat "$TMP_ROOT/gone-flat-again.err")"
+[ "$(grep '^herdr_workspace_id=' "$GONE_HOME/state/gone-flat.meta" | cut -d= -f2-)" = "$GONE_PARENT_WSID" ] \
+  || fail "a task with no projection journal was projected by its relaunch"
+[ ! -e "$GONE_HOME/state/gone-flat.herdr-presentation" ] \
+  || fail "relaunching a never-projected task published a projection journal"
+teardown_task gone-flat "$GONE_HOME" > "$TMP_ROOT/gone-flat-td.out" 2> "$TMP_ROOT/gone-flat-td.err" \
+  || fail "gone-flat teardown failed: $(cat "$TMP_ROOT/gone-flat-td.err")"
+
+# 3b. A contended session lock keeps the relaunch flat and the old journal untouched.
+spawn_projected_then_lose_workspace gone-locked
+GONE_LOCK_READY="$TMP_ROOT/gone-lock-ready"
+GONE_LOCK_RELEASE="$TMP_ROOT/gone-lock-release"
+GONE_LOCK_PATH=$(session_presentation_lock_path) || fail "could not resolve the session presentation lock"
+ROOT="$ROOT" READY="$GONE_LOCK_READY" RELEASE="$GONE_LOCK_RELEASE" LOCK="$GONE_LOCK_PATH" bash -c '
+  . "$ROOT/bin/fm-wake-lib.sh"
+  fm_lock_try_acquire "$LOCK" || exit 1
+  : > "$READY"
+  while [ ! -e "$RELEASE" ]; do sleep 0.05; done
+  fm_lock_release "$LOCK"
+' &
+LOCK_REFUSE_HOLDER_PID=$!
+while [ ! -e "$GONE_LOCK_READY" ] && kill -0 "$LOCK_REFUSE_HOLDER_PID" 2>/dev/null; do sleep 0.01; done
+[ -e "$GONE_LOCK_READY" ] || fail "could not hold the session presentation lock for the relaunch fixture"
+if relaunch_task gone-locked "$GONE_HOME" > "$TMP_ROOT/gone-locked-again.out" 2> "$TMP_ROOT/gone-locked-again.err"; then
+  GONE_LOCK_STATUS=0
+else
+  GONE_LOCK_STATUS=$?
+fi
+: > "$GONE_LOCK_RELEASE"
+wait "$LOCK_REFUSE_HOLDER_PID" || fail "session presentation lock holder failed"
+LOCK_REFUSE_HOLDER_PID=
+[ "$GONE_LOCK_STATUS" -eq 0 ] || fail "a contended lock stopped the relaunch: $(cat "$TMP_ROOT/gone-locked-again.err")"
+[ "$(grep '^herdr_workspace_id=' "$GONE_HOME/state/gone-locked.meta" | cut -d= -f2-)" = "$GONE_PARENT_WSID" ] \
+  || fail "a relaunch that could not take the session lock did not stay on the flat layout"
+[ "$(grep '^projection_id=' "$GONE_HOME/state/gone-locked.herdr-presentation" | cut -d= -f2-)" = "$GONE_OLD_TOKEN" ] \
+  || fail "a relaunch that could not take the session lock changed the old journal"
+teardown_task gone-locked "$GONE_HOME" > "$TMP_ROOT/gone-locked-td.out" 2> "$TMP_ROOT/gone-locked-td.err" \
+  || fail "gone-locked teardown failed: $(cat "$TMP_ROOT/gone-locked-td.err")"
+
+# 3c. The proof itself: only a bound journal whose workspace, token, and pane are
+# all absent from the exact recorded session counts as gone.
+# shellcheck source=/dev/null
+. "$ROOT/bin/backends/herdr.sh"
+PROOF_STATE="$TMP_ROOT/proof-state"; mkdir -p "$PROOF_STATE"
+PROOF_JOURNAL=$(fm_backend_herdr_projection_journal_path "$PROOF_STATE" proof1)
+PROOF_TOKEN=$(fm_backend_herdr_projection_journal_create "$PROOF_STATE" proof1)
+proof_gone() { fm_backend_herdr_projection_binding_proven_gone "$HERDR_LAB_SESSION" "$PROOF_JOURNAL" proof1 "$GONE_HOME"; }
+proof_gone && fail "a version 1 attempt journal binds no endpoint and must not prove anything"
+PROOF_OUT=$(lab workspace create --cwd "$PROJECT_DIR" --label "└ proof1 · p:$PROOF_TOKEN" --no-focus)
+PROOF_WSID=$(printf '%s' "$PROOF_OUT" | jq -r '.result.workspace.workspace_id')
+PROOF_TAB=$(printf '%s' "$PROOF_OUT" | jq -r '.result.tab.tab_id')
+PROOF_PANE=$(printf '%s' "$PROOF_OUT" | jq -r '.result.root_pane.pane_id')
+PROOF_HOME_ID=$(fm_backend_herdr_projection_home_identity "$GONE_HOME")
+fm_backend_herdr_projection_journal_bind "$PROOF_JOURNAL" proof1 "$PROOF_HOME_ID" "$HERDR_LAB_SESSION" \
+  "$PROOF_WSID" "$PROOF_TAB" "$PROOF_PANE" "$GONE_PARENT_WSID" 2ndmate-gone "└ proof1 · p:$PROOF_TOKEN" fm-proof1 \
+  || fail "could not bind the proof fixture journal"
+proof_gone && fail "a live projected workspace was reported gone"
+lab workspace rename "$PROOF_WSID" renamed-without-token >/dev/null
+proof_gone && fail "a renamed workspace that still exists was reported gone"
+fm_backend_herdr_projection_binding_proven_gone "$HERDR_LAB_SESSION" "$PROOF_JOURNAL" proof1 "$HOME_DIR" \
+  && fail "a journal bound to another home was reported gone"
+fm_backend_herdr_projection_binding_proven_gone other-session "$PROOF_JOURNAL" proof1 "$GONE_HOME" \
+  && fail "a journal bound to another session was reported gone"
+lab workspace close "$PROOF_WSID" >/dev/null || fail "could not close the proof fixture workspace"
+proof_gone || fail "a bound journal whose workspace, token, and pane are all absent was not reported gone"
+[ -e "$PROOF_JOURNAL" ] || fail "the read-only proof removed the journal"
+fm_backend_herdr_projection_journal_retire_gone "$HERDR_LAB_SESSION" "$PROOF_JOURNAL" proof1 "$GONE_HOME" \
+  || fail "a proven-gone journal could not be retired"
+[ ! -e "$PROOF_JOURNAL" ] || fail "retiring a proven-gone journal left the file"
+pass "real Herdr lab: a vanished projected workspace is re-projected under its owner by respawn and relaunch, and unproven cases stay flat"
+
 # Missing, renamed, and duplicate tokens are read-only recovery diagnostics.
 # The duplicate case allows flat fallback only when every matching pane is
 # positively agent-free.
