@@ -2573,10 +2573,11 @@ EOF
 #   FM_BACKEND_HERDR_PROJECTION_PANE_ID
 #   FM_BACKEND_HERDR_PROJECTION_CLEANUP_SAFE
 # CLEANUP_SAFE becomes 1 only after both creates returned complete exact IDs.
+# The optional <session> pins the named session; without it the ambient one is used.
 # A missing, failed, or malformed create response stays ambiguous and grants no
 # cleanup authority.
-fm_backend_herdr_projection_create_task() {  # <cwd> <workspace-label> <task-label>
-  local cwd=$1 workspace_label=$2 task_label=$3 session out tabs panes tab_count pane_count focus_before active_tab
+fm_backend_herdr_projection_create_task() {  # <cwd> <workspace-label> <task-label> [<session>]
+  local cwd=$1 workspace_label=$2 task_label=$3 session=${4:-} out tabs panes tab_count pane_count focus_before active_tab
   FM_BACKEND_HERDR_PROJECTION_SESSION=""
   FM_BACKEND_HERDR_PROJECTION_WORKSPACE_ID=""
   FM_BACKEND_HERDR_PROJECTION_SEEDED_TAB_ID=""
@@ -2586,7 +2587,7 @@ fm_backend_herdr_projection_create_task() {  # <cwd> <workspace-label> <task-lab
   FM_BACKEND_HERDR_PROJECTION_CLEANUP_SAFE=0
 
   fm_backend_herdr_version_check || return 1
-  session=$(fm_backend_herdr_session)
+  [ -n "$session" ] || session=$(fm_backend_herdr_session)
   fm_backend_herdr_server_ensure "$session" || return 1
   focus_before=$(fm_backend_herdr_projection_focus_snapshot "$session") || {
     echo "error: herdr presentation workspace create could not capture exact active workspace and tab; refusing a focus-unsafe projection" >&2
@@ -3013,14 +3014,47 @@ fm_backend_herdr_projection_endpoint_matches_journal() {  # <session> <workspace
   [ "$matches" = "$workspace_id" ]
 }
 
+# fm_backend_herdr_projection_binding_proven_gone: read-only proof that a
+# version 2 journal's projected workspace is gone from its exact recorded
+# session, so a new projection can replace it instead of falling flat.
+# Every one of these has to hold: the journal binds this exact physical home and
+# <session>, the workspace list was read and parsed with no label carrying the
+# token and no workspace carrying the bound workspace id, and the bound pane
+# reads as a structured pane_not_found. A version 1 attempt binds no endpoint,
+# and a foreign home, a renamed or reused workspace, a live or agent-free pane,
+# and any unreadable read are not proof, so the caller keeps its flat fallback.
+fm_backend_herdr_projection_binding_proven_gone() {  # <session> <journal> <task-id> <home>
+  local session=$1 journal=$2 id=$3 home=$4 canonical_home
+  fm_backend_herdr_projection_journal_snapshot "$journal" "$id" || return 1
+  [ "$FM_BACKEND_HERDR_JOURNAL_VERSION" = 2 ] || return 1
+  canonical_home=$(fm_backend_herdr_projection_home_identity "$home") || return 1
+  [ "$FM_BACKEND_HERDR_JOURNAL_HOME" = "$canonical_home" ] \
+    && [ "$FM_BACKEND_HERDR_JOURNAL_SESSION" = "$session" ] || return 1
+  fm_backend_herdr_projection_token_workspace_gone \
+    "$session" "$journal" "$id" "$FM_BACKEND_HERDR_JOURNAL_WORKSPACE_ID" || return 1
+  [ "$(fm_backend_herdr_pane_agent_state "$session" "$FM_BACKEND_HERDR_JOURNAL_PANE_ID")" = dead ]
+}
+
+# fm_backend_herdr_projection_journal_retire_gone: delete one journal whose
+# binding is proven gone, so the caller can publish a fresh attempt journal.
+# The proof is repeated immediately before the removal; nothing in Herdr is
+# touched, because the projection the journal described no longer exists.
+fm_backend_herdr_projection_journal_retire_gone() {  # <session> <journal> <task-id> <home>
+  fm_backend_herdr_projection_binding_proven_gone "$1" "$2" "$3" "$4" || return 1
+  rm -f "$2"
+}
+
 # fm_backend_herdr_projection_token_workspace_gone: true only when the named
 # session's workspace list was read and parsed successfully and no workspace
 # label still carries the journal's token. A version 1 attempt journal binds no
 # pane, so its projected workspace is confirmed gone only by this token absence;
 # any read or jq error - including a malformed entry that leaves the query
 # ambiguous - is unknown, not gone, so the session-start sweep keeps the journal.
-fm_backend_herdr_projection_token_workspace_gone() {  # <session> <journal> <task-id>
-  local session=$1 journal=$2 id=$3 token list verdict
+# An optional <workspace-id> additionally has to be absent from the list, so a
+# bound journal whose workspace id is still present under another label (a
+# rename, or a reused id) is present, not gone.
+fm_backend_herdr_projection_token_workspace_gone() {  # <session> <journal> <task-id> [<workspace-id>]
+  local session=$1 journal=$2 id=$3 workspace=${4:-} token list verdict
   token=$(fm_backend_herdr_projection_journal_token "$journal" "$id") || return 1
   list=$(fm_backend_herdr_cli "$session" workspace list 2>/dev/null) || return 1
   # A single jq verdict: "unknown" when the list is not an array or any entry is
@@ -3028,10 +3062,10 @@ fm_backend_herdr_projection_token_workspace_gone() {  # <session> <journal> <tas
   # the token-bearing workspace in a shape we cannot read), "present" when a
   # label carries the token, else "gone". jq errors and empty output both fall
   # through the guard below to unknown, keeping the journal.
-  verdict=$(printf '%s' "$list" | jq -r --arg suffix " · p:$token" '
+  verdict=$(printf '%s' "$list" | jq -r --arg suffix " · p:$token" --arg workspace "$workspace" '
     if (.result.workspaces | type) != "array" then "unknown"
     elif any(.result.workspaces[]; (type != "object") or (has("label") and (.label | type != "string"))) then "unknown"
-    elif any(.result.workspaces[]; (.label // "") | endswith($suffix)) then "present"
+    elif any(.result.workspaces[]; ((.label // "") | endswith($suffix)) or ($workspace != "" and .workspace_id == $workspace)) then "present"
     else "gone"
     end' 2>/dev/null) || return 1
   [ "$verdict" = "gone" ]
