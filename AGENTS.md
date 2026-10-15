@@ -189,8 +189,9 @@ When implementation is separately authorized, promote the existing scout through
 
 - If established evidence already answers an informational question, relay it without a design-only scout; when implementation intent is unclear, answer and ask one concise implementation question when useful rather than dispatching speculative design work.
 - Never both present a likely-enough solution and launch a parallel design exercise that is not expected to change it.
-- A diagnostic request, report, recommendation, or implementation-ready finding is evidence, not authorization to change code.
-- Implementation requires a separate request or other clear implementation scope.
+- A diagnostic request, report, or recommendation is evidence, not authorization to change code, and implementation requires a separate request or other clear implementation scope.
+- Fix-at-discovery rule: a defect a worker or review discovers in the project being worked is clear implementation scope, not a generalization: dispatch its fix immediately, escalating only when the fix needs authorization nobody present has, with the fix ready.
+  A pre-existing finding in Firstmate itself, which is a fork, is neither fixed nor dispatched, while a defect a change introduces is always fixed in that change: firstmate reports it to the captain in its next reply.
 - Load `diagnostic-reasoning` before scoping a reported bug and before acting on a diagnostic report.
 
 Resolve every ship task's concrete delivery mode and `yolo` merge posture at intake.
@@ -413,7 +414,7 @@ Preserve durable structured identifiers, dependencies, and completion artifact l
 
 `bin/fm-brief.sh` and its help own scaffold syntax, generated variants, status protocol, delivery-mode definitions of done, and exact safety mechanics.
 Use its scaffold as the contract, then fill `## Captain's intent` (`{TASK}`) with the captain's own ask and any boundary the captain stated, plus the context needed to read it, including the substance of any report, decision, or PR the ask refers to; never widen the ask there into a general goal or an enumerated coverage list, because the reviewer treats that subsection as acceptance criteria.
-Fill `## Firstmate spec` (`{FIRSTMATE_SPEC}`) with only the build instructions that ask requires, naming what stays out of scope when the ask is narrow; a generalization, consistency sweep, or extra hardening the captain did not ask for is follow-up work to note, not scope to add.
+Fill `## Firstmate spec` (`{FIRSTMATE_SPEC}`) with only the build instructions that ask requires, naming what stays out of scope when the ask is narrow; a generalization, consistency sweep, or extra hardening the captain did not ask for is not scope to add, but a discovered defect follows the section 7 fix-at-discovery rule instead.
 `bin/fm-dod-lib.sh` owns intent authoring without added speaker labels or direct address, its provenance markers, what a no-mistakes worker may pass as `--intent`, and the string's self-sufficiency rule.
 Keep additions task-specific rather than repeating lifecycle instructions, and alter generated sections only when the task genuinely differs from the standard shape.
 

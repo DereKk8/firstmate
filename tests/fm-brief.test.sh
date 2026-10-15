@@ -355,6 +355,12 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep 'never a bare number such as "PR 108"' "$brief" "$id: brief missing the full-PR-URL rule"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
+    assert_grep "is the exception: do not fix it; list it in your final report." "$brief" "$id: brief missing the Firstmate-itself exception"
+    assert_grep "A defect your own change introduces is always fixed in that change." "$brief" "$id: brief missing the own-change carve-out"
+    assert_grep "keep the done line exactly as the Definition of done gives it" "$brief" "$id: brief lets findings reshape the done line"
+    assert_no_grep "unless Firstmate is the project" "$brief" "$id: brief carries the assigned-project qualifier"
+    assert_grep "Fix every finding you discover in the project you are working on" "$brief" "$id: brief missing the fix-findings-now rule"
+    assert_grep 'with no "deferred" or "follow-up" category' "$brief" "$id: brief missing the findings final-report rule"
     assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
   done
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
@@ -1594,9 +1600,12 @@ test_branch_prefix_value_is_validated() {
 test_branch_prefix_command_is_shell_safe() {
   local home id prefix marker brief command repo branch
   home="$TMP_ROOT/branch-prefix-shell-safe-home"
-  marker="$TMP_ROOT/branch-prefix-shell-safe-marker"
+  repo="$TMP_ROOT/branch-prefix-shell-safe-repo"
+  marker="$repo/branch-prefix-shell-safe-marker"
   id='brief-branch-safe-g3'
-  prefix="\$(touch\${IFS}$marker)"
+  # Relative marker: an absolute TMP_ROOT with a dot-led component is not a valid ref name.
+  # shellcheck disable=SC2016 # The literal $(...) is the payload under test.
+  prefix='$(touch${IFS}branch-prefix-shell-safe-marker)'
   mkdir -p "$home/data"
   FM_HOME="$home" "$ROOT/bin/fm-brief.sh" "$id" some-proj --mode local-only --branch-prefix "$prefix" >/dev/null 2>&1 \
     || fail "a ref-format-valid metacharacter prefix should scaffold safely"
@@ -1604,7 +1613,6 @@ test_branch_prefix_command_is_shell_safe() {
   # shellcheck disable=SC2016 # The sed expression intentionally contains literal backticks.
   command=$(sed -n 's/^1\. First action: create your branch: `\(.*\)`$/\1/p' "$brief")
   [ -n "$command" ] || fail "generated brief exposed no branch-creation command"
-  repo="$TMP_ROOT/branch-prefix-shell-safe-repo"
   git init -q "$repo" || fail "could not initialize shell-safety fixture repository"
   ( cd "$repo" && eval "$command" ) || fail "generated branch-creation command did not run"
   assert_absent "$marker" "generated branch command executed the prefix's command substitution"
@@ -1662,6 +1670,12 @@ test_crewmate_scaffolds_forbid_pool_administration() {
   [ -n "$ship_rule" ] || fail "ship brief emitted no shared-infrastructure rule to compare"
   [ "$ship_rule" = "$scout_rule" ] \
     || fail "ship and scout shared-infrastructure rules have drifted apart"
+
+  assert_grep "Your worktree is discarded, so do not fix there" "$brief" "scout brief missing the scout findings rule"
+  assert_grep "List every finding you discover in the project you are scouting" "$brief" "scout brief missing the findings-in-report rule"
+  assert_grep "list it as a Firstmate finding with no fix; a defect your own change introduces is always fixed." "$brief" "scout brief missing the Firstmate-itself exception"
+  assert_no_grep "unless Firstmate is the project" "$brief" "scout brief carries the assigned-project qualifier"
+  assert_no_grep "Fix every finding you discover" "$brief" "scout brief carries the ship findings wording"
 
   # The daemon half of the rule survived the fold.
   assert_grep "no-mistakes" "$brief" "scout brief lost the shared no-mistakes daemon rule"

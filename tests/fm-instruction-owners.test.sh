@@ -131,6 +131,8 @@ test_diagnostic_owner_covers_causal_procedure() {
   done
   assert_grep "evidence, not authorization to change code" "$DIAG" \
     "diagnostic owner lost the diagnosis-only authority boundary"
+  assert_grep "fix-at-discovery rule" "$DIAG" \
+    "diagnostic owner lost the confirmed-defect dispatch rule"
   pass "diagnostic-reasoning owns the approved evidence procedure"
 }
 
@@ -338,7 +340,9 @@ test_intake_reuses_evidence_and_parallelizes_safe_work() {
 test_compressed_agents_retains_authority_and_supervision_safety() {
   for phrase in \
     'A lock-refused session must not spawn, steer, merge, drain the wake queue' \
-    'A diagnostic request, report, recommendation, or implementation-ready finding is evidence, not authorization to change code.' \
+    'A diagnostic request, report, or recommendation is evidence, not authorization to change code, and implementation requires a separate request or other clear implementation scope.' \
+    'A pre-existing finding in Firstmate itself, which is a fork, is neither fixed nor dispatched, while a defect a change introduces is always fixed in that change: firstmate reports it to the captain in its next reply.' \
+    'Fix-at-discovery rule: a defect a worker or review discovers in the project being worked is clear implementation scope' \
     'The selected delivery path owns its own rigor.' \
     'When no-mistakes is selected, no-mistakes alone owns review, fixes, tests, documentation, push, PR, and CI; otherwise follow the faster path without adding an independent reviewer.' \
     'Never hold work outside no-mistakes for a manual clean verdict, stack serial manual reviews, or infer authority for one from security, architecture, or risk alone.' \

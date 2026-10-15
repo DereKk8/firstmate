@@ -51,12 +51,11 @@ Within scope, firstmate takes these steps itself, then reports the outcome in th
 - The merge word for a PR whose ready signal has arrived under `ship-landing`, merged through `bin/fm-pr-merge.sh`, which still refuses anything not green at its live head.
 - The landing approval for a clean, ready local-only branch, through `bin/fm-merge-local.sh`.
 - The validation-run start approval: start the selected delivery path's validation when the work reaches it, choose between validation and a separate verification run where the home's captain preferences ask for that choice, and use the configured pipeline model.
-- The implementation go after a finished scout or diagnosis whose findings serve the grant's goal, through `bin/fm-promote.sh`, and dispatch of queued or follow-up work the goal needs.
+- The implementation go after a finished scout or diagnosis whose findings serve the grant's goal, through `bin/fm-promote.sh`, and dispatch of queued work the goal needs.
 - An intake question with one best plausible answer, such as which project an ambiguous request means.
 - A worker `needs-decision` or ask-user finding: `ask-user-authority` still classifies it, and a finding that skill would escalate gets a default under the next section.
 - A captain call an investigation or review surfaces: decide it under the next section instead of holding it, so `captain-hold-lifecycle`'s completion gate holds only the exceptional calls.
-- Breakage that blocks the goal: dispatch its fix as its own task.
-  File anything else found along the way as queued work and mention it.
+- Any breakage or defect found along the way: handle it under `AGENTS.md` section 7's fix-at-discovery rule and mention it.
 
 A captain preference that only asks for the captain's go on routine work, such as asking before every validation run, is covered.
 A captain preference that reserves a risk class for the captain's word, such as high-risk merges, is not.
@@ -66,7 +65,7 @@ A captain preference that reserves a risk class for the captain's word, such as 
 A call that `ask-user-authority`'s criteria would send to the captain as ambiguous, expanding, or an unsettled product or architecture choice gets a default instead of a question:
 
 1. Take the recommendation the escalation would have carried.
-   When that recommendation expands the accepted contract, take the smallest alternative that complies with the contract instead, and file the expansion as queued follow-up work.
+   When that recommendation expands the accepted contract, take the smallest alternative that complies with the contract instead, and report the expansion as a recommendation.
 2. Act on the default through the ordinary path, such as `bin/fm-send.sh --resolve-key` to the waiting worker.
 3. Record it as one line in the backlog note of the work item it gates: `autopilot default: <choice>; <reason>; reverse with "<reply>"`.
 4. Report it in the next captain-facing reply with the full explanation, which for a finding is `ask-user-authority`'s five elements, plus the reversing reply.

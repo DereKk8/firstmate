@@ -661,6 +661,16 @@ IFS= read -r -d '' SHARED_INFRA_RULE <<'EOF' || true
 EOF
 SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
 
+FINDINGS_RULE=$(fm_ship_findings_rule)
+
+IFS= read -r -d '' SCOUT_FINDINGS_RULE <<'EOF' || true
+8. List every finding you discover in the project you are scouting - a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs - in your report with its ready fix (file, line, change), under firstmate's fix-at-discovery rule; firstmate dispatches each fix when the report lands.
+   Your worktree is discarded, so do not fix there, send no status line per finding, and do not stop at a finding.
+   A pre-existing finding in Firstmate itself (its repository, scripts, or skills) is the exception: list it as a Firstmate finding with no fix; a defect your own change introduces is always fixed.
+   Never defer a finding or leave it unlisted.
+EOF
+SCOUT_FINDINGS_RULE=${SCOUT_FINDINGS_RULE%$'\n'}
+
 if [ -n "$BASE_BRANCH" ]; then
   SETUP_BASE="You are in a disposable git worktree of $REPO, at a detached HEAD on a clean copy of its base branch.
 Base branch: $BASE_BRANCH"
@@ -709,6 +719,8 @@ $CREWMATE_PAUSE_INSTRUCTIONS
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
 
+$SCOUT_FINDINGS_RULE
+
 $WAIT_BLOCK$INBOX_SECTION
 
 # Definition of done
@@ -717,7 +729,7 @@ The report must stand alone: what you did, what you found, the evidence (command
 $LAVISH_LINE
 Before reporting done, read and follow \`$FM_ROOT/.agents/skills/captain-hold-lifecycle/SKILL.md\` and pass its shared completion gate for the report and any visual review.
 When the report is complete, append \`done [at=<epoch>]: {one-line conclusion}\` to the status file and stop.
-If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), say so in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
+If your findings reveal work that should ship (e.g. you reproduced a bug and the fix is clear), list each with its ready fix in the report; firstmate may promote this task in place, and you would then receive mode-specific ship instructions as a follow-up message.
 EOF
 append_brief_include
 echo "scaffolded: $BRIEF (scout; replace {TASK} and {FIRSTMATE_SPEC})"
@@ -788,6 +800,8 @@ $ASK_USER_BLOCK
    A decision or blocker you opened stays open until a \`resolved\` line carrying its exact key lands; a later \`done:\` or \`working:\` line never closes it, even when the answer is what started that work.
    Firstmate's reply normally writes that closing line at answer time; when a blocker or wait clears WITHOUT a firstmate reply, append \`resolved [at=<epoch>]: {how it cleared}\` yourself (same \`[key=<slug>]\` if you opened it with one) as you resume.
 $SHARED_INFRA_RULE
+
+$FINDINGS_RULE
 
 $WAIT_BLOCK$INBOX_SECTION
 

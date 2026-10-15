@@ -49,5 +49,4 @@ A diagnosis brief should ask for the reproduction, trigger/mask/symptom separati
 A diagnostic report should distinguish observed facts from hypotheses and state any unresolved uncertainty that could change the recommended scope.
 Before acting on the report, verify that its claimed cause explains the end-user reproduction and the proven path without relying on an untested masking condition.
 If a load-bearing element is missing, route a focused follow-up investigation instead of treating confidence or implementation detail as proof.
-A diagnosis or implementation-ready recommendation is evidence, not authorization to change code.
-Implementation still requires the captain's request or another existing lifecycle authority, and the reproduction should become the regression test when a fix is authorized.
+A diagnosis or recommendation is evidence, not authorization to change code; a defect it confirms follows `AGENTS.md` section 7's fix-at-discovery rule, and the reproduction should become the regression test.
