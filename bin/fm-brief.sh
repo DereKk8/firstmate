@@ -661,21 +661,11 @@ IFS= read -r -d '' SHARED_INFRA_RULE <<'EOF' || true
 EOF
 SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
 
-IFS= read -r -d '' FINDINGS_RULE <<'EOF' || true
-8. Own every finding you discover in the project you are working on: a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs.
-   A finding in Firstmate itself (its repository, scripts, or skills) is the exception unless Firstmate is the project you were assigned: report it to firstmate with a status line and neither fix nor dispatch it.
-   Fix a project finding now, in your change; a discovered defect is not scope creep or a generalization the captain did not ask for.
-   Append `working [at=<epoch>]: finding: {what, and how you fixed it}` at once; a finding you cannot fix inside your change is reported the same way so firstmate dispatches its fix immediately.
-   While a no-mistakes run is active, findings of that run belong to the pipeline and its ask-user escalation, not to this rule.
-   Never defer a finding, note it for later, or leave it as a TODO.
-   If its fix needs an authorization you lack, append `needs-decision` with the fix ready.
-   Your final report lists every finding and how it was fixed, with no "deferred" or "follow-up" category.
-EOF
-FINDINGS_RULE=${FINDINGS_RULE%$'\n'}
+FINDINGS_RULE=$(fm_ship_findings_rule)
 
 IFS= read -r -d '' SCOUT_FINDINGS_RULE <<'EOF' || true
 8. Own every finding you discover in the project you are scouting: a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs.
-   A finding in Firstmate itself (its repository, scripts, or skills) is the exception unless Firstmate is the project you were assigned: list it in the report as a finding for firstmate only, with no fix.
+   A finding in Firstmate itself (its repository, scripts, or skills) is the exception: list it in the report as a Firstmate finding for firstmate only, with no fix.
    Your worktree is discarded, so do not fix it there.
    List each finding in your report with its ready fix (file, line, change); firstmate dispatches each fix when the report lands.
    Send no status line per finding and do not stop at a finding; only a fix that needs an authorization nobody present has goes in the report as a decision with the fix ready.

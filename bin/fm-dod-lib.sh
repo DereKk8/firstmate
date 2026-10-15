@@ -191,6 +191,22 @@ fm_brief_base_branches() {  # <brief>
   ' "$1"
 }
 
+# fm_ship_findings_rule owns ship Rule 8, the fix-findings-now rule. fm-brief.sh
+# renders it into every ship brief and fm-promote.sh prints it for a promoted scout,
+# so both deliver the same text.
+fm_ship_findings_rule() {
+  cat <<'RULE_EOF'
+8. Own every finding you discover in the project you are working on: a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs.
+   A finding in Firstmate itself (its repository, scripts, or skills) is the exception: report it with `working [at=<epoch>]: firstmate finding: {what}` and neither fix nor dispatch it.
+   Fix a project finding now, in your change; a discovered defect is not scope creep or a generalization the captain did not ask for.
+   Append `working [at=<epoch>]: finding: {what, and how you fixed it}` at once; a finding you cannot fix inside your change is reported the same way so firstmate dispatches its fix immediately.
+   While a no-mistakes run is active, findings of that run belong to the pipeline and its ask-user escalation, not to this rule.
+   Never defer a finding, note it for later, or leave it as a TODO.
+   If its fix needs an authorization you lack, append `needs-decision` with the fix ready.
+   Your final report lists every finding and how it was fixed, with no "deferred" or "follow-up" category.
+RULE_EOF
+}
+
 fm_ship_rule_one() {  # <no-mistakes|direct-PR|local-only> <task-id> [branch] [<forge>] [<base>]
   local mode=$1 id=$2 forge=${4:-none} base=${5:-}
   local branch=${3:-fm/$id} target='the default branch'
