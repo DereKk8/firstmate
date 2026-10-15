@@ -196,14 +196,11 @@ fm_brief_base_branches() {  # <brief>
 # so both deliver the same text.
 fm_ship_findings_rule() {
   cat <<'RULE_EOF'
-8. Own every finding you discover in the project you are working on: a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs.
-   A finding in Firstmate itself (its repository, scripts, or skills) is the exception: report it with `working [at=<epoch>]: firstmate finding: {what}` and neither fix nor dispatch it.
-   Fix a project finding now, in your change; a discovered defect is not scope creep or a generalization the captain did not ask for.
-   Append `working [at=<epoch>]: finding: {what, and how you fixed it}` at once; for a finding you cannot fix inside your change, append `working [at=<epoch>]: finding needs dispatch: {what, and the ready fix}` so firstmate dispatches its fix.
-   While a no-mistakes run is active, findings of that run belong to the pipeline and its ask-user escalation, not to this rule.
-   Never defer a finding, note it for later, or leave it as a TODO.
-   If its fix needs an authorization you lack, append `needs-decision` with the fix ready.
-   Your final report lists every finding with its fix, or with the dispatched task, Firstmate report, or open decision that owns it, with no "deferred" or "follow-up" category.
+8. Fix every finding you discover in the project you are working on - a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs - in your change, under firstmate's fix-at-discovery rule; a discovered defect is not scope creep.
+   A finding in Firstmate itself (its repository, scripts, or skills) is the exception: do not fix it; list it in your final report.
+   While a no-mistakes run is active, findings of that run belong to the pipeline and its ask-user escalation.
+   If a fix needs an authorization you lack, append `needs-decision` with the fix ready.
+   Never defer a finding or leave a TODO; your final report and done line list every finding with its fix or owner, with no "deferred" or "follow-up" category.
 RULE_EOF
 }
 

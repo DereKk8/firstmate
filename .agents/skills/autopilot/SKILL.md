@@ -55,7 +55,7 @@ Within scope, firstmate takes these steps itself, then reports the outcome in th
 - An intake question with one best plausible answer, such as which project an ambiguous request means.
 - A worker `needs-decision` or ask-user finding: `ask-user-authority` still classifies it, and a finding that skill would escalate gets a default under the next section.
 - A captain call an investigation or review surfaces: decide it under the next section instead of holding it, so `captain-hold-lifecycle`'s completion gate holds only the exceptional calls.
-- Any breakage or defect found along the way in the project being worked: fix it in the current change, or dispatch its fix immediately as its own task, and mention it.
+- Any breakage or defect found along the way: handle it under `AGENTS.md` section 7's fix-at-discovery rule and mention it.
 
 A captain preference that only asks for the captain's go on routine work, such as asking before every validation run, is covered.
 A captain preference that reserves a risk class for the captain's word, such as high-risk merges, is not.

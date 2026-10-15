@@ -664,11 +664,9 @@ SHARED_INFRA_RULE=${SHARED_INFRA_RULE%$'\n'}
 FINDINGS_RULE=$(fm_ship_findings_rule)
 
 IFS= read -r -d '' SCOUT_FINDINGS_RULE <<'EOF' || true
-8. Own every finding you discover in the project you are scouting: a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs.
-   A finding in Firstmate itself (its repository, scripts, or skills) is the exception: list it in the report as a Firstmate finding for firstmate only, with no fix.
-   Your worktree is discarded, so do not fix it there.
-   List each finding in your report with its ready fix (file, line, change); firstmate dispatches each fix when the report lands.
-   Send no status line per finding and do not stop at a finding; only a fix that needs an authorization nobody present has goes in the report as a decision with the fix ready.
+8. List every finding you discover in the project you are scouting - a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs - in your report with its ready fix (file, line, change), under firstmate's fix-at-discovery rule; firstmate dispatches each fix when the report lands.
+   Your worktree is discarded, so do not fix there, send no status line per finding, and do not stop at a finding.
+   A finding in Firstmate itself (its repository, scripts, or skills) is the exception: list it as a Firstmate finding with no fix.
    Never defer a finding or leave it unlisted.
 EOF
 SCOUT_FINDINGS_RULE=${SCOUT_FINDINGS_RULE%$'\n'}

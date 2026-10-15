@@ -355,10 +355,10 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep 'never a bare number such as "PR 108"' "$brief" "$id: brief missing the full-PR-URL rule"
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
-    assert_grep "is the exception: report it with \`working [at=<epoch>]: firstmate finding:" "$brief" "$id: brief missing the Firstmate-itself exception"
+    assert_grep "is the exception: do not fix it; list it in your final report." "$brief" "$id: brief missing the Firstmate-itself exception"
     assert_no_grep "unless Firstmate is the project" "$brief" "$id: brief carries the assigned-project qualifier"
-    assert_grep "Own every finding you discover" "$brief" "$id: brief missing the fix-findings-now rule"
-    assert_grep 'owns it, with no "deferred" or "follow-up" category' "$brief" "$id: brief missing the findings final-report rule"
+    assert_grep "Fix every finding you discover in the project you are working on" "$brief" "$id: brief missing the fix-findings-now rule"
+    assert_grep 'with no "deferred" or "follow-up" category' "$brief" "$id: brief missing the findings final-report rule"
     assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
   done
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
@@ -1669,11 +1669,11 @@ test_crewmate_scaffolds_forbid_pool_administration() {
   [ "$ship_rule" = "$scout_rule" ] \
     || fail "ship and scout shared-infrastructure rules have drifted apart"
 
-  assert_grep "Your worktree is discarded, so do not fix it there." "$brief" "scout brief missing the scout findings rule"
-  assert_grep "List each finding in your report with its ready fix" "$brief" "scout brief missing the findings-in-report rule"
-  assert_grep "is the exception: list it in the report as a Firstmate finding for firstmate only, with no fix." "$brief" "scout brief missing the Firstmate-itself exception"
+  assert_grep "Your worktree is discarded, so do not fix there" "$brief" "scout brief missing the scout findings rule"
+  assert_grep "List every finding you discover in the project you are scouting" "$brief" "scout brief missing the findings-in-report rule"
+  assert_grep "list it as a Firstmate finding with no fix." "$brief" "scout brief missing the Firstmate-itself exception"
   assert_no_grep "unless Firstmate is the project" "$brief" "scout brief carries the assigned-project qualifier"
-  assert_no_grep "how it was fixed" "$brief" "scout brief carries the ship findings wording"
+  assert_no_grep "Fix every finding you discover" "$brief" "scout brief carries the ship findings wording"
 
   # The daemon half of the rule survived the fold.
   assert_grep "no-mistakes" "$brief" "scout brief lost the shared no-mistakes daemon rule"

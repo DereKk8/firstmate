@@ -815,7 +815,7 @@ EOF
     "promotion copied the scout Setup/Rules contract into Firstmate spec"
   assert_grep "The ship findings rule below supersedes scout rule 8." "$brief" \
     "promotion did not state that the ship findings rule supersedes scout rule 8"
-  assert_grep "Own every finding you discover in the project you are working on" "$brief" \
+  assert_grep "Fix every finding you discover in the project you are working on" "$brief" \
     "promotion did not deliver the ship findings rule"
   assert_no_grep "# Setup" "$brief" \
     "promotion copied a later brief section into a Task subsection"
