@@ -358,7 +358,7 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep "is the exception: report it with \`working [at=<epoch>]: firstmate finding:" "$brief" "$id: brief missing the Firstmate-itself exception"
     assert_no_grep "unless Firstmate is the project" "$brief" "$id: brief carries the assigned-project qualifier"
     assert_grep "Own every finding you discover" "$brief" "$id: brief missing the fix-findings-now rule"
-    assert_grep 'no "deferred" or "follow-up" category' "$brief" "$id: brief missing the findings final-report rule"
+    assert_grep 'owns it, with no "deferred" or "follow-up" category' "$brief" "$id: brief missing the findings final-report rule"
     assert_no_grep "EOF" "$brief" "$id: brief leaked a heredoc EOF marker (unterminated heredoc)"
   done
   pass "fm-brief.sh: no-mistakes/direct-PR/local-only briefs generate cleanly"
