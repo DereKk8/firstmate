@@ -356,6 +356,8 @@ test_ship_modes_generate_clean_briefs() {
     assert_grep "mid-task \`working:\` line (including setup complete) is nonterminal" "$brief" \
       "$id: brief missing nonterminal working:/setup-complete gate protection"
     assert_grep "is the exception: do not fix it; list it in your final report." "$brief" "$id: brief missing the Firstmate-itself exception"
+    assert_grep "A defect your own change introduces is always fixed in that change." "$brief" "$id: brief missing the own-change carve-out"
+    assert_grep "keep the done line exactly as the Definition of done gives it" "$brief" "$id: brief lets findings reshape the done line"
     assert_no_grep "unless Firstmate is the project" "$brief" "$id: brief carries the assigned-project qualifier"
     assert_grep "Fix every finding you discover in the project you are working on" "$brief" "$id: brief missing the fix-findings-now rule"
     assert_grep 'with no "deferred" or "follow-up" category' "$brief" "$id: brief missing the findings final-report rule"
@@ -1671,7 +1673,7 @@ test_crewmate_scaffolds_forbid_pool_administration() {
 
   assert_grep "Your worktree is discarded, so do not fix there" "$brief" "scout brief missing the scout findings rule"
   assert_grep "List every finding you discover in the project you are scouting" "$brief" "scout brief missing the findings-in-report rule"
-  assert_grep "list it as a Firstmate finding with no fix." "$brief" "scout brief missing the Firstmate-itself exception"
+  assert_grep "list it as a Firstmate finding with no fix; a defect your own change introduces is always fixed." "$brief" "scout brief missing the Firstmate-itself exception"
   assert_no_grep "unless Firstmate is the project" "$brief" "scout brief carries the assigned-project qualifier"
   assert_no_grep "Fix every finding you discover" "$brief" "scout brief carries the ship findings wording"
 

@@ -197,10 +197,11 @@ fm_brief_base_branches() {  # <brief>
 fm_ship_findings_rule() {
   cat <<'RULE_EOF'
 8. Fix every finding you discover in the project you are working on - a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs - in your change, under firstmate's fix-at-discovery rule; a discovered defect is not scope creep.
-   A finding in Firstmate itself (its repository, scripts, or skills) is the exception: do not fix it; list it in your final report.
+   A pre-existing finding in Firstmate itself (its repository, scripts, or skills), outside what your task changes, is the exception: do not fix it; list it in your final report.
+   A defect your own change introduces is always fixed in that change.
    While a no-mistakes run is active, findings of that run belong to the pipeline and its ask-user escalation.
    If a fix needs an authorization you lack, append `needs-decision` with the fix ready.
-   Never defer a finding or leave a TODO; your final report and done line list every finding with its fix or owner, with no "deferred" or "follow-up" category.
+   Never defer a finding or leave a TODO; list every finding with its fix or owner in your final report and, when you open a PR, its description, with no "deferred" or "follow-up" category; keep the done line exactly as the Definition of done gives it.
 RULE_EOF
 }
 

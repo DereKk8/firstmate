@@ -191,7 +191,7 @@ When implementation is separately authorized, promote the existing scout through
 - Never both present a likely-enough solution and launch a parallel design exercise that is not expected to change it.
 - A diagnostic request, report, or recommendation is evidence, not authorization to change code, and implementation requires a separate request or other clear implementation scope.
 - Fix-at-discovery rule: a defect a worker or review discovers in the project being worked is clear implementation scope, not a generalization: dispatch its fix immediately, escalating only when the fix needs authorization nobody present has, with the fix ready.
-  A finding in Firstmate itself, which is a fork, is neither fixed nor dispatched: firstmate reports it to the captain in its next reply.
+  A pre-existing finding in Firstmate itself, which is a fork, is neither fixed nor dispatched, while a defect a change introduces is always fixed in that change: firstmate reports it to the captain in its next reply.
 - Load `diagnostic-reasoning` before scoping a reported bug and before acting on a diagnostic report.
 
 Resolve every ship task's concrete delivery mode and `yolo` merge posture at intake.

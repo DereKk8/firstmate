@@ -666,7 +666,7 @@ FINDINGS_RULE=$(fm_ship_findings_rule)
 IFS= read -r -d '' SCOUT_FINDINGS_RULE <<'EOF' || true
 8. List every finding you discover in the project you are scouting - a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs - in your report with its ready fix (file, line, change), under firstmate's fix-at-discovery rule; firstmate dispatches each fix when the report lands.
    Your worktree is discarded, so do not fix there, send no status line per finding, and do not stop at a finding.
-   A finding in Firstmate itself (its repository, scripts, or skills) is the exception: list it as a Firstmate finding with no fix.
+   A pre-existing finding in Firstmate itself (its repository, scripts, or skills) is the exception: list it as a Firstmate finding with no fix; a defect your own change introduces is always fixed.
    Never defer a finding or leave it unlisted.
 EOF
 SCOUT_FINDINGS_RULE=${SCOUT_FINDINGS_RULE%$'\n'}
