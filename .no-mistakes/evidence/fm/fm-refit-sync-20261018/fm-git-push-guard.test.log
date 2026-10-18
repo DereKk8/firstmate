@@ -1,0 +1,6 @@
+ok - push guard: origin, origin's URL, and a remote aliasing origin's URL are all refused
+ok - push guard: the backup remote takes only backup/<id>, never the task branch or prefix
+ok - push guard: with an empty task prefix the bare task branch is still refused anywhere
+ok - push guard: the repository's own pre-push hook runs after the guard passes and still blocks
+ok - push guard: an unreadable guard file refuses every push
+# all fm-git-push-guard tests passed

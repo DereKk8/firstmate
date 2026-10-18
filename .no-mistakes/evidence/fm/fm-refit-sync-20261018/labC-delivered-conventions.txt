@@ -1,0 +1,8 @@
+## Delivery conventions as delivered to the worker (/tmp/fmlab.gW1K2g/home/state/operational-inbox/1792333343-2d8042211d0de325.msg)
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-42`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+This task opens no pull request, so no PR title or description convention applies; the Definition of done below owns whatever this task publishes.
+
+(no PR title/description rule anywhere in the delivered brief)

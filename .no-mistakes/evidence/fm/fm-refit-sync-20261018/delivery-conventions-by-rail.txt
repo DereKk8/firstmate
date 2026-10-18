@@ -1,0 +1,87 @@
+===== ext-ticketed =====
+1. First action: create your branch: `git checkout -b feature/ENG-42-ext-ticketed --`
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-42`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+This task opens no pull request, so no PR title or description convention applies; the Definition of done below owns whatever this task publishes.
+-- Definition of done (first 3 lines):
+Delivery contract: mode=direct-PR forge=external
+Ship branch: feature/ENG-42-ext-ticketed
+This task ships **direct-PR** through an external review tool: the tool uploads a snapshot of your local commits itself, so you never push a branch to publish, and there is no pull request to open.
+
+===== ext-ticketless =====
+1. First action: create your branch: `git checkout -b fm/ext-ticketless --`
+# Project delivery conventions
+This task has no authoritative external ticket, so use the fleet branch form unless a project declaration and ticket are both present.
+Do not invent or infer a ticket id from the task id, title, slug, or task text.
+This task opens no pull request, so no PR title or description convention applies; the Definition of done below owns whatever this task publishes.
+-- Definition of done (first 3 lines):
+Delivery contract: mode=direct-PR forge=external
+Ship branch: fm/ext-ticketless
+This task ships **direct-PR** through an external review tool: the tool uploads a snapshot of your local commits itself, so you never push a branch to publish, and there is no pull request to open.
+
+===== ger-ticketed =====
+1. First action: create your branch: `git checkout -b feature/ENG-43-ger-ticketed --`
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-43`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+This task opens no pull request, so no PR title or description convention applies; the Definition of done below owns whatever this task publishes.
+-- Definition of done (first 3 lines):
+Delivery contract: mode=no-mistakes forge=gerrit shape=squash
+Ship branch: feature/ENG-43-ger-ticketed
+This project's review server is Gerrit: it has no pull requests and no forge CI the pipeline can watch, so **no-mistakes runs here as a review pass that ends at a ready branch**, and you then publish that branch as one change.
+
+===== loc-ticketed =====
+1. First action: create your branch: `git checkout -b fm/loc-ticketed --`
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-44`.
+Local-only does not compose a ticketed branch template; it uses the resolved ship-branch prefix plus `loc-ticketed` because guarded local landing and sibling tooling require a task-id branch.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+This task opens no pull request, so no PR title or description convention applies; the Definition of done below owns whatever this task publishes.
+-- Definition of done (first 3 lines):
+Delivery contract: mode=local-only
+Ship branch: fm/loc-ticketed
+This task ships **local-only**: no remote, no PR, no pipeline.
+
+===== gh-ticketed =====
+1. First action: create your branch: `git checkout -b feature/ENG-45-gh-ticketed --`
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-45`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-45`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+-- Definition of done (first 3 lines):
+Delivery contract: mode=direct-PR
+Ship branch: feature/ENG-45-gh-ticketed
+This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+
+===== gh-ticketless =====
+1. First action: create your branch: `git checkout -b fm/gh-ticketless --`
+# Project delivery conventions
+This task has no authoritative external ticket, so use the fleet branch form unless a project declaration and ticket are both present.
+For PR-based delivery, no ticket-specific PR title or issue-link requirement applies; do not invent or infer a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, you own the PR title.
+-- Definition of done (first 3 lines):
+Delivery contract: mode=direct-PR
+Ship branch: fm/gh-ticketless
+This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+
+===== fj-ticketed =====
+1. First action: create your branch: `git checkout -b feature/ENG-46-fj-ticketed --`
+# Project delivery conventions
+The authoritative external ticket for this task is `ENG-46`.
+Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation.
+The ticket input comes only through `FM_BRIEF_TICKET`; never infer or invent a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR title must include the Notion Task ID `ENG-46`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a `## How to test` section and `Closes #{issue}`.
+-- Definition of done (first 3 lines):
+Delivery contract: mode=direct-PR forge=forgejo
+Ship branch: feature/ENG-46-fj-ticketed
+This task ships **direct-PR**: you raise the PR yourself, without the no-mistakes pipeline.
+

@@ -1,0 +1,7 @@
+ext-ticketed    notion-title=0 pubsentence=0 closes=0 own-title=0 no-pr-handoff=1
+ext-ticketless  notion-title=0 pubsentence=0 closes=0 own-title=0 no-pr-handoff=1
+ger-ticketed    notion-title=0 pubsentence=0 closes=0 own-title=0 no-pr-handoff=1
+loc-ticketed    notion-title=0 pubsentence=0 closes=0 own-title=0 no-pr-handoff=1
+gh-ticketed     notion-title=1 pubsentence=1 closes=1 own-title=1 no-pr-handoff=0
+gh-ticketless   notion-title=0 pubsentence=1 closes=0 own-title=1 no-pr-handoff=0
+fj-ticketed     notion-title=1 pubsentence=1 closes=1 own-title=1 no-pr-handoff=0

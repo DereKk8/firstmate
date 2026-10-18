@@ -1,0 +1,3 @@
+ok - forge=external spawn: yolo, a missing adapter, an absent or aliasing backup, an overlapping prefix, and a forge mismatch all refuse before launch
+ok - forge=external spawn: installs the push guard even under keep-ai-trailers and records forge and backup in the task record
+# all fm-spawn-external-review tests passed

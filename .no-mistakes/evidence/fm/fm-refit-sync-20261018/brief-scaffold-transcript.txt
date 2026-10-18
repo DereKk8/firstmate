@@ -1,0 +1,21 @@
+$ FM_BRIEF_TICKET='ENG-42' fm-brief.sh ext-ticketed ext --mode direct-PR --forge external
+scaffolded: /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/ext-ticketed/brief.md (ship, mode=direct-PR forge=external; replace {TASK} and {FIRSTMATE_SPEC})
+  (exit 0)
+$ FM_BRIEF_TICKET='' fm-brief.sh ext-ticketless ext --mode direct-PR --forge external
+scaffolded: /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/ext-ticketless/brief.md (ship, mode=direct-PR forge=external; replace {TASK} and {FIRSTMATE_SPEC})
+  (exit 0)
+$ FM_BRIEF_TICKET='ENG-43' fm-brief.sh ger-ticketed ger --mode no-mistakes --forge gerrit
+scaffolded: /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/ger-ticketed/brief.md (ship, mode=no-mistakes forge=gerrit shape=squash; replace {TASK} and {FIRSTMATE_SPEC})
+  (exit 0)
+$ FM_BRIEF_TICKET='ENG-44' fm-brief.sh loc-ticketed loc --mode local-only
+scaffolded: /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/loc-ticketed/brief.md (ship, mode=local-only; replace {TASK} and {FIRSTMATE_SPEC})
+  (exit 0)
+$ FM_BRIEF_TICKET='ENG-45' fm-brief.sh gh-ticketed gh --mode direct-PR
+scaffolded: /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/gh-ticketed/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+  (exit 0)
+$ FM_BRIEF_TICKET='' fm-brief.sh gh-ticketless gh --mode direct-PR
+scaffolded: /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/gh-ticketless/brief.md (ship, mode=direct-PR; replace {TASK} and {FIRSTMATE_SPEC})
+  (exit 0)
+$ FM_BRIEF_TICKET='ENG-46' fm-brief.sh fj-ticketed fj --mode direct-PR --forge forgejo
+scaffolded: /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/fj-ticketed/brief.md (ship, mode=direct-PR forge=forgejo; replace {TASK} and {FIRSTMATE_SPEC})
+  (exit 0)

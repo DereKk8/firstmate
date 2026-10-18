@@ -1,0 +1,46 @@
+## Registry resolution in lab home /home/derekk/.cache/tmp/fm-lab.iQoL7C (bin/fm-project-mode.sh)
+$ fm-project-mode.sh ext
+direct-PR off
+  (exit 0)
+$ fm-project-mode.sh --forge ext
+external
+  (exit 0)
+$ fm-project-mode.sh --branch-format ext
+feature/{ticket}-{short-description}
+  (exit 0)
+$ fm-project-mode.sh ger
+no-mistakes off
+  (exit 0)
+$ fm-project-mode.sh --forge ger
+gerrit
+  (exit 0)
+$ fm-project-mode.sh --branch-format ger
+feature/{ticket}-{short-description}
+  (exit 0)
+$ fm-project-mode.sh loc
+local-only off
+  (exit 0)
+$ fm-project-mode.sh --forge loc
+none
+  (exit 0)
+$ fm-project-mode.sh --branch-format loc
+feature/{ticket}-{short-description}
+  (exit 0)
+$ fm-project-mode.sh gh
+direct-PR off
+  (exit 0)
+$ fm-project-mode.sh --forge gh
+none
+  (exit 0)
+$ fm-project-mode.sh --branch-format gh
+feature/{ticket}-{short-description}
+  (exit 0)
+$ fm-project-mode.sh fj
+direct-PR off
+  (exit 0)
+$ fm-project-mode.sh --forge fj
+forgejo
+  (exit 0)
+$ fm-project-mode.sh --branch-format fj
+feature/{ticket}-{short-description}
+  (exit 0)

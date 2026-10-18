@@ -1,0 +1,12 @@
+## Adversarial spawn attempts (must refuse before any endpoint exists)
+$ fm-spawn.sh lab866cb882272a-ext projects/ext --mode direct-PR --yolo on --harness claude
+error: --yolo on is refused for lab866cb882272a-ext: ext is registered forge=external, where firstmate can neither observe nor perform the review tool's approval or merge; spawn with --yolo off
+  (exit 1)
+$ fm-spawn.sh lab866cb882272a-ext projects/ext --mode no-mistakes --yolo off --harness claude
+error: delivery mismatch for lab866cb882272a-ext: the brief says mode=direct-PR but this spawn passed --mode no-mistakes; correct the flag or re-scaffold the brief so the worker's instructions and the task record agree
+  (exit 1)
+windows after refusals:
+  lab
+  fm-lab866cb882272a-worker
+  main
+meta present after refusals: none

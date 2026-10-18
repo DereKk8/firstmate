@@ -1,0 +1,48 @@
+## state/lab866cb882272a-ext.meta
+window=firstmate:fm-lab866cb882272a-ext
+endpoint_task_id=lab866cb882272a-ext
+worktree=/tmp/fmlab.gW1K2g/treehouse/.treehouse/ext-d6f28b/1/ext
+project=/tmp/fmlab.gW1K2g/home/projects/ext
+harness=claude
+kind=ship
+mode=direct-PR
+yolo=off
+branch=feature/ENG-42-lab866cb882272a-ext
+tasktmp=/tmp/fm-lab866cb882272a-ext
+forge=external
+backup_remote=backup
+backup_prefix=backup/
+model=sonnet
+effort=low
+busy_gen=g1792333342.1875458.9079
+spawn_gen=s1792333343.1873523.6006
+
+## state/lab866cb882272a-ext.push-guard
+fm-git-push-guard-v1
+task_branch=feature/ENG-42-lab866cb882272a-ext
+task_prefix=feature/ENG-42-
+shared_url=/tmp/fmlab.gW1K2g/origins/ext
+backup_remote=backup
+backup_prefix=backup/
+backup_url=/tmp/fmlab.gW1K2g/origins/ext-backup
+
+## git hooks dir
+total 64
+dr-x------ 2 derekk derekk  360 Oct 18 09:22 .
+drwxr-xr-x 9 derekk derekk 1380 Oct 18 09:22 ..
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 applypatch-msg
+-r-x------ 1 derekk derekk 1230 Oct 18 09:22 commit-msg
+-r-------- 1 derekk derekk  228 Oct 18 09:22 fm-push-guard
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 post-applypatch
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 post-checkout
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 post-commit
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 post-merge
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 post-rewrite
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 pre-applypatch
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 pre-auto-gc
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 pre-commit
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 pre-merge-commit
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 prepare-commit-msg
+-r-x------ 1 derekk derekk 1558 Oct 18 09:22 pre-push
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 pre-rebase
+-r-x------ 1 derekk derekk 1157 Oct 18 09:22 sendemail-validate

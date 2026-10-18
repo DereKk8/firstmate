@@ -1,0 +1,3 @@
+$ fm-spawn.sh lab866cb882272a-ext projects/ext --mode direct-PR --yolo off --harness claude --model sonnet --effort low
+spawned lab866cb882272a-ext harness=claude kind=ship mode=direct-PR yolo=off window=firstmate:fm-lab866cb882272a-ext worktree=/tmp/fmlab.gW1K2g/treehouse/.treehouse/ext-d6f28b/1/ext
+  (exit 0)

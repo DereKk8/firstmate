@@ -1,0 +1,35 @@
+## Push attempts from the worker worktree /tmp/fmlab.gW1K2g/treehouse/.treehouse/ext-d6f28b/1/ext with the worker's own hook environment (/tmp/fm-lab866cb882272a-ext+6c82ae722803f9d05f5c5441f543fb5aaf03a5a3e189d299db49ed66de3828ab/git-config.s1792333343.1873523.6006.sh)
+$ git push origin HEAD:refs/heads/feature/ENG-42-lab866cb882272a-ext
+    fm-git-push-guard: refused: this project's review tool uploads its own snapshot, so nothing is ever pushed to origin; upload with the review tool your Definition of done names
+    error: failed to push some refs to '/tmp/fmlab.gW1K2g/origins/ext.git'
+    (exit 1)
+$ git push origin HEAD:refs/heads/unrelated-branch
+    fm-git-push-guard: refused: this project's review tool uploads its own snapshot, so nothing is ever pushed to origin; upload with the review tool your Definition of done names
+    error: failed to push some refs to '/tmp/fmlab.gW1K2g/origins/ext.git'
+    (exit 1)
+$ git push /tmp/fmlab.gW1K2g/origins/ext.git HEAD:refs/heads/via-url
+    fm-git-push-guard: refused: /tmp/fmlab.gW1K2g/origins/ext.git is the project's shared origin, and nothing is ever pushed there on this project; upload with the review tool your Definition of done names
+    error: failed to push some refs to '/tmp/fmlab.gW1K2g/origins/ext.git'
+    (exit 1)
+$ git push backup HEAD:refs/heads/feature/ENG-42-lab866cb882272a-ext
+    fm-git-push-guard: refused: refs/heads/feature/ENG-42-lab866cb882272a-ext is your task branch, which is never pushed to any remote on this project; push a durable copy to refs/heads/backup/<task-id> on backup instead
+    error: failed to push some refs to '/tmp/fmlab.gW1K2g/origins/ext-backup.git'
+    (exit 1)
+$ git push backup HEAD:refs/heads/feature/ENG-42-another-branch
+    fm-git-push-guard: refused: refs/heads/feature/ENG-42-another-branch is under the task branch prefix feature/ENG-42-, which is never pushed to any remote on this project; push a durable copy to refs/heads/backup/<task-id> on backup instead
+    error: failed to push some refs to '/tmp/fmlab.gW1K2g/origins/ext-backup.git'
+    (exit 1)
+$ git push backup HEAD:refs/heads/elsewhere
+    fm-git-push-guard: refused: refs/heads/elsewhere is outside refs/heads/backup/, the only namespace a durable copy may use on the backup remote backup
+    error: failed to push some refs to '/tmp/fmlab.gW1K2g/origins/ext-backup.git'
+    (exit 1)
+$ git push backup HEAD:refs/heads/backup/lab866cb882272a-ext
+    To /tmp/fmlab.gW1K2g/origins/ext-backup.git
+     * [new branch]      HEAD -> backup/lab866cb882272a-ext
+    (exit 0)
+
+## Resulting refs
+origin (shared):
+  refs/heads/main b994148
+backup (personal):
+  refs/heads/backup/lab866cb882272a-ext 5175acf

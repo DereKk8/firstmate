@@ -1,0 +1,30 @@
+## Adversarial registry rows (bin/fm-project-mode.sh)
+row: - ext-yolo [direct-PR +yolo forge=external] - external with yolo (added 2026-10-18)
+$ fm-project-mode.sh ext-yolo
+refused: +yolo is registered for ext-yolo but yolo is inactive for forge=external, so this reports yolo=off: firstmate can neither observe nor perform the review tool's approval or merge, so every review escalates
+direct-PR off
+  (exit 0)
+$ fm-project-mode.sh --forge ext-yolo
+external
+  (exit 0)
+row: - ext-nm [no-mistakes forge=external] - external with the pipeline (added 2026-10-18)
+$ fm-project-mode.sh ext-nm
+no-mistakes off
+  (exit 0)
+$ fm-project-mode.sh --forge ext-nm
+external
+  (exit 0)
+row: - ext-misplaced [direct-PR] forge=external branch=feature/{ticket}-{short-description} - misplaced annotation (added 2026-10-18)
+$ fm-project-mode.sh ext-misplaced
+refused: misplaced annotation "forge=external branch=feature/{ticket}-{short-description}" for ext-misplaced in /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/projects.md: branch=, forge=, and +yolo are read only inside the [mode ...] brackets; correct data/projects.md
+  (exit 3)
+$ fm-project-mode.sh --forge ext-misplaced
+refused: misplaced annotation "forge=external branch=feature/{ticket}-{short-description}" for ext-misplaced in /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/projects.md: branch=, forge=, and +yolo are read only inside the [mode ...] brackets; correct data/projects.md
+  (exit 3)
+row: - ext-typo [direct-PR forge=extrnal] - malformed forge value (added 2026-10-18)
+$ fm-project-mode.sh ext-typo
+refused: unknown forge "extrnal" registered for ext-typo in /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/projects.md; the accepted values are forge=gerrit, forge=forgejo, and forge=external, or no forge token at all for a forge whose pull requests no-mistakes already drives; correct the registry entry
+  (exit 3)
+$ fm-project-mode.sh --forge ext-typo
+refused: unknown forge "extrnal" registered for ext-typo in /home/derekk/.cache/tmp/fm-lab.iQoL7C/data/projects.md; the accepted values are forge=gerrit, forge=forgejo, and forge=external, or no forge token at all for a forge whose pull requests no-mistakes already drives; correct the registry entry
+  (exit 3)
