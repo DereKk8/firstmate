@@ -433,14 +433,149 @@ test_forge_selection_renders_correct_cli() {
     assert_contains "$out" "$expect" "$label was refused without its reason"
     [ ! -e "$home/data/brief-forge-bad/brief.md" ] || fail "$label left a brief behind"
   done <<'ROWS'
-a value outside the closed set|--mode direct-PR --forge gitlab|expected none, gerrit, or forgejo
-the removed github value|--mode direct-PR --forge github|expected none, gerrit, or forgejo
+a value outside the closed set|--mode direct-PR --forge gitlab|expected none, gerrit, forgejo, or external
+the removed github value|--mode direct-PR --forge github|expected none, gerrit, forgejo, or external
 forgejo on local-only|--mode local-only --forge forgejo|cannot ship mode=local-only
 a shape on forgejo|--mode direct-PR --forge forgejo --shape squash|--shape applies only with --forge gerrit
 forgejo on a scout|--scout --forge forgejo|apply only to ship briefs
 ROWS
 
   pass "fm-brief.sh: --forge forgejo names tea in Rule 3, the direct-PR DOD, and the draft read-back, marks the delivery contract, and the closed set refuses everything else"
+}
+
+# --forge external renders the external review rail from bin/fm-dod-lib.sh: a
+# first rule that forbids every task push, the review-tool contract, and the
+# home's adapter body. It is direct-PR only, carries no base branch, and needs
+# config/external-review.md; an adapter that tries to carry its own delivery
+# contract line is refused.
+test_forge_external_renders_the_review_rail() {
+  local home brief out rc
+  home="$TMP_ROOT/forge-external-home"
+  mkdir -p "$home/data" "$home/config"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ext-noadapter some-proj --mode direct-PR --forge external 2>&1); rc=$?
+  expect_code 1 "$rc" "--forge external without an adapter must be refused"
+  assert_contains "$out" "external-review.md" "the missing-adapter refusal did not name the file"
+  [ ! -e "$home/data/brief-ext-noadapter/brief.md" ] || fail "a refused external scaffold left a brief behind"
+
+  printf '%s\n' 'Delivery contract: mode=direct-PR' > "$home/config/external-review.md"
+  out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ext-contract some-proj --mode direct-PR --forge external 2>&1); rc=$?
+  expect_code 1 "$rc" "an adapter carrying a delivery contract line must be refused"
+  assert_contains "$out" "must not carry a 'Delivery contract: mode=' line" "the adapter contract refusal did not say why"
+
+  # shellcheck disable=SC2016 # Backticks are literal adapter text.
+  printf '%s\n' 'Run `review-tool upload --draft`.' > "$home/config/external-review.md"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ext some-proj --mode direct-PR --forge external >/dev/null 2>&1 \
+    || fail "--forge external should scaffold a direct-PR ship brief"
+  brief="$home/data/brief-ext/brief.md"
+  grep -qx "Delivery contract: mode=direct-PR forge=external" "$brief" \
+    || fail "--forge external must mark the delivery contract line for the spawn's registry check"
+  # shellcheck disable=SC2016 # Backticks are literal generated brief text.
+  assert_grep '1. Never push to `origin`' "$brief" "--forge external must forbid the origin push in rule 1"
+  assert_grep "Publish only through the review tool your Definition of done names" "$brief" \
+    "--forge external must not send the worker to a forge CLI in rule 3"
+  assert_grep "## Review tool instructions (home configuration)" "$brief" "--forge external must render the adapter section"
+  assert_grep "review-tool upload --draft" "$brief" "--forge external must render the adapter body"
+  assert_no_grep "personal backup remote" "$brief" "--forge external offered a backup nobody configured"
+
+  printf 'backup\n' > "$home/config/external-review-backup"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ext-backup some-proj --mode direct-PR --forge external >/dev/null 2>&1 \
+    || fail "--forge external with a backup should scaffold"
+  # shellcheck disable=SC2016 # Backticks are literal generated brief text.
+  assert_grep '`git push backup HEAD:refs/heads/backup/brief-ext-backup`' "$home/data/brief-ext-backup/brief.md" \
+    "--forge external with a backup must name the durable copy"
+
+  while IFS='|' read -r label args expect; do
+    [ -n "$label" ] || continue
+    # shellcheck disable=SC2086 # The row's arguments must split into words.
+    out=$(FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-ext-bad some-proj $args 2>&1); rc=$?
+    expect_code 1 "$rc" "$label must be refused"
+    assert_contains "$out" "$expect" "$label was refused without its reason"
+    [ ! -e "$home/data/brief-ext-bad/brief.md" ] || fail "$label left a brief behind"
+  done <<'ROWS'
+external on no-mistakes|--mode no-mistakes --forge external|ships direct-PR only for now
+external on local-only|--mode local-only --forge external|cannot ship mode=local-only
+external with a base branch|--mode direct-PR --forge external --base-branch release|not supported on forge=external
+ROWS
+  pass "fm-brief.sh: --forge external renders the no-push rule, the review contract, and the adapter, and refuses every impossible shape"
+}
+
+# The project delivery conventions carry PR title and description rules only
+# where the Definition of done opens a pull request. An external review tool and
+# Gerrit publish a review whose title and description their DoD owns, and
+# local-only publishes nothing, so those briefs keep the ticket and branch
+# conventions and carry no second, conflicting PR publication contract.
+test_delivery_conventions_follow_the_publication_rail() {
+  local home brief id
+  home="$TMP_ROOT/delivery-conventions-home"
+  mkdir -p "$home/data" "$home/config"
+  # shellcheck disable=SC2016 # Backticks are literal adapter text.
+  printf '%s\n' 'Run `review-tool upload`.' > "$home/config/external-review.md"
+  cat > "$home/data/projects.md" <<'EOF'
+- ext [direct-PR forge=external branch=feature/{ticket}-{short-description}] - external review fixture (added 2026-10-18)
+- ger [no-mistakes forge=gerrit branch=feature/{ticket}-{short-description}] - gerrit fixture (added 2026-10-18)
+- loc [local-only branch=feature/{ticket}-{short-description}] - local-only fixture (added 2026-10-18)
+- pr [direct-PR branch=feature/{ticket}-{short-description}] - pull request fixture (added 2026-10-18)
+EOF
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-7 \
+    "$ROOT/bin/fm-brief.sh" ext-ticketed ext --mode direct-PR --forge external >/dev/null 2>&1 \
+    || fail "ticketed external review task should scaffold"
+  FM_HOME="$home" FM_BRIEF_TICKET='' \
+    "$ROOT/bin/fm-brief.sh" ext-ticketless ext --mode direct-PR --forge external >/dev/null 2>&1 \
+    || fail "ticketless external review task should scaffold"
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-8 \
+    "$ROOT/bin/fm-brief.sh" ger-ticketed ger --mode no-mistakes --forge gerrit >/dev/null 2>&1 \
+    || fail "ticketed gerrit task should scaffold"
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-9 \
+    "$ROOT/bin/fm-brief.sh" loc-ticketed loc --mode local-only >/dev/null 2>&1 \
+    || fail "ticketed local-only task should scaffold"
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-10 \
+    "$ROOT/bin/fm-brief.sh" pr-ticketed pr --mode direct-PR >/dev/null 2>&1 \
+    || fail "ticketed pull request task should scaffold"
+
+  brief="$home/data/ext-ticketed/brief.md"
+  assert_grep 'git checkout -b feature/ENG-7-ext-ticketed' "$brief" \
+    "ticketed external review task lost the ticketed branch template"
+  assert_grep "The authoritative external ticket for this task is \`ENG-7\`." "$brief" \
+    "ticketed external review task lost the ticket convention"
+  # shellcheck disable=SC2016 # Backticks are literal generated brief text.
+  assert_grep '1. Never push to `origin`' "$brief" \
+    "ticketed external review task lost the no-publishing-push rule"
+  assert_grep 'there is no pull request to open' "$brief" \
+    "ticketed external review task lost the review-upload Definition of done"
+
+  brief="$home/data/ext-ticketless/brief.md"
+  assert_grep 'git checkout -b fm/ext-ticketless' "$brief" \
+    "ticketless external review task did not keep the fleet branch"
+  assert_grep 'This task has no authoritative external ticket' "$brief" \
+    "ticketless external review task lost the ticketless branch convention"
+  assert_grep 'Do not invent or infer a ticket id' "$brief" \
+    "ticketless external review task lost the no-invented-ticket rule"
+
+  for id in ext-ticketed ext-ticketless ger-ticketed loc-ticketed; do
+    brief="$home/data/$id/brief.md"
+    assert_grep 'This task opens no pull request, so no PR title or description convention applies' "$brief" \
+      "$id did not hand publication to its Definition of done"
+    assert_no_grep 'must include the Notion Task ID' "$brief" \
+      "$id carried a PR title rule its Definition of done contradicts"
+    assert_no_grep 'publication-ready sentence' "$brief" \
+      "$id carried a PR description rule its Definition of done contradicts"
+    assert_no_grep 'Closes #{issue}' "$brief" \
+      "$id carried a PR issue-link rule its Definition of done contradicts"
+    assert_no_grep 'you own the PR title' "$brief" \
+      "$id carried a PR title ownership rule its Definition of done contradicts"
+  done
+  assert_grep 'git checkout -b feature/ENG-8-ger-ticketed' "$home/data/ger-ticketed/brief.md" \
+    "ticketed gerrit task lost the ticketed branch template"
+
+  brief="$home/data/pr-ticketed/brief.md"
+  assert_grep "the PR title must include the Notion Task ID \`ENG-10\`" "$brief" \
+    "ticketed pull request task lost the Notion Task ID PR-title rule"
+  assert_grep 'publication-ready sentence' "$brief" \
+    "ticketed pull request task lost the PR description rule"
+  assert_no_grep 'This task opens no pull request' "$brief" \
+    "ticketed pull request task was told it opens no pull request"
+  pass "fm-brief.sh: PR title and description conventions reach only briefs whose Definition of done opens a pull request"
 }
 
 # A ship task's delivery mode is firstmate's per-task decision, so a missing or
@@ -1255,6 +1390,37 @@ test_scout_and_secondmate_scaffold() {
   pass "fm-brief: scout and secondmate code paths still scaffold well-formed briefs"
 }
 
+# Contract: the inbox listing the brief tells a worker to run succeeds silently
+# on an empty or absent inbox and lists messages in numeric order, in bash and zsh.
+test_inbox_listing_command_is_safe_on_empty_inbox() {
+  local home brief cmd inbox shell_name out status
+  home="$TMP_ROOT/inbox-listing-home"
+  mkdir -p "$home/data" "$home/config"
+  FM_HOME="$home" "$ROOT/bin/fm-brief.sh" brief-inbox-list some-proj --mode no-mistakes >/dev/null 2>&1 \
+    || fail "fm-brief.sh ship scaffold exited non-zero"
+  brief="$home/data/brief-inbox-list/brief.md"
+  # shellcheck disable=SC2016
+  cmd=$(sed -n 's/.*list them with `\(find [^`]*\)`.*/\1/p' "$brief" | head -1)
+  [ -n "$cmd" ] || fail "the brief does not give a find-based inbox listing command"
+  inbox="$home/state/brief-inbox-list.inbox"
+  for shell_name in bash zsh; do
+    command -v "$shell_name" >/dev/null 2>&1 || continue
+    rm -rf "$inbox"
+    status=0
+    out=$("$shell_name" -c "$cmd" 2>&1) || status=$?
+    [ "$status" -eq 0 ] && [ -z "$out" ] || fail "$shell_name: absent inbox listing was not silent success (exit $status): $out"
+    mkdir -p "$inbox"
+    status=0
+    out=$("$shell_name" -c "$cmd" 2>&1) || status=$?
+    [ "$status" -eq 0 ] && [ -z "$out" ] || fail "$shell_name: empty inbox listing was not silent success (exit $status): $out"
+    : > "$inbox/1000.msg"
+    : > "$inbox/999.msg"
+    out=$("$shell_name" -c "$cmd" 2>&1 | sed 's#.*/##' | tr '\n' ' ')
+    [ "$out" = "999.msg 1000.msg " ] || fail "$shell_name: messages not listed in numeric order: $out"
+  done
+  pass "fm-brief: inbox listing is silent on empty/absent inbox and numerically ordered"
+}
+
 # Contract: a waiting worker spends no turns. A decision wait ends the turn, an
 # external wait sleeps in one bounded blocking shell command sized per harness,
 # and a waiting worker neither polls its inbox nor polls a pipeline between holds.
@@ -1702,6 +1868,8 @@ test_project_branch_format_uses_only_authoritative_ticket
 test_ship_rule_names_the_checkout_branch
 test_ship_modes_generate_clean_briefs
 test_forge_selection_renders_correct_cli
+test_forge_external_renders_the_review_rail
+test_delivery_conventions_follow_the_publication_rail
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply
@@ -1724,6 +1892,7 @@ test_ship_and_scout_teach_validation_round_pause
 test_scout_and_secondmate_load_decision_hold_policy
 test_scout_and_secondmate_scaffold
 test_scout_lavish_line_follows_presentation_floor
+test_inbox_listing_command_is_safe_on_empty_inbox
 test_workers_wait_without_spending_turns
 test_wait_no_turns_absent_keeps_the_previous_brief
 test_home_brief_include_is_appended_last
