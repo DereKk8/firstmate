@@ -499,6 +499,85 @@ ROWS
   pass "fm-brief.sh: --forge external renders the no-push rule, the review contract, and the adapter, and refuses every impossible shape"
 }
 
+# The project delivery conventions carry PR title and description rules only
+# where the Definition of done opens a pull request. An external review tool and
+# Gerrit publish a review whose title and description their DoD owns, and
+# local-only publishes nothing, so those briefs keep the ticket and branch
+# conventions and carry no second, conflicting PR publication contract.
+test_delivery_conventions_follow_the_publication_rail() {
+  local home brief id
+  home="$TMP_ROOT/delivery-conventions-home"
+  mkdir -p "$home/data" "$home/config"
+  # shellcheck disable=SC2016 # Backticks are literal adapter text.
+  printf '%s\n' 'Run `review-tool upload`.' > "$home/config/external-review.md"
+  cat > "$home/data/projects.md" <<'EOF'
+- ext [direct-PR forge=external branch=feature/{ticket}-{short-description}] - external review fixture (added 2026-10-18)
+- ger [no-mistakes forge=gerrit branch=feature/{ticket}-{short-description}] - gerrit fixture (added 2026-10-18)
+- loc [local-only branch=feature/{ticket}-{short-description}] - local-only fixture (added 2026-10-18)
+- pr [direct-PR branch=feature/{ticket}-{short-description}] - pull request fixture (added 2026-10-18)
+EOF
+
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-7 \
+    "$ROOT/bin/fm-brief.sh" ext-ticketed ext --mode direct-PR --forge external >/dev/null 2>&1 \
+    || fail "ticketed external review task should scaffold"
+  FM_HOME="$home" FM_BRIEF_TICKET='' \
+    "$ROOT/bin/fm-brief.sh" ext-ticketless ext --mode direct-PR --forge external >/dev/null 2>&1 \
+    || fail "ticketless external review task should scaffold"
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-8 \
+    "$ROOT/bin/fm-brief.sh" ger-ticketed ger --mode no-mistakes --forge gerrit >/dev/null 2>&1 \
+    || fail "ticketed gerrit task should scaffold"
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-9 \
+    "$ROOT/bin/fm-brief.sh" loc-ticketed loc --mode local-only >/dev/null 2>&1 \
+    || fail "ticketed local-only task should scaffold"
+  FM_HOME="$home" FM_BRIEF_TICKET=ENG-10 \
+    "$ROOT/bin/fm-brief.sh" pr-ticketed pr --mode direct-PR >/dev/null 2>&1 \
+    || fail "ticketed pull request task should scaffold"
+
+  brief="$home/data/ext-ticketed/brief.md"
+  assert_grep 'git checkout -b feature/ENG-7-ext-ticketed' "$brief" \
+    "ticketed external review task lost the ticketed branch template"
+  assert_grep "The authoritative external ticket for this task is \`ENG-7\`." "$brief" \
+    "ticketed external review task lost the ticket convention"
+  # shellcheck disable=SC2016 # Backticks are literal generated brief text.
+  assert_grep '1. Never push to `origin`' "$brief" \
+    "ticketed external review task lost the no-publishing-push rule"
+  assert_grep 'there is no pull request to open' "$brief" \
+    "ticketed external review task lost the review-upload Definition of done"
+
+  brief="$home/data/ext-ticketless/brief.md"
+  assert_grep 'git checkout -b fm/ext-ticketless' "$brief" \
+    "ticketless external review task did not keep the fleet branch"
+  assert_grep 'This task has no authoritative external ticket' "$brief" \
+    "ticketless external review task lost the ticketless branch convention"
+  assert_grep 'Do not invent or infer a ticket id' "$brief" \
+    "ticketless external review task lost the no-invented-ticket rule"
+
+  for id in ext-ticketed ext-ticketless ger-ticketed loc-ticketed; do
+    brief="$home/data/$id/brief.md"
+    assert_grep 'This task opens no pull request, so no PR title or description convention applies' "$brief" \
+      "$id did not hand publication to its Definition of done"
+    assert_no_grep 'must include the Notion Task ID' "$brief" \
+      "$id carried a PR title rule its Definition of done contradicts"
+    assert_no_grep 'publication-ready sentence' "$brief" \
+      "$id carried a PR description rule its Definition of done contradicts"
+    assert_no_grep 'Closes #{issue}' "$brief" \
+      "$id carried a PR issue-link rule its Definition of done contradicts"
+    assert_no_grep 'you own the PR title' "$brief" \
+      "$id carried a PR title ownership rule its Definition of done contradicts"
+  done
+  assert_grep 'git checkout -b feature/ENG-8-ger-ticketed' "$home/data/ger-ticketed/brief.md" \
+    "ticketed gerrit task lost the ticketed branch template"
+
+  brief="$home/data/pr-ticketed/brief.md"
+  assert_grep "the PR title must include the Notion Task ID \`ENG-10\`" "$brief" \
+    "ticketed pull request task lost the Notion Task ID PR-title rule"
+  assert_grep 'publication-ready sentence' "$brief" \
+    "ticketed pull request task lost the PR description rule"
+  assert_no_grep 'This task opens no pull request' "$brief" \
+    "ticketed pull request task was told it opens no pull request"
+  pass "fm-brief.sh: PR title and description conventions reach only briefs whose Definition of done opens a pull request"
+}
+
 # A ship task's delivery mode is firstmate's per-task decision, so a missing or
 # unusable value must stop the scaffold instead of silently defaulting. The
 # no-mistakes-prod-only row is the conditional registry policy: it is never a task
@@ -1790,6 +1869,7 @@ test_ship_rule_names_the_checkout_branch
 test_ship_modes_generate_clean_briefs
 test_forge_selection_renders_correct_cli
 test_forge_external_renders_the_review_rail
+test_delivery_conventions_follow_the_publication_rail
 test_ship_mode_is_required_and_closed_set
 test_ship_mode_is_explicit_not_registry
 test_delivery_flags_are_refused_where_they_do_not_apply

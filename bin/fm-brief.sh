@@ -625,20 +625,33 @@ if ! git check-ref-format --branch "$BRANCH_NAME" >/dev/null 2>&1; then
 fi
 printf -v BRANCH_Q '%q' "$BRANCH_NAME"
 
+# PR title and description conventions apply only where the Definition of done
+# opens a pull request. local-only publishes nothing, and Gerrit and an external
+# review tool publish a review whose title and description the DoD itself owns.
+OPENS_PR=1
+case "$MODE:$FORGE" in
+  local-only:*|*:gerrit|*:external) OPENS_PR=0 ;;
+esac
+NO_PR_LINE="This task opens no pull request, so no PR title or description convention applies; the Definition of done below owns whatever this task publishes."
+
 if [ -n "$TICKET" ]; then
   if [ "$MODE" = local-only ]; then
     BRANCH_FORM_LINE="Local-only does not compose a ticketed branch template; it uses the resolved ship-branch prefix plus \`$ID\` because guarded local landing and sibling tooling require a task-id branch."
   else
     BRANCH_FORM_LINE="Branch naming composes from the task's external ticket id. Reading that id from the authoritative backlog field is not yet implemented because the tasks-axi markdown backlog backend exposes no such field today; this is a deliberate boundary, not a generic limitation."
   fi
+  PUBLICATION_LINES=$NO_PR_LINE
+  if [ "$OPENS_PR" -eq 1 ]; then
+    PUBLICATION_LINES="For PR-based delivery, the PR title must include the Notion Task ID \`$TICKET\`, and you own the PR title.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, the PR description must include a \`## How to test\` section and \`Closes #{issue}\`."
+  fi
   IFS= read -r -d '' DELIVERY_SECTION <<EOF || true
 # Project delivery conventions
 The authoritative external ticket for this task is \`$TICKET\`.
 $BRANCH_FORM_LINE
 The ticket input comes only through \`FM_BRIEF_TICKET\`; never infer or invent a ticket id from the task id, title, slug, or task text.
-For PR-based delivery, the PR title must include the Notion Task ID \`$TICKET\`, and you own the PR title.
-For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
-For PR-based delivery, the PR description must include a \`## How to test\` section and \`Closes #{issue}\`.
+$PUBLICATION_LINES
 EOF
 else
   if [ "$MODE" = local-only ]; then
@@ -646,12 +659,17 @@ else
   else
     BRANCH_FORM_LINE="This task has no authoritative external ticket, so use the fleet branch form unless a project declaration and ticket are both present."
   fi
+  PUBLICATION_LINES="Do not invent or infer a ticket id from the task id, title, slug, or task text.
+$NO_PR_LINE"
+  if [ "$OPENS_PR" -eq 1 ]; then
+    PUBLICATION_LINES="For PR-based delivery, no ticket-specific PR title or issue-link requirement applies; do not invent or infer a ticket id from the task id, title, slug, or task text.
+For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
+For PR-based delivery, you own the PR title."
+  fi
   IFS= read -r -d '' DELIVERY_SECTION <<EOF || true
 # Project delivery conventions
 $BRANCH_FORM_LINE
-For PR-based delivery, no ticket-specific PR title or issue-link requirement applies; do not invent or infer a ticket id from the task id, title, slug, or task text.
-For PR-based delivery, the PR description must open with one publication-ready sentence saying what this branch does, before any heading.
-For PR-based delivery, you own the PR title.
+$PUBLICATION_LINES
 EOF
 fi
 DELIVERY_SECTION=${DELIVERY_SECTION%$'\n'}
