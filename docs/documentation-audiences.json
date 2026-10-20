@@ -149,7 +149,7 @@
       "audience": "agent-runtime"
     },
     {
-      "path": ".agents/skills/explain/SKILL.md",
+      "path": ".agents/skills/explain-mate/SKILL.md",
       "audience": "agent-runtime"
     },
     {

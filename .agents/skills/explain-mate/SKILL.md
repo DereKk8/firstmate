@@ -1,12 +1,12 @@
 ---
-name: explain
-description: Plainly explain pending decisions waiting on the captain or a named decision or topic using a seven-part structured format. Use when the captain invokes /explain (e.g. "/explain", "/explain the pending decisions", "/explain that decision"), asks to explain pending decisions, or asks to explain a specific decision or topic.
+name: explain-mate
+description: Plainly explain pending decisions waiting on the captain or a named decision or topic using a seven-part structured format. Use when the captain invokes /explain-mate (e.g. "/explain-mate", "/explain-mate the pending decisions", "/explain-mate that decision"), asks to explain pending decisions, or asks to explain a specific decision or topic.
 user-invocable: true
 metadata:
   internal: true
 ---
 
-# explain
+# explain-mate
 
 Plainly explain pending decisions waiting on the captain so the captain can deeply understand each choice and make the best call.
 Firstmate answers directly in chat, in the same turn, without spawning a worker or opening a visual page.
@@ -14,8 +14,8 @@ Firstmate answers directly in chat, in the same turn, without spawning a worker 
 ## Operating sequence
 
 1. **Resolve the subject.**
-   When invoked with no arguments (e.g. `/explain` or "explain the pending decisions"), gather all decisions currently waiting on the captain.
-   When invoked with an argument (e.g. `/explain <subject>`), identify that specific named decision, pull request, project question, or topic.
+   When invoked with no arguments (e.g. `/explain-mate` or "explain the pending decisions"), gather all decisions currently waiting on the captain.
+   When invoked with an argument (e.g. `/explain-mate <subject>`), identify that specific named decision, pull request, project question, or topic.
 
 2. **Gather decisions from authoritative durable sources.**
    Do not invent a new reader or parser.
@@ -42,7 +42,7 @@ Firstmate answers directly in chat, in the same turn, without spawning a worker 
    - **The recommendation and direct question**: state the recommendation and ask directly which option the captain wants.
 
 5. **When explaining a single named topic or subject.**
-   If the captain asked `/explain <subject>`, apply the same seven-part structure to that named decision or topic wherever the sections fit.
+   If the captain asked `/explain-mate <subject>`, apply the same seven-part structure to that named decision or topic wherever the sections fit.
 
 ## Writing style and constraints
 

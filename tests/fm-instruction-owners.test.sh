@@ -10,8 +10,8 @@ set -u
 DIAG="$ROOT/.agents/skills/diagnostic-reasoning/SKILL.md"
 PROJECT="$ROOT/.agents/skills/project-management/SKILL.md"
 REFACTOR_REVIEW="$ROOT/.agents/skills/refactor-review/SKILL.md"
-EXPLAIN="$ROOT/.agents/skills/explain/SKILL.md"
-EXPLAIN_BRIEF="$ROOT/.agents/skills/explain/explainer-brief.md"
+EXPLAIN="$ROOT/.agents/skills/explain-mate/SKILL.md"
+EXPLAIN_BRIEF="$ROOT/.agents/skills/explain-mate/explainer-brief.md"
 HARNESS="$ROOT/.agents/skills/harness-adapters/references/common/model-and-effort.md"
 CLAUDE="$ROOT/.agents/skills/harness-adapters/references/harness/claude.md"
 CODEX="$ROOT/.agents/skills/harness-adapters/references/harness/codex.md"
@@ -82,12 +82,12 @@ test_explain_skill_contract() {
   assert_grep 'name: explain' "$EXPLAIN" "explain metadata has the wrong name"
   assert_grep 'user-invocable: true' "$EXPLAIN" "explain must be user-invocable"
   assert_grep '  internal: true' "$EXPLAIN" "explain must remain internal"
-  assert_absent "$ROOT/skills/explain" "explain must not be published as a public skill"
-  count=$(grep -Fc 'When the captain invokes `/explain`, load the `explain` skill' "$AGENTS")
+  assert_absent "$ROOT/skills/explain-mate" "explain must not be published as a public skill"
+  count=$(grep -Fc 'When the captain invokes `/explain-mate`, load the `explain-mate` skill' "$AGENTS")
   [ "$count" -eq 1 ] || fail "explain must have exactly one AGENTS.md trigger entry, found $count"
-  assert_grep '"path": ".agents/skills/explain/SKILL.md"' "$ROOT/docs/documentation-audiences.json" \
+  assert_grep '"path": ".agents/skills/explain-mate/SKILL.md"' "$ROOT/docs/documentation-audiences.json" \
     "documentation inventory must classify explain"
-  assert_no_grep '"path": ".agents/skills/explain/explainer-brief.md"' "$ROOT/docs/documentation-audiences.json" \
+  assert_no_grep '"path": ".agents/skills/explain-mate/explainer-brief.md"' "$ROOT/docs/documentation-audiences.json" \
     "documentation inventory must not contain deleted explainer-brief"
   for phrase in \
     'The setup' \
