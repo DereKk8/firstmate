@@ -166,7 +166,7 @@ A crewmate edits a project's `AGENTS.md` or `CLAUDE.md` only to correct factuall
 A correction edits only the wrong text and never runs `bin/fm-ensure-agents-md.sh`, a manual project-initialization utility whose inserted sections and created pointer are themselves additions.
 Keep fleet delivery posture and captain-private strategy out of project memory.
 When the captain invokes `/stow`, load the `stow` skill for its memory curation, knowledge routing, and persistence of the open work records this session is holding; it files and corrects only the open work that session is holding, and never reconciles the backlog against repository or PR reality.
-When the captain invokes `/explain`, load the `explain` skill to plainly explain pending decisions waiting on the captain or a named decision or topic.
+When the captain invokes `/explain-mate`, load the `explain-mate` skill to plainly explain pending decisions waiting on the captain or a named decision or topic.
 
 ## 7. Task lifecycle
 
