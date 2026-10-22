@@ -1,0 +1,14 @@
+ok - identity prints the pinned line and checks the loaded bytes
+ok - staffing follows the shared diff-size table
+ok - the diff count is git's own count on the pinned commits
+ok - the brief uses the shared fields and keeps marker lines intact
+ok - prepare publishes only the pinned skill and removes a failed directory
+ok - launch runs the command in the blind directory, returns its status, and refuses a bad directory or option
+ok - record-report stores the verdict by pull request URL and check-merge requires PASS
+ok - the history keeps every verdict in order and the merge gate reads the latest
+ok - record-report requires --scope full or delta
+ok - a legacy single record gates the merge until the first history entry, and is never changed
+ok - a home with config/zero-trust-required refuses a merge that has no review recorded
+ok - record-report accepts only the pinned release's report shape
+ok - identity --check reads a large skill file's version every time
+ok - identity --check refuses a pin that is not the newest master change to the skill

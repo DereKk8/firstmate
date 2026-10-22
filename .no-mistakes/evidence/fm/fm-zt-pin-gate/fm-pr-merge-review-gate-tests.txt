@@ -1,0 +1,8 @@
+ok - fm-pr-merge refuses a GitHub merge when the live head is not the reviewed head
+ok - fm-pr-merge merges when the live head is the reviewed head
+ok - fm-pr-merge ignores a review record for a different pull request
+ok - fm-pr-merge refuses a PR with no review in a home that requires zero trust, and merges its PASS
+ok - fm-pr-merge refuses a GitLab merge when the live head is not the reviewed head
+ok - fm-pr-merge refuses a Forgejo merge when the live head is not the reviewed head
+ok - fm-pr-merge refuses a GitHub merge when the review verdict is not PASS
+ok - fm-pr-merge finds a PASS review recorded by another task for the same pull request

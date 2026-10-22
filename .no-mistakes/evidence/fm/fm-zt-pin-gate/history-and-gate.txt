@@ -1,0 +1,76 @@
+### No review recorded, home without config/zero-trust-required
+$ fm-zt-review.sh check-merge task-x1 https://github.com/DereKk8/firstmate/pull/999 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+no-review
+exit=0
+
+### Same, after touch config/zero-trust-required
+$ fm-zt-review.sh check-merge task-x1 https://github.com/DereKk8/firstmate/pull/999 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+error: refusing to merge https://github.com/DereKk8/firstmate/pull/999 because this home requires a zero-trust review before merge and none is recorded
+exit=1
+
+### Old 2.x report heading "Blind-review suspicions" is refused
+$ fm-zt-review.sh record-report task-x1 /tmp/zt-live.PN3D/old.md https://github.com/DereKk8/firstmate/pull/999 --scope full
+error: report shape refused (order)
+exit=1
+
+### record-report without --scope is refused
+$ fm-zt-review.sh record-report task-x1 /tmp/zt-live.PN3D/r1.md https://github.com/DereKk8/firstmate/pull/999
+error: record-report needs a task id, a report file, a pull request URL, and --scope full|delta
+exit=1
+
+### Round 1: PRODUCT_FAIL on head A (full)
+$ fm-zt-review.sh record-report task-x1 /tmp/zt-live.PN3D/r1.md https://github.com/DereKk8/firstmate/pull/999 --scope full
+recorded=/tmp/zt-live.PN3D/state/zt-pr-26954ab015d61fe524136ff0f533943c970e30549409e7adfee6128f75c1fb1b.zt-history
+head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+verdict=PRODUCT_FAIL
+scope=full
+exit=0
+
+$ fm-zt-review.sh check-merge task-x1 https://github.com/DereKk8/firstmate/pull/999 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+error: refusing to merge https://github.com/DereKk8/firstmate/pull/999 because the latest review verdict is PRODUCT_FAIL, not PASS
+exit=1
+
+### Round 2: re-check of fixed head B fails again (delta)
+$ fm-zt-review.sh record-report task-x1 /tmp/zt-live.PN3D/r2.md https://github.com/DereKk8/firstmate/pull/999 --scope delta
+recorded=/tmp/zt-live.PN3D/state/zt-pr-26954ab015d61fe524136ff0f533943c970e30549409e7adfee6128f75c1fb1b.zt-history
+head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+verdict=PRODUCT_FAIL
+scope=delta
+exit=0
+
+### Round 3: PASS on head B (delta)
+$ fm-zt-review.sh record-report task-x1 /tmp/zt-live.PN3D/r3.md https://github.com/DereKk8/firstmate/pull/999 --scope delta
+recorded=/tmp/zt-live.PN3D/state/zt-pr-26954ab015d61fe524136ff0f533943c970e30549409e7adfee6128f75c1fb1b.zt-history
+head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+verdict=PASS
+scope=delta
+exit=0
+
+$ fm-zt-review.sh history https://github.com/DereKk8/firstmate/pull/999
+pr=https://github.com/DereKk8/firstmate/pull/999
+head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa verdict=PRODUCT_FAIL scope=full date=2026-10-22T13:36:40Z
+head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb verdict=PRODUCT_FAIL scope=delta date=2026-10-22T13:36:40Z
+head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb verdict=PASS scope=delta date=2026-10-22T13:36:40Z
+exit=0
+
+### merge gate: latest PASS of live head B
+$ fm-zt-review.sh check-merge task-x1 https://github.com/DereKk8/firstmate/pull/999 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+reviewed-head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+exit=0
+
+### merge gate: live head moved back to A (stale review)
+$ fm-zt-review.sh check-merge task-x1 https://github.com/DereKk8/firstmate/pull/999 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+error: refusing to merge https://github.com/DereKk8/firstmate/pull/999 because the live head aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa is not the reviewed head bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+exit=1
+
+### history file on disk
+pr=https://github.com/DereKk8/firstmate/pull/999
+head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa verdict=PRODUCT_FAIL scope=full date=2026-10-22T13:36:40Z
+head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb verdict=PRODUCT_FAIL scope=delta date=2026-10-22T13:36:40Z
+head=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb verdict=PASS scope=delta date=2026-10-22T13:36:40Z
+
+### Tampered history (garbage line appended) refuses the merge
+$ fm-zt-review.sh check-merge task-x1 https://github.com/DereKk8/firstmate/pull/999 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+error: review record /tmp/zt-live.PN3D/state/zt-pr-26954ab015d61fe524136ff0f533943c970e30549409e7adfee6128f75c1fb1b is unreadable, so the merge is refused
+exit=1
+

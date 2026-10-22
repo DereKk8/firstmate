@@ -1,0 +1,15 @@
+$ fm-zt-review.sh identity --check   (fresh clone of github.com/DereKk8/project-skills master)
+Identity: zero-trust-review 4.1.0 2de135997bd80ce0884f707f7e1815eebff97519 9bac1e9c09599491944e512617cf107f78e58650
+exit=0
+
+$ old 2.2.0 pin substituted via FM_ZT_PIN_OVERRIDE -> identity --check
+error: pinned skill 2.2.0 at cc3992c1f790fcf5de5c0a48849fc79533c1e8e3 is not the newest master change 2de135997bd80ce0884f707f7e1815eebff97519 (version 4.1.0); re-pin this script
+exit=1
+
+$ base-commit script (2.2.0 pin) identity --check against the same clone
+Identity: zero-trust-review 2.2.0 cc3992c1f790fcf5de5c0a48849fc79533c1e8e3 0489404d2b1dedc4b25dc42d4adef3ea8a2aea2c
+exit=0
+
+$ upstream moves: a newer commit on origin/master changes SKILL.md -> identity --check
+error: pinned skill 4.1.0 at 2de135997bd80ce0884f707f7e1815eebff97519 is not the newest master change b60b84f6ea1e9b45a5f5296a62357ad0f94388ed (version 4.2.0); re-pin this script
+exit=1

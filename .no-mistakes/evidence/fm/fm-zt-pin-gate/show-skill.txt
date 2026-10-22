@@ -1,0 +1,8 @@
+$ fm-zt-review.sh show-skill | grep rule IDs and version
+Skill version: 4.1.0
+- **ZT-PROP-2.** Before any fix round starts, the coordinator records, for each reproduced finding, three things: the trigger that is possib
+- **ZT-SEV-1.** A reproduced finding makes the verdict PRODUCT_FAIL only when it has real, reproduced harm (ZT-PROP-2) and falls in one of t
+- **ZT-LOOP-3.** If the re-check still fails or finds a new floor defect (ZT-SEV-1), that defect goes back to the author for the next fix ro
+- **ZT-LOOP-6.** The count of failed re-checks belongs to the PR, not to a run, so it carries across sessions and teams. Only a re-check of 
+  | PRODUCT_FAIL | A defect in the change is reproduced, by a suspicion or an attack, and falls in a floor category of ZT-SEV-1. |
+  4. Independent-review suspicions: a pointer to the saved review and its intent reading, which the report never overwrites, then each suspi

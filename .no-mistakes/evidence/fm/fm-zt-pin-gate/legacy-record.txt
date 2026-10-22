@@ -1,0 +1,11 @@
+### Legacy single-record (.zt-verified) PASS left by the earlier version, no history yet
+pr=https://github.com/DereKk8/firstmate/pull/998
+head=cccccccccccccccccccccccccccccccccccccccc
+verdict=PASS
+$ fm-zt-review.sh history https://github.com/DereKk8/firstmate/pull/998
+pr=https://github.com/DereKk8/firstmate/pull/998
+head=cccccccccccccccccccccccccccccccccccccccc verdict=PASS scope=unknown date=unknown
+exit=0
+$ fm-zt-review.sh check-merge task-x1 https://github.com/DereKk8/firstmate/pull/998 cccccccccccccccccccccccccccccccccccccccc
+reviewed-head=cccccccccccccccccccccccccccccccccccccccc
+exit=0
