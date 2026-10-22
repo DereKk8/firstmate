@@ -738,7 +738,7 @@ test_replay_carry_needs_the_same_change() {
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
   expect_code 1 "$RUN_RC" "a head that also changes a file mode must not carry the verdict"
   git -C "$SRC" checkout -q --detach "$replayed"
-  printf '%s\n' '-- x' >>"$SRC/g"
+  printf '%s\n' '++ x' >>"$SRC/g"
   git -C "$SRC" commit -qam marker
   changed=$(git -C "$SRC" rev-parse HEAD)
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
