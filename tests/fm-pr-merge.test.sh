@@ -4429,7 +4429,11 @@ record_verified_head() {
     printf '%s\n' '## Attack phase'
     printf '%s\n' 'one hostile input was tried'
     printf '%s\n' '## Findings'
-    printf '%s\n' 'no reproduced defect'
+    if [ "$verdict" = PRODUCT_FAIL ]; then
+      printf '%s\n' '- Floor: D1 regression base=absent the fixture defect'
+    else
+      printf '%s\n' 'no reproduced defect'
+    fi
     printf '%s\n' '## Verdict'
     printf '%s\n' "$verdict"
     printf '%s\n' '## Decisions for the engineering lead'

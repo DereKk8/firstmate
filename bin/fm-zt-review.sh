@@ -46,11 +46,13 @@
 #   fm-zt-review.sh brief --run-id ID --repo REPO --pr URL --head SHA \
 #       --base BRANCH --merge-base SHA --source DIR --intent-file FILE \
 #       --surface TEXT --evidence TEXT
-#   fm-zt-review.sh prepare --out DIR [same brief flags]
+#   fm-zt-review.sh prepare --out DIR [same brief flags] [--rescope FILE]
 #   fm-zt-review.sh assert <dir>
 #   fm-zt-review.sh launch <dir> -- <command> [args]
 #   fm-zt-review.sh record-report <task-id> <report-file> <pr-url> --scope full|delta
 #   fm-zt-review.sh history <pr-url>
+#   fm-zt-review.sh recheck-gate <pr-url> <source-dir> <head> [--rescope FILE]
+#   fm-zt-review.sh carry <task-id> <pr-url> <source-dir> <base-ref> <new-head>
 #   fm-zt-review.sh check-merge <task-id> <pr-url> <live-head>
 #
 # identity --check and show-skill read the pinned commit from
@@ -58,6 +60,14 @@
 # FM_ZT_PIN_OVERRIDE=1 with FM_ZT_VERSION, FM_ZT_COMMIT, and FM_ZT_BLOB
 # substitutes the pin. Leave those unset for a real review.
 # The config directory is FM_CONFIG_OVERRIDE, or $FM_HOME/config.
+#
+# prepare runs recheck-gate before it writes anything. For a pull request
+# with a PRODUCT_FAIL that no PASS followed, the gate refuses a third fix round
+# without the owner's re-scope decision (ZT-LOOP-6), and refuses a fixed head
+# that is not built on the tested head or whose commits name, in ZT-Fixes
+# trailers, IDs other than that failed report's Floor IDs (ZT-LOOP-7). carry
+# records a PASS for a head whose change, read without context lines, equals
+# the passed head's (ZT-LOOP-4).
 set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -79,7 +89,7 @@ pin_version() {
     printf '%s\n' "$FM_ZT_VERSION"
     return 0
   fi
-  printf '%s\n' '4.1.0'
+  printf '%s\n' '6.0.0'
 }
 
 pin_commit() {
@@ -88,7 +98,7 @@ pin_commit() {
     printf '%s\n' "$FM_ZT_COMMIT"
     return 0
   fi
-  printf '%s\n' '2de135997bd80ce0884f707f7e1815eebff97519'
+  printf '%s\n' '948a446a568c2f5353c88a74c1a44fc73cb40244'
 }
 
 pin_blob() {
@@ -97,7 +107,7 @@ pin_blob() {
     printf '%s\n' "$FM_ZT_BLOB"
     return 0
   fi
-  printf '%s\n' '9bac1e9c09599491944e512617cf107f78e58650'
+  printf '%s\n' 'e2e0757666dc1072dce4e7fb4580d2c3b0900106'
 }
 
 identity_line() {
@@ -331,10 +341,10 @@ launch_blind() {
 
 parse_brief_opts() {
   RUN_ID='' REPO='' PR_URL='' HEAD_SHA='' BASE_BRANCH='' MERGE_BASE=''
-  SOURCE_DIR='' INTENT_FILE='' SURFACE='' EVIDENCE='' OUT_DIR=''
+  SOURCE_DIR='' INTENT_FILE='' SURFACE='' EVIDENCE='' OUT_DIR='' RESCOPE=''
   while [ "$#" -gt 0 ]; do
     case "$1" in
-      --run-id|--repo|--pr|--head|--base|--merge-base|--source|--intent-file|--surface|--evidence|--out)
+      --run-id|--repo|--pr|--head|--base|--merge-base|--source|--intent-file|--surface|--evidence|--out|--rescope)
         [ "$#" -ge 2 ] || die "missing value for $1"
         case "$1" in
           --run-id) RUN_ID=$2 ;;
@@ -348,6 +358,7 @@ parse_brief_opts() {
           --surface) SURFACE=$2 ;;
           --evidence) EVIDENCE=$2 ;;
           --out) OUT_DIR=$2 ;;
+          --rescope) RESCOPE=$2 ;;
         esac
         shift 2
         ;;
@@ -431,7 +442,7 @@ read_history() {
   [ -e "$path" ] || [ -L "$path" ] || return 2
   [ -f "$path" ] && [ ! -L "$path" ] || return 1
   awk -v words="$VERDICT_WORDS" '
-    BEGIN { entry = "^head=[0-9a-f]{40} verdict=(" words ") scope=(full|delta) date=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" }
+    BEGIN { entry = "^head=[0-9a-f]{40} verdict=(" words ") scope=(full|delta|carried) date=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z( floor=(-|[A-Za-z0-9-]+(,[A-Za-z0-9-]+)*))?$" }
     NR == 1 {
       if ($0 !~ /^pr=./) { bad = 1; exit }
       print substr($0, 4)
@@ -444,7 +455,7 @@ read_history() {
 }
 
 append_history() {
-  local path=$1 pr=$2 head=$3 verdict=$4 scope=$5 tmp parsed rc=0
+  local path=$1 pr=$2 head=$3 verdict=$4 scope=$5 floor=$6 tmp parsed rc=0
   mkdir -p -- "$STATE"
   if [ ! -e "$path" ] && [ ! -L "$path" ]; then
     tmp=$path.tmp.$$
@@ -456,8 +467,8 @@ append_history() {
   parsed=$(read_history "$path") || rc=$?
   [ "$rc" -eq 0 ] || die "review history $path is unreadable, so nothing was recorded"
   [ "${parsed%%$'\n'*}" = "$pr" ] || die "review history $path does not match $pr, so nothing was recorded"
-  printf 'head=%s verdict=%s scope=%s date=%s\n' "$head" "$verdict" "$scope" \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$path"
+  printf 'head=%s verdict=%s scope=%s date=%s floor=%s\n' "$head" "$verdict" "$scope" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$floor" >>"$path"
 }
 
 read_legacy_record() {
@@ -507,6 +518,112 @@ review_entries() {
   read_legacy_record "$base.zt-verified"
 }
 
+# The Findings part names each reproduced finding on one line:
+#   - Floor: <ID> <security|data-loss|false-success|core-path|regression> base=absent ...
+#   - Below floor: <ID> <filed issue URL> ...
+#   - Pre-existing: <ID> <filed issue or fix PR URL> ...
+# PRODUCT_FAIL needs a Floor line and PASS allows none (ZT-SEV-1). A finding
+# the merge base also has is Pre-existing, never Floor (ZT-PREEX-1). Prints
+# the Floor IDs joined by commas, or - when there are none.
+report_floor() {
+  awk -v verdict="$2" '
+    /^## Findings$/ { inf = 1; next }
+    /^## / { inf = 0 }
+    inf && /^- Floor: / {
+      if ($0 !~ /^- Floor: [A-Za-z0-9-]+ (security|data-loss|false-success|core-path|regression) base=(absent|present)( |$)/) { bad = "a Floor line needs an ID, a floor category and base=absent"; exit }
+      if ($0 ~ / base=present/) { bad = $3 " is on the merge base too, so it is a Pre-existing line, not a floor defect of the change"; exit }
+      floor = floor (floor == "" ? "" : ",") $3
+      next
+    }
+    inf && /^- (Below floor|Pre-existing): / {
+      if ($0 !~ /^- (Below floor|Pre-existing): [A-Za-z0-9-]+ https:\/\/[^ ]+/) { bad = "a Below floor or Pre-existing line needs its filed issue or PR URL"; exit }
+      next
+    }
+    END {
+      if (bad != "") { print "bad " bad; exit }
+      if (verdict == "PRODUCT_FAIL" && floor == "") { print "bad PRODUCT_FAIL needs a Floor line (ZT-SEV-1)"; exit }
+      if (verdict == "PASS" && floor != "") { print "bad PASS with open floor defects " floor; exit }
+      print (floor == "" ? "-" : floor)
+    }
+  ' "$1"
+}
+
+# The change of a head: its merge-base-to-head diff without context lines,
+# that is each file header and each added or removed line, in order. A head
+# that only replays the change on a newer base has the same change id.
+change_id() {
+  local src=$1 base=$2 head=$3 mb
+  mb=$(git -C "$src" merge-base "$base" "$head") || die "no merge base of $base and $head in $src"
+  git -C "$src" diff -U0 --no-ext-diff --no-textconv --no-color "$mb" "$head" \
+    | awk '/^diff --git / || (/^[-+]/ && !/^(\+\+\+|---) /)' \
+    | git hash-object --stdin
+}
+
+# Reads the entry lines on stdin and prints the open failure, that is the
+# head and Floor IDs of the latest PRODUCT_FAIL with no PASS after it (- -
+# when none is open, and ? for Floor IDs recorded before floor lines), then
+# the count of failed re-checks (ZT-LOOP-6): each PRODUCT_FAIL of a head
+# other than the open failure's head, over the whole history.
+open_failure() {
+  awk '
+    { h = $1; sub(/^head=/, "", h); v = $2; sub(/^verdict=/, "", v)
+      f = "?"; for (i = 3; i <= NF; i++) if ($i ~ /^floor=/) f = substr($i, 7)
+      if (v == "PASS") { oh = ""; next }
+      if (v == "PRODUCT_FAIL") { if (oh != "" && h != oh) n++; oh = h; of = f } }
+    END { if (oh == "") print "- - " n + 0; else print oh, of, n + 0 }
+  '
+}
+
+# ZT-LOOP-7: every commit on top of the tested head names, in a ZT-Fixes
+# trailer, only floor defects of the change from the tested head's report.
+fix_scope() {
+  local src=$1 tested=$2 fixed=$3 floor=$4 sha ids id list bad=0
+  git -C "$src" merge-base --is-ancestor "$tested" "$fixed" \
+    || die "fixed head $fixed is not built on the tested head $tested; a fix round adds commits on top (ZT-LOOP-7)"
+  [ "$floor" != - ] || die "the tested head's report names no floor defect, so no fix round is open (ZT-SEV-1)"
+  while IFS=$'\t' read -r sha ids; do
+    ids=${ids//[[:space:]]/}
+    [ -n "$ids" ] || { printf 'error: commit %s names no ZT-Fixes ID\n' "$sha" >&2; bad=1; continue; }
+    IFS=, read -ra list <<<"$ids"
+    for id in "${list[@]}"; do
+      case ",$floor," in
+        *",$id,"*) ;;
+        *) printf 'error: commit %s fixes %s, which is not a floor defect of the change; it goes to its own PR\n' "$sha" "$id" >&2; bad=1 ;;
+      esac
+    done
+  done < <(git -C "$src" log --reverse --format='%H%x09%(trailers:key=ZT-Fixes,valueonly,separator=%x2C)' "$tested..$fixed")
+  [ "$bad" -eq 0 ] || die "the fix round carries work outside the floor defects $floor (ZT-LOOP-7)"
+}
+
+# Run before a review of a pull request that already has a history. It
+# refuses a third fix round without the owner's re-scope decision (ZT-LOOP-6)
+# and a fix round that carries work outside the floor defects (ZT-LOOP-7).
+recheck_gate() {
+  local pr=$1 src=$2 head=$3 rescope=$4 base rc=0 parsed o_head o_floor failed
+  require_text_arg "pr-url" "$pr"
+  hex40 "$head" || die "head is not 40 hex characters"
+  if [ -n "$rescope" ]; then
+    [ -f "$rescope" ] && [ ! -L "$rescope" ] && [ -s "$rescope" ] || die "--rescope needs the owner's re-scope decision as a non-empty file"
+  fi
+  base=$(review_record_base "$pr")
+  parsed=$(review_entries "$base") || rc=$?
+  if [ "$rc" -eq 2 ]; then printf 'first-review\n'; return 0; fi
+  [ "$rc" -eq 0 ] || die "review record $base is unreadable"
+  read -r o_head o_floor failed < <(printf '%s\n' "${parsed#*$'\n'}" | open_failure)
+  if [ "$o_head" = - ]; then printf 'no-open-failure\nfailed-rechecks=%s\n' "$failed"; return 0; fi
+  if [ "$failed" -ge 2 ] && [ -z "$rescope" ]; then
+    die "$pr has $failed failed re-checks; the next review needs the owner's re-scope decision (ZT-LOOP-6), passed as --rescope <file>"
+  fi
+  if [ "$o_head" != "$head" ] && [ -z "$rescope" ]; then
+    if [ "$o_floor" = '?' ]; then
+      printf 'note: the failed review of %s was recorded before floor lines, so the fix-round scope is not checked\n' "$o_head" >&2
+    else
+      fix_scope "$src" "$o_head" "$head" "$o_floor"
+    fi
+  fi
+  printf 'recheck-of=%s\nfailed-rechecks=%s\n' "$o_head" "$failed"
+}
+
 # A home opts in with the config/zero-trust-required presence flag. A config
 # directory that cannot be searched refuses rather than reading as absent.
 zero_trust_required() {
@@ -544,6 +661,7 @@ case "$cmd" in
   brief)
     parse_brief_opts "$@"
     [ -z "$OUT_DIR" ] || die "brief does not take --out"
+    [ -z "$RESCOPE" ] || die "brief does not take --rescope"
     BRIEF_TMP=
     DIFF_TMP=
     trap cleanup EXIT
@@ -562,6 +680,7 @@ case "$cmd" in
     if inside_worktree "$parent"; then
       die "refusing to build a blind review directory inside a git checkout: $parent"
     fi
+    recheck_gate "$PR_URL" "$SOURCE_DIR" "$HEAD_SHA" "$RESCOPE" >/dev/null
     PREPARE_BYTES=
     PREPARE_DIR=
     DIFF_TMP=
@@ -604,9 +723,13 @@ case "$cmd" in
     verdict=$(printf '%s\n' "$parsed" | awk 'NR == 2 { print; exit }')
     report_pr=$(printf '%s\n' "$parsed" | awk 'NR == 3 { print; exit }')
     [ "$report_pr" = "$3" ] || die "report Repo / PR is $report_pr, not $3"
+    floor=$(report_floor "$2" "$verdict")
+    case "$floor" in
+      bad\ *) die "report findings refused (${floor#bad })" ;;
+    esac
     path=$(review_record_base "$3").zt-history
-    append_history "$path" "$3" "$tested" "$verdict" "$5"
-    printf 'recorded=%s\nhead=%s\nverdict=%s\nscope=%s\n' "$path" "$tested" "$verdict" "$5"
+    append_history "$path" "$3" "$tested" "$verdict" "$5" "$floor"
+    printf 'recorded=%s\nhead=%s\nverdict=%s\nscope=%s\nfloor=%s\n' "$path" "$tested" "$verdict" "$5" "$floor"
     ;;
   history)
     [ "$#" -eq 1 ] || die "history needs a pull request URL"
@@ -621,6 +744,32 @@ case "$cmd" in
     [ "$rc" -eq 0 ] || die "review record $base is unreadable"
     [ "${parsed%%$'\n'*}" = "$1" ] || die "review record $base does not match $1"
     printf 'pr=%s\n' "$parsed"
+    ;;
+  recheck-gate)
+    [ "$#" -eq 3 ] || { [ "$#" -eq 5 ] && [ "$4" = --rescope ]; } \
+      || die "recheck-gate needs a pull request URL, a source repository, the head to review, and optionally --rescope <owner decision file>"
+    recheck_gate "$1" "$2" "$3" "${5:-}"
+    ;;
+  carry)
+    [ "$#" -eq 5 ] || die "carry needs a task id, a pull request URL, a source repository, a base ref and the new head"
+    fm_pr_task_id_valid "$1" || die "invalid task id"
+    require_text_arg "pr-url" "$2"
+    hex40 "$5" || die "new head is not 40 hex characters"
+    base=$(review_record_base "$2")
+    rc=0
+    parsed=$(review_entries "$base") || rc=$?
+    [ "$rc" -eq 0 ] || die "no readable review history for $2, so there is nothing to carry"
+    latest=${parsed##*$'\n'}
+    l_head=${latest#head=}; l_head=${l_head%% *}
+    case "$latest" in
+      *" verdict=PASS scope=full "*|*" verdict=PASS scope=carried "*) ;;
+      *) die "the latest verdict for $2 is not a full or carried PASS, so it cannot carry (ZT-LOOP-4)" ;;
+    esac
+    old=$(change_id "$3" "$4" "$l_head")
+    new=$(change_id "$3" "$4" "$5")
+    [ "$old" = "$new" ] || die "head $5 changes other lines than the passed head $l_head, so it needs a review (ZT-LOOP-4)"
+    append_history "$base.zt-history" "$2" "$5" PASS carried -
+    printf 'carried=%s\nfrom=%s\nchange=%s\n' "$5" "$l_head" "$new"
     ;;
   check-merge)
     [ "$#" -eq 3 ] || die "check-merge needs a task id, a pull request URL, and a live head"
