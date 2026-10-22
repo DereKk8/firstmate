@@ -38,11 +38,19 @@ Those instructions forbid product edits, commits, pushes, and merges.
 The verifier still has a repository copy, so that ban is an instruction.
 A re-check is a new blind launch and a new `bin/fm-zt-review.sh record-report`.
 Read the pull request's earlier verdicts with `bin/fm-zt-review.sh history` before each fix round, because the pinned skill counts failed re-checks per pull request across sessions and teams, and follow its fix-loop limit.
+Send the author only the Floor IDs of the failed report.
+The author adds fix commits on top of the tested head, each with a `ZT-Fixes: <ID>, ...` trailer.
+`prepare` refuses a re-check whose commits name other IDs or do not build on the tested head, and refuses a review after two failed re-checks until `--rescope <file>` passes the owner's re-scope decision.
+`--rescope` is accepted only at that limit, and it lifts only the limit: the fix-round commits still need their `ZT-Fixes` trailers.
 
 ## Report and merge
 
 `bin/fm-zt-review.sh record-report` accepts only a report in the shared order with one shared verdict word.
+The verifier's instructions tell it to name each reproduced finding in the Findings part on one line, with the merge-base result from ZT-PREEX-2: `- Floor: <ID> <security|data-loss|false-success|core-path|regression> base=absent ...`, `- Below floor: <ID> ...`, or `- Pre-existing: <ID> ...`.
+Before `record-report`, firstmate files each Below floor and Pre-existing item as its own issue or PR and adds that URL after the ID.
+`record-report` refuses a PRODUCT_FAIL with no Floor line, a PASS with one, a Floor line for a finding the merge base also has, and a Below floor or Pre-existing line with no URL.
 It appends the verdict to that pull request's history, with `--scope full` for a report that covers the whole change and `--scope delta` for one that covers only a fix.
 Before completion, follow `scout-completion` and `captain-hold-lifecycle`.
 `bin/fm-pr-merge.sh` refuses the merge unless the latest verdict recorded for that same URL is a PASS for the live head.
 In a home with `config/zero-trust-required` it also refuses a pull request with no recorded review.
+When the head moved only by a rebase, run `bin/fm-zt-review.sh carry` instead of a new review: it records the PASS for the new head only when the new head adds and removes the same lines, with the same file modes, as the passed head, and it refuses an empty change or a binary file.

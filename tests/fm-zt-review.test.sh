@@ -100,7 +100,13 @@ write_report() {
     printf '%s\n' '## Attack phase'
     printf '%s\n' 'one hostile input was tried'
     printf '%s\n' '## Findings'
-    printf '%s\n' 'no reproduced defect'
+    if [ -n "${FINDINGS:-}" ]; then
+      printf '%s\n' "$FINDINGS"
+    elif [ "$verdict" = PRODUCT_FAIL ]; then
+      printf '%s\n' '- Floor: D1 regression base=absent the fixture defect'
+    else
+      printf '%s\n' 'no reproduced defect'
+    fi
     printf '%s\n' '## Verdict'
     printf '%s\n' "$verdict"
     printf '%s\n' '## Decisions for the engineering lead'
@@ -114,7 +120,7 @@ test_identity_shape_and_fixture_check() {
   local line rc
   line=$("$ZT" identity)
   case "$line" in
-    'Identity: zero-trust-review 4.1.0 '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+    'Identity: zero-trust-review 6.0.0 '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
     *) fail "identity line has the wrong shape: $line" ;;
   esac
   with_pin "$ZT" identity --check >/dev/null
@@ -433,7 +439,7 @@ test_history_is_append_only_and_the_gate_reads_the_latest() {
     NR == 2 && index($0, "head=" a " verdict=PRODUCT_FAIL scope=full date=") == 1 { ok++ }
     NR == 3 && index($0, "head=" b " verdict=PRODUCT_FAIL scope=full date=") == 1 { ok++ }
     NR == 4 && index($0, "head=" b " verdict=PASS scope=delta date=") == 1 { ok++ }
-    $0 ~ /date=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/ { dated++ }
+    $0 ~ /date=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z floor=[^ ]+$/ { dated++ }
     END { exit !(ok == 3 && dated == 3) }
   ' || fail "the history lost the order, scope, or date of a verdict: $text"
   assert_equals "$first" "$(head -n 2 "$(recorded_path "$FIX/record.out")")" "a later verdict rewrote an earlier one"
@@ -603,6 +609,153 @@ test_diff_count_keeps_marker_like_code_lines() {
   pass "the diff count is git's own count on the pinned commits"
 }
 
+# fix_commit <parent> <trailer ids> commits a change to g on top of parent
+# with a ZT-Fixes trailer; COMMIT is the new commit.
+fix_commit() {
+  local parent=$1 ids=$2
+  git -C "$SRC" checkout -q --detach "$parent"
+  printf 'fix %s\n' "$ids" >>"$SRC/g"
+  git -C "$SRC" add g
+  git -C "$SRC" commit -qm "fix" -m "ZT-Fixes: $ids"
+  COMMIT=$(git -C "$SRC" rev-parse HEAD)
+}
+
+test_floor_lines_fix_scope_and_loop_limit() {
+  local tested ok_fix px_fix rebased c2 c3
+  reset_reviews
+  git -C "$SRC" checkout -q --detach "$BASE_COMMIT"
+  printf 'change\n' >"$SRC/g"
+  git -C "$SRC" add g
+  git -C "$SRC" commit -qm change
+  tested=$(git -C "$SRC" rev-parse HEAD)
+
+  FINDINGS='- Below floor: D9 https://example.invalid/issues/1 docs wording'
+  write_report "$FIX/report.md" "$tested" PRODUCT_FAIL
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report t "$FIX/report.md" "$PR_URL" --scope full
+  expect_code 1 "$RUN_RC" "a PRODUCT_FAIL with only below-floor findings must be refused"
+  FINDINGS='- Floor: D2 security base=present the merge base has it too'
+  write_report "$FIX/report.md" "$tested" PRODUCT_FAIL
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report t "$FIX/report.md" "$PR_URL" --scope full
+  expect_code 1 "$RUN_RC" "a floor line for a finding the merge base has must be refused"
+  FINDINGS=
+  record t "$tested" PRODUCT_FAIL full
+  assert_grep 'floor=D1' "$FIX/record.out" "record-report did not store the floor IDs"
+
+  fix_commit "$tested" D1
+  ok_fix=$COMMIT
+  with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$ok_fix" >/dev/null \
+    || fail "a fix commit that names only the floor defect was refused"
+  fix_commit "$tested" "D1, PX-1"
+  px_fix=$COMMIT
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$px_fix"
+  expect_code 1 "$RUN_RC" "a fix round that carries a pre-existing fix must be refused"
+  assert_grep 'PX-1' "$FIX/stderr" "the refusal did not name the out-of-scope ID"
+  fix_commit "$BASE_COMMIT" D1
+  rebased=$COMMIT
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$rebased"
+  expect_code 1 "$RUN_RC" "a fixed head that is not built on the tested head must be refused"
+
+  printf 'owner: cut back to the stated intent\n' >"$FIX/rescope.txt"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$ok_fix" --rescope "$FIX/rescope.txt"
+  expect_code 1 "$RUN_RC" "a re-scope decision below the re-check limit must be refused"
+  assert_grep 'only lifts the limit' "$FIX/stderr" "the refusal did not say --rescope is only for the limit"
+
+  record t "$ok_fix" PRODUCT_FAIL full
+  fix_commit "$ok_fix" D1
+  c2=$COMMIT
+  record t "$c2" PRODUCT_FAIL full
+  fix_commit "$c2" D1
+  c3=$COMMIT
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$c3"
+  expect_code 1 "$RUN_RC" "a review after two failed re-checks needs the re-scope decision"
+  with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$c3" --rescope "$FIX/rescope.txt" >/dev/null \
+    || fail "the owner's re-scope decision did not open the next review"
+  fix_commit "$c2" "D1, PX-1"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$COMMIT" --rescope "$FIX/rescope.txt"
+  expect_code 1 "$RUN_RC" "the re-scope decision must not lift the fix-round scope"
+  assert_grep 'PX-1' "$FIX/stderr" "the refusal at the limit did not name the out-of-scope ID"
+
+  reset_reviews
+  record t "$tested" PRODUCT_FAIL full
+  record t "$ok_fix" INCOMPLETE full
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$px_fix"
+  expect_code 1 "$RUN_RC" "an incomplete re-check must not lift the fix-round scope"
+  record t "$c2" PRODUCT_FAIL full
+  record t "$c3" INCOMPLETE full
+  fix_commit "$c3" D1
+  record t "$COMMIT" PRODUCT_FAIL full
+  fix_commit "$COMMIT" D1
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$COMMIT"
+  expect_code 1 "$RUN_RC" "an incomplete review between two failed re-checks must not reset the count"
+
+  reset_reviews
+  record t "$tested" PASS full
+  printf 'pr=%s\nhead=%s verdict=PRODUCT_FAIL scope=full date=2026-10-01T00:00:00Z\n' \
+    "$PR_URL" "$tested" >"$(recorded_path "$FIX/record.out")"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$ok_fix"
+  expect_code 0 "$RUN_RC" "a failed review recorded before floor lines blocked its fix round"
+  assert_grep 'recorded before floor lines' "$FIX/stderr" "the gate did not say it skipped the scope check"
+
+  git -C "$SRC" checkout -q --detach "$BASE_COMMIT"
+  pass "floor lines, fix-round scope and the re-check limit hold"
+}
+
+test_replay_carry_needs_the_same_change() {
+  local base_ref tested replayed changed
+  reset_reviews
+  base_ref=zt-trunk
+  git -C "$SRC" branch -f "$base_ref" "$BASE_COMMIT"
+  git -C "$SRC" checkout -q --detach "$BASE_COMMIT"
+  printf 'change\n' >"$SRC/g"
+  git -C "$SRC" add g
+  git -C "$SRC" commit -qm change
+  tested=$(git -C "$SRC" rev-parse HEAD)
+  record t "$tested" PASS full
+  git -C "$SRC" checkout -q "$base_ref"
+  printf 'unrelated\n' >"$SRC/h"
+  git -C "$SRC" add h
+  git -C "$SRC" commit -qm trunk
+  git -C "$SRC" checkout -q --detach HEAD
+  printf 'change\n' >"$SRC/g"
+  git -C "$SRC" add g
+  git -C "$SRC" commit -qm change
+  replayed=$(git -C "$SRC" rev-parse HEAD)
+  with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$replayed" >/dev/null \
+    || fail "a head that only replays the passed change was not carried"
+  with_pin "$ZT" check-merge t "$PR_URL" "$replayed" >/dev/null \
+    || fail "the merge gate refused the carried head"
+  printf 'more\n' >>"$SRC/g"
+  git -C "$SRC" commit -qam more
+  changed=$(git -C "$SRC" rev-parse HEAD)
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
+  expect_code 1 "$RUN_RC" "a head that changes other lines must not carry the verdict"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$changed" "$changed"
+  expect_code 1 "$RUN_RC" "a base ref that holds the new head gave an empty change that carried the verdict"
+  git -C "$SRC" checkout -q --detach "$replayed"
+  chmod +x "$SRC/g"
+  git -C "$SRC" commit -qam mode
+  changed=$(git -C "$SRC" rev-parse HEAD)
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
+  expect_code 1 "$RUN_RC" "a head that also changes a file mode must not carry the verdict"
+  git -C "$SRC" checkout -q --detach "$replayed"
+  printf '%s\n' '++ x' >>"$SRC/g"
+  git -C "$SRC" commit -qam marker
+  changed=$(git -C "$SRC" rev-parse HEAD)
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
+  expect_code 1 "$RUN_RC" "an added line that looks like a diff header must not carry the verdict"
+  git -C "$SRC" checkout -q --detach "$replayed"
+  printf 'a\0b' >"$SRC/blob.bin"
+  git -C "$SRC" add blob.bin
+  git -C "$SRC" commit -qm binary
+  changed=$(git -C "$SRC" rev-parse HEAD)
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
+  expect_code 1 "$RUN_RC" "a head with a binary file must not carry the verdict"
+  assert_grep 'binary file' "$FIX/stderr" "the refusal did not name the binary file"
+  git -C "$SRC" checkout -q --detach "$BASE_COMMIT"
+  git -C "$SRC" branch -D "$base_ref" >/dev/null
+  pass "a PASS carries only to a head with the same change"
+}
+
 test_identity_shape_and_fixture_check
 test_staffing_follows_the_diff_size
 test_diff_count_keeps_marker_like_code_lines
@@ -617,3 +770,5 @@ test_required_home_refuses_a_merge_with_no_review
 test_old_report_shape_is_refused
 test_identity_check_reads_a_large_skill_every_time
 test_identity_check_refuses_a_pin_older_than_master
+test_floor_lines_fix_scope_and_loop_limit
+test_replay_carry_needs_the_same_change
