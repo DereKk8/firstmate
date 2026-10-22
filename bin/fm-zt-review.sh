@@ -26,9 +26,10 @@
 # source commit /sync-zero-trust names. It reads origin/master as last
 # fetched and never fetches.
 #
-# record-report appends one entry (head, verdict, scope, UTC date) to the
-# append-only review history for the pull request URL; --scope says whether
-# the report covers the full change or only a delta. history prints that
+# record-report appends one entry (head, verdict, scope, UTC date, Floor
+# IDs) to the append-only review history for the pull request URL; --scope
+# says whether the report covers the full change or only a delta, and carry
+# writes scope=carried. history prints that
 # history in order. A history from another task is the one the merge sees,
 # because the record is keyed by the URL, and record-report refuses a report
 # whose "Repo / PR" line is not that same URL. check-merge reads the latest
