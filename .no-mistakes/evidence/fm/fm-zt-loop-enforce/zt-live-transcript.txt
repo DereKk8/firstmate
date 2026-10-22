@@ -1,0 +1,210 @@
+
+===== S1 pin: identity and identity --check against project-skills master =====
+
+$ fm-zt-review.sh identity
+Identity: zero-trust-review 6.0.0 948a446a568c2f5353c88a74c1a44fc73cb40244 e2e0757666dc1072dce4e7fb4580d2c3b0900106
+[exit 0]
+
+$ fm-zt-review.sh identity --check
+Identity: zero-trust-review 6.0.0 948a446a568c2f5353c88a74c1a44fc73cb40244 e2e0757666dc1072dce4e7fb4580d2c3b0900106
+[exit 0]
+
+===== S2 record-report findings shape (E1/ZT-SEV-1) =====
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope full
+error: report findings refused (PRODUCT_FAIL needs a Floor line (ZT-SEV-1))
+[exit 1]
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope full
+error: report findings refused (PASS with open floor defects D1)
+[exit 1]
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope full
+error: report findings refused (D1 is on the merge base too, so it is a Pre-existing line, not a floor defect of the change)
+[exit 1]
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope full
+error: report findings refused (a Below floor or Pre-existing line needs its filed issue or PR URL)
+[exit 1]
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope full
+error: report findings refused (a Below floor or Pre-existing line needs its filed issue or PR URL)
+[exit 1]
+
+$ fm-zt-review.sh history https://github.com/example/repo/pull/7
+no-review
+[exit 0]
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope full
+recorded=/tmp/zt-live.k1tXe4/home/state/zt-pr-8dabfa59fb46c096f4d2d95fd9fc4541b266674297b87f84fd0ee73af3de7d8c.zt-history
+head=6797aed42b2047124a8a2a569e8664df35073674
+verdict=PRODUCT_FAIL
+scope=full
+floor=D1,D4
+[exit 0]
+
+$ fm-zt-review.sh history https://github.com/example/repo/pull/7
+pr=https://github.com/example/repo/pull/7
+head=6797aed42b2047124a8a2a569e8664df35073674 verdict=PRODUCT_FAIL scope=full date=2026-10-22T17:09:52Z floor=D1,D4
+[exit 0]
+
+===== S3 recheck-gate fix-round scope lock (E1/ZT-LOOP-7) via prepare and recheck-gate =====
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo 74b8e2467b8bf14b756efea70b6f8f4311a6657b
+error: fixed head 74b8e2467b8bf14b756efea70b6f8f4311a6657b is not built on the tested head 6797aed42b2047124a8a2a569e8664df35073674; a fix round adds commits on top (ZT-LOOP-7)
+[exit 1]
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo c3361837c86dcf9dba0bae1c06a234e34b033022
+error: commit c3361837c86dcf9dba0bae1c06a234e34b033022 names no ZT-Fixes ID
+error: the fix round carries work outside the floor defects D1,D4 (ZT-LOOP-7)
+[exit 1]
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo 1431ed0afd3618ce967e9923ff7224b822ffe774
+error: commit 1431ed0afd3618ce967e9923ff7224b822ffe774 fixes D2, which is not a floor defect of the change; it goes to its own PR
+error: the fix round carries work outside the floor defects D1,D4 (ZT-LOOP-7)
+[exit 1]
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo febc02fd81ae7df8c6ebeca06ca051abaa335fc5
+recheck-of=6797aed42b2047124a8a2a569e8664df35073674
+failed-rechecks=0
+[exit 0]
+
+$ fm-zt-review.sh prepare --out /tmp/zt-live.k1tXe4/outs/d --run-id r1 --repo example/repo --pr https://github.com/example/repo/pull/7 --head 1431ed0afd3618ce967e9923ff7224b822ffe774 --base main --merge-base e339ac5bec9e5416da75bf6ab919d95628ba4bd6 --source /tmp/zt-live.k1tXe4/repo --intent-file /tmp/zt-live.k1tXe4/intent/i.md --surface cli --evidence none
+error: commit 1431ed0afd3618ce967e9923ff7224b822ffe774 fixes D2, which is not a floor defect of the change; it goes to its own PR
+error: the fix round carries work outside the floor defects D1,D4 (ZT-LOOP-7)
+[exit 1]
+
+$ fm-zt-review.sh prepare --out /tmp/zt-live.k1tXe4/outs/d --run-id r1 --repo example/repo --pr https://github.com/example/repo/pull/7 --head febc02fd81ae7df8c6ebeca06ca051abaa335fc5 --base main --merge-base e339ac5bec9e5416da75bf6ab919d95628ba4bd6 --source /tmp/zt-live.k1tXe4/repo --intent-file /tmp/zt-live.k1tXe4/intent/i.md --surface cli --evidence none
+directory=/tmp/zt-live.k1tXe4/outs/d
+changed_lines=2
+size=known
+agents=1
+slices=no
+[exit 0]
+brief.md
+skill.md
+
+===== S4 re-check limit (E3/ZT-LOOP-6) and --rescope narrowing =====
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo febc02fd81ae7df8c6ebeca06ca051abaa335fc5 --rescope /tmp/zt-live.k1tXe4/rescope.md
+error: --rescope only lifts the limit of two failed re-checks (ZT-LOOP-6), and https://github.com/example/repo/pull/7 has no open failure at that limit
+[exit 1]
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope delta
+recorded=/tmp/zt-live.k1tXe4/home/state/zt-pr-8dabfa59fb46c096f4d2d95fd9fc4541b266674297b87f84fd0ee73af3de7d8c.zt-history
+head=febc02fd81ae7df8c6ebeca06ca051abaa335fc5
+verdict=PRODUCT_FAIL
+scope=delta
+floor=D1
+[exit 0]
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo def43e60114a95cbce31336906574cfd1aebfc89
+recheck-of=febc02fd81ae7df8c6ebeca06ca051abaa335fc5
+failed-rechecks=1
+[exit 0]
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope delta
+recorded=/tmp/zt-live.k1tXe4/home/state/zt-pr-8dabfa59fb46c096f4d2d95fd9fc4541b266674297b87f84fd0ee73af3de7d8c.zt-history
+head=def43e60114a95cbce31336906574cfd1aebfc89
+verdict=PRODUCT_FAIL
+scope=delta
+floor=D1
+[exit 0]
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo 889fb9af99ea0971fb3b054e2fc69b7436f1d005
+error: https://github.com/example/repo/pull/7 has 2 failed re-checks; the next review needs the owner's re-scope decision (ZT-LOOP-6), passed as --rescope <file>
+[exit 1]
+
+$ fm-zt-review.sh prepare --out /tmp/zt-live.k1tXe4/outs/d --run-id r1 --repo example/repo --pr https://github.com/example/repo/pull/7 --head 889fb9af99ea0971fb3b054e2fc69b7436f1d005 --base main --merge-base e339ac5bec9e5416da75bf6ab919d95628ba4bd6 --source /tmp/zt-live.k1tXe4/repo --intent-file /tmp/zt-live.k1tXe4/intent/i.md --surface cli --evidence none
+error: https://github.com/example/repo/pull/7 has 2 failed re-checks; the next review needs the owner's re-scope decision (ZT-LOOP-6), passed as --rescope <file>
+[exit 1]
+
+$ fm-zt-review.sh prepare --out /tmp/zt-live.k1tXe4/outs/d --run-id r1 --repo example/repo --pr https://github.com/example/repo/pull/7 --head 889fb9af99ea0971fb3b054e2fc69b7436f1d005 --base main --merge-base e339ac5bec9e5416da75bf6ab919d95628ba4bd6 --source /tmp/zt-live.k1tXe4/repo --intent-file /tmp/zt-live.k1tXe4/intent/i.md --surface cli --evidence none --rescope /tmp/zt-live.k1tXe4/rescope.md
+directory=/tmp/zt-live.k1tXe4/outs/d
+changed_lines=2
+size=known
+agents=1
+slices=no
+[exit 0]
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo dec3b2945ca39bfcb8c918f56fcca59438fb1104 --rescope /tmp/zt-live.k1tXe4/rescope.md
+error: commit dec3b2945ca39bfcb8c918f56fcca59438fb1104 fixes D9, which is not a floor defect of the change; it goes to its own PR
+error: the fix round carries work outside the floor defects D1 (ZT-LOOP-7)
+[exit 1]
+
+$ fm-zt-review.sh recheck-gate https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo 889fb9af99ea0971fb3b054e2fc69b7436f1d005 --rescope /tmp/zt-live.k1tXe4/empty.md
+error: --rescope needs the owner's re-scope decision as a non-empty file
+[exit 1]
+
+===== S5 replay carry (E2/ZT-LOOP-4) and check-merge =====
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope full
+recorded=/tmp/zt-live.k1tXe4/home/state/zt-pr-8dabfa59fb46c096f4d2d95fd9fc4541b266674297b87f84fd0ee73af3de7d8c.zt-history
+head=889fb9af99ea0971fb3b054e2fc69b7436f1d005
+verdict=PASS
+scope=full
+floor=-
+[exit 0]
+
+$ fm-zt-review.sh check-merge t1 https://github.com/example/repo/pull/7 889fb9af99ea0971fb3b054e2fc69b7436f1d005
+reviewed-head=889fb9af99ea0971fb3b054e2fc69b7436f1d005
+[exit 0]
+
+$ fm-zt-review.sh check-merge t1 https://github.com/example/repo/pull/7 fb248fc20f0adbe6f6c9b037b74e0900ac316118
+error: refusing to merge https://github.com/example/repo/pull/7 because the live head fb248fc20f0adbe6f6c9b037b74e0900ac316118 is not the reviewed head 889fb9af99ea0971fb3b054e2fc69b7436f1d005
+[exit 1]
+
+$ fm-zt-review.sh carry t1 https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo main fb248fc20f0adbe6f6c9b037b74e0900ac316118
+carried=fb248fc20f0adbe6f6c9b037b74e0900ac316118
+from=889fb9af99ea0971fb3b054e2fc69b7436f1d005
+change=ea71dd886f1bd420bca0967e1342eb4778df7bf2
+[exit 0]
+
+$ fm-zt-review.sh check-merge t1 https://github.com/example/repo/pull/7 fb248fc20f0adbe6f6c9b037b74e0900ac316118
+reviewed-head=fb248fc20f0adbe6f6c9b037b74e0900ac316118
+[exit 0]
+
+$ fm-zt-review.sh history https://github.com/example/repo/pull/7
+pr=https://github.com/example/repo/pull/7
+head=6797aed42b2047124a8a2a569e8664df35073674 verdict=PRODUCT_FAIL scope=full date=2026-10-22T17:09:52Z floor=D1,D4
+head=febc02fd81ae7df8c6ebeca06ca051abaa335fc5 verdict=PRODUCT_FAIL scope=delta date=2026-10-22T17:09:53Z floor=D1
+head=def43e60114a95cbce31336906574cfd1aebfc89 verdict=PRODUCT_FAIL scope=delta date=2026-10-22T17:09:53Z floor=D1
+head=889fb9af99ea0971fb3b054e2fc69b7436f1d005 verdict=PASS scope=full date=2026-10-22T17:09:53Z floor=-
+head=fb248fc20f0adbe6f6c9b037b74e0900ac316118 verdict=PASS scope=carried date=2026-10-22T17:09:53Z floor=-
+[exit 0]
+
+$ fm-zt-review.sh carry t1 https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo main 612c06740cec36933ddb4633d18eb6bb7afdef9a
+error: head 612c06740cec36933ddb4633d18eb6bb7afdef9a changes other lines than the passed head fb248fc20f0adbe6f6c9b037b74e0900ac316118, so it needs a review (ZT-LOOP-4)
+[exit 1]
+
+$ fm-zt-review.sh check-merge t1 https://github.com/example/repo/pull/7 612c06740cec36933ddb4633d18eb6bb7afdef9a
+error: refusing to merge https://github.com/example/repo/pull/7 because the live head 612c06740cec36933ddb4633d18eb6bb7afdef9a is not the reviewed head fb248fc20f0adbe6f6c9b037b74e0900ac316118
+[exit 1]
+
+$ fm-zt-review.sh carry t1 https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo 612c06740cec36933ddb4633d18eb6bb7afdef9a 612c06740cec36933ddb4633d18eb6bb7afdef9a
+error: head fb248fc20f0adbe6f6c9b037b74e0900ac316118 has no change over 612c06740cec36933ddb4633d18eb6bb7afdef9a, so there is no replayed change to carry
+[exit 1]
+
+$ fm-zt-review.sh carry t1 https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo main 0a73ff4c46c942a4a0af2f004f5aba4d53c64595
+error: head 0a73ff4c46c942a4a0af2f004f5aba4d53c64595 changes other lines than the passed head fb248fc20f0adbe6f6c9b037b74e0900ac316118, so it needs a review (ZT-LOOP-4)
+[exit 1]
+
+$ fm-zt-review.sh carry t1 https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo main b8864a329f25582aceb6f31ec12fd37bd628506c
+error: head b8864a329f25582aceb6f31ec12fd37bd628506c changes other lines than the passed head fb248fc20f0adbe6f6c9b037b74e0900ac316118, so it needs a review (ZT-LOOP-4)
+[exit 1]
+
+$ fm-zt-review.sh carry t1 https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo main e97bd41c2cf7db157aa7a6aa2db541ce28b09cda
+error: head e97bd41c2cf7db157aa7a6aa2db541ce28b09cda changes a binary file, so its change cannot be compared and it needs a review (ZT-LOOP-4)
+[exit 1]
+
+$ fm-zt-review.sh record-report t1 /tmp/zt-live.k1tXe4/r.md https://github.com/example/repo/pull/7 --scope full
+recorded=/tmp/zt-live.k1tXe4/home/state/zt-pr-8dabfa59fb46c096f4d2d95fd9fc4541b266674297b87f84fd0ee73af3de7d8c.zt-history
+head=fb248fc20f0adbe6f6c9b037b74e0900ac316118
+verdict=PRODUCT_FAIL
+scope=full
+floor=D7
+[exit 0]
+
+$ fm-zt-review.sh carry t1 https://github.com/example/repo/pull/7 /tmp/zt-live.k1tXe4/repo main fb248fc20f0adbe6f6c9b037b74e0900ac316118
+error: the latest verdict for https://github.com/example/repo/pull/7 is not a full or carried PASS, so it cannot carry (ZT-LOOP-4)
+[exit 1]
