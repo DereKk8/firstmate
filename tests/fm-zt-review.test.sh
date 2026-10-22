@@ -700,6 +700,58 @@ test_floor_lines_fix_scope_and_loop_limit() {
   pass "floor lines, fix-round scope and the re-check limit hold"
 }
 
+test_fix_scope_excludes_merged_base_commits() {
+  local tested base_head fixed untagged
+  reset_reviews
+  git -C "$SRC" checkout -q --detach "$BASE_COMMIT"
+  printf 'change\n' >"$SRC/g"
+  git -C "$SRC" add g
+  git -C "$SRC" commit -qm change
+  tested=$(git -C "$SRC" rev-parse HEAD)
+  record t "$tested" PRODUCT_FAIL full
+
+  git -C "$SRC" checkout -q --detach "$BASE_COMMIT"
+  printf 'base work\n' >"$SRC/h"
+  git -C "$SRC" add h
+  git -C "$SRC" commit -qm 'base work without a trailer'
+  base_head=$(git -C "$SRC" rev-parse HEAD)
+  git -C "$SRC" checkout -q --detach "$tested"
+  git -C "$SRC" merge -q --no-ff "$base_head" -m 'merge base without a trailer'
+  fix_commit "$(git -C "$SRC" rev-parse HEAD)" D1
+  fixed=$COMMIT
+
+  # prepare already receives the pinned merge base for this review.
+  with_pin "$ZT" prepare --out "$FIX/merged-base-review" \
+    --run-id merged-base --repo example/repo --pr "$PR_URL" --head "$fixed" \
+    --base main --merge-base "$base_head" --source "$SRC" \
+    --intent-file "$FIX/prep-intent" --surface cli --evidence "$FIX/evidence" >/dev/null \
+    || fail "a valid fix after merging trailer-less base commits was refused"
+  with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$fixed" --base "$base_head" >/dev/null \
+    || fail "the standalone gate refused a valid fix after merging the base"
+
+  fix_commit "$fixed" PX-1
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate \
+    "$PR_URL" "$SRC" "$COMMIT" --base "$base_head"
+  expect_code 1 "$RUN_RC" "base exclusion accepted an out-of-scope trailer"
+  assert_grep 'PX-1' "$FIX/stderr" "the refusal did not name the out-of-scope ID"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate \
+    "$PR_URL" "$SRC" "$fixed" --base missing-review-base
+  expect_code 1 "$RUN_RC" "an unresolved base silently skipped the trailer check"
+  assert_grep 'cannot resolve review base' "$FIX/stderr" "the refusal did not name the missing base"
+
+  git -C "$SRC" checkout -q --detach "$fixed"
+  printf 'unscoped work\n' >>"$SRC/g"
+  git -C "$SRC" commit -qam 'branch work without a trailer'
+  untagged=$(git -C "$SRC" rev-parse HEAD)
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate \
+    "$PR_URL" "$SRC" "$untagged" --base "$base_head"
+  expect_code 1 "$RUN_RC" "a trailer-less non-base commit was accepted"
+  assert_grep "commit $untagged names no ZT-Fixes ID" "$FIX/stderr" \
+    "the refusal did not identify the trailer-less branch commit"
+  git -C "$SRC" checkout -q --detach "$BASE_COMMIT"
+  pass "fix scope ignores merged base history but still checks branch commits"
+}
+
 test_replay_carry_needs_the_same_change() {
   local base_ref tested replayed changed
   reset_reviews
@@ -771,4 +823,5 @@ test_old_report_shape_is_refused
 test_identity_check_reads_a_large_skill_every_time
 test_identity_check_refuses_a_pin_older_than_master
 test_floor_lines_fix_scope_and_loop_limit
+test_fix_scope_excludes_merged_base_commits
 test_replay_carry_needs_the_same_change

@@ -52,7 +52,7 @@
 #   fm-zt-review.sh launch <dir> -- <command> [args]
 #   fm-zt-review.sh record-report <task-id> <report-file> <pr-url> --scope full|delta
 #   fm-zt-review.sh history <pr-url>
-#   fm-zt-review.sh recheck-gate <pr-url> <source-dir> <head> [--rescope FILE]
+#   fm-zt-review.sh recheck-gate <pr-url> <source-dir> <head> [--base REF] [--rescope FILE]
 #   fm-zt-review.sh carry <task-id> <pr-url> <source-dir> <base-ref> <new-head>
 #   fm-zt-review.sh check-merge <task-id> <pr-url> <live-head>
 #
@@ -66,7 +66,9 @@
 # with a PRODUCT_FAIL that no PASS followed, the gate refuses a third fix round
 # without the owner's re-scope decision (ZT-LOOP-6), and refuses a fixed head
 # that is not built on the tested head or whose commits name, in ZT-Fixes
-# trailers, IDs other than that failed report's Floor IDs (ZT-LOOP-7). carry
+# trailers, IDs other than that failed report's Floor IDs (ZT-LOOP-7). It
+# skips merge commits and commits reachable from prepare's --merge-base
+# (or recheck-gate's optional --base REF) when checking trailers. carry
 # records a PASS for a head whose change, read without context lines, equals
 # the passed head's (ZT-LOOP-4).
 set -euo pipefail
@@ -586,10 +588,17 @@ open_failure() {
   '
 }
 
-# ZT-LOOP-7: every commit on top of the tested head names, in a ZT-Fixes
-# trailer, only floor defects of the change from the tested head's report.
+# ZT-LOOP-7: non-merge commits on top of the tested head, excluding
+# history reachable from the review's base, name only floor defects from
+# the tested head's report in their ZT-Fixes trailers.
 fix_scope() {
-  local src=$1 tested=$2 fixed=$3 floor=$4 sha ids id list bad=0
+  local src=$1 tested=$2 fixed=$3 floor=$4 base=${5:-} sha ids id list bad=0
+  local revisions=("$tested..$fixed")
+  if [ -n "$base" ]; then
+    base=$(git -C "$src" rev-parse --verify "$base^{commit}") \
+      || die "cannot resolve review base $base in $src (ZT-LOOP-7)"
+    revisions+=("^$base")
+  fi
   git -C "$src" merge-base --is-ancestor "$tested" "$fixed" \
     || die "fixed head $fixed is not built on the tested head $tested; a fix round adds commits on top (ZT-LOOP-7)"
   [ "$floor" != - ] || die "the tested head's report names no floor defect, so no fix round is open (ZT-SEV-1)"
@@ -603,7 +612,7 @@ fix_scope() {
         *) printf 'error: commit %s fixes %s, which is not a floor defect of the change; it goes to its own PR\n' "$sha" "$id" >&2; bad=1 ;;
       esac
     done
-  done < <(git -C "$src" log --reverse --format='%H%x09%(trailers:key=ZT-Fixes,valueonly,separator=%x2C)' "$tested..$fixed")
+  done < <(git -C "$src" log --no-merges --reverse --format='%H%x09%(trailers:key=ZT-Fixes,valueonly,separator=%x2C)' "${revisions[@]}")
   [ "$bad" -eq 0 ] || die "the fix round carries work outside the floor defects $floor (ZT-LOOP-7)"
 }
 
@@ -611,7 +620,7 @@ fix_scope() {
 # refuses a third fix round without the owner's re-scope decision (ZT-LOOP-6)
 # and a fix round that carries work outside the floor defects (ZT-LOOP-7).
 recheck_gate() {
-  local pr=$1 src=$2 head=$3 rescope=$4 base rc=0 parsed o_head o_floor failed
+  local pr=$1 src=$2 head=$3 rescope=$4 review_base=${5:-} base rc=0 parsed o_head o_floor failed
   require_text_arg "pr-url" "$pr"
   hex40 "$head" || die "head is not 40 hex characters"
   if [ -n "$rescope" ]; then
@@ -637,7 +646,7 @@ recheck_gate() {
     if [ "$o_floor" = '?' ]; then
       printf 'note: the failed review of %s was recorded before floor lines, so the fix-round scope is not checked\n' "$o_head" >&2
     else
-      fix_scope "$src" "$o_head" "$head" "$o_floor"
+      fix_scope "$src" "$o_head" "$head" "$o_floor" "$review_base"
     fi
   fi
   printf 'recheck-of=%s\nfailed-rechecks=%s\n' "$o_head" "$failed"
@@ -699,7 +708,7 @@ case "$cmd" in
     if inside_worktree "$parent"; then
       die "refusing to build a blind review directory inside a git checkout: $parent"
     fi
-    recheck_gate "$PR_URL" "$SOURCE_DIR" "$HEAD_SHA" "$RESCOPE" >/dev/null
+    recheck_gate "$PR_URL" "$SOURCE_DIR" "$HEAD_SHA" "$RESCOPE" "$MERGE_BASE" >/dev/null
     PREPARE_BYTES=
     PREPARE_DIR=
     DIFF_TMP=
@@ -765,9 +774,20 @@ case "$cmd" in
     printf 'pr=%s\n' "$parsed"
     ;;
   recheck-gate)
-    [ "$#" -eq 3 ] || { [ "$#" -eq 5 ] && [ "$4" = --rescope ]; } \
-      || die "recheck-gate needs a pull request URL, a source repository, the head to review, and optionally --rescope <owner decision file>"
-    recheck_gate "$1" "$2" "$3" "${5:-}"
+    [ "$#" -ge 3 ] \
+      || die "recheck-gate needs a pull request URL, a source repository, and the head to review"
+    pr=$1 src=$2 head=$3 review_base='' rescope=''
+    shift 3
+    while [ "$#" -gt 0 ]; do
+      [ "$#" -ge 2 ] || die "missing value for $1"
+      case "$1" in
+        --base) review_base=$2 ;;
+        --rescope) rescope=$2 ;;
+        *) die "unknown recheck-gate option $1" ;;
+      esac
+      shift 2
+    done
+    recheck_gate "$pr" "$src" "$head" "$rescope" "$review_base"
     ;;
   carry)
     [ "$#" -eq 5 ] || die "carry needs a task id, a pull request URL, a source repository, a base ref and the new head"
