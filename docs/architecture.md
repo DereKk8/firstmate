@@ -391,7 +391,8 @@ A GitLab merge request and a Gerrit change expose no such ref, so a task recordi
 Where a no-mistakes pipeline stores evidence in the repo, it publishes that PR-viewable validation evidence to an orphan evidence branch that shares no history with code branches, so it never enters the crew branch or the default branch.
 This repo uses that setting, and its own `.no-mistakes/` directory remains local state that stays gitignored and is rejected by CI if tracked; [`configuration.md`](configuration.md) owns the setting.
 PR-based task merges go through `bin/fm-pr-merge.sh`, which records `pr=` and any available `pr_head=` through `bin/fm-pr-check.sh` before calling the forge CLI.
-When `bin/fm-zt-review.sh` has recorded a review for that same URL, the merge is refused before the forge call unless that record is a PASS verdict for the live head.
+When `bin/fm-zt-review.sh` has recorded a review for that same URL, the merge is refused before the forge call unless the latest verdict in that review history is a PASS for the live head.
+In a home with the `config/zero-trust-required` flag, a pull request with no recorded review is refused the same way.
 If that script is missing, the merge is refused, and `bin/fm-pr-merge.sh` owns the comparison.
 `bin/fm-pr-merge.sh` requires a full canonical URL and rejects malformed URLs or repo override flags before recording merge state.
 A `https://github.com/<owner>/<repo>/pull/<n>` URL requires `gh` and `jq`, is merged only after live reads confirm the pull request is open, not a draft, mergeable, conflict-free, every unwaived check is green at the current head, and every unwaived check the base branch requires has reported at that head, then `gh pr merge` binds that verified head with `--match-head-commit`.

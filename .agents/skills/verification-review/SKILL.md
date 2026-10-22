@@ -37,10 +37,12 @@ The verifier is an ordinary scout, because proof has to drive the product, and i
 Those instructions forbid product edits, commits, pushes, and merges.
 The verifier still has a repository copy, so that ban is an instruction.
 A re-check is a new blind launch and a new `bin/fm-zt-review.sh record-report`.
-Send one fix to the author, and stop if the re-check fails.
+Read the pull request's earlier verdicts with `bin/fm-zt-review.sh history` before each fix round, because the pinned skill counts failed re-checks per pull request across sessions and teams, and follow its fix-loop limit.
 
 ## Report and merge
 
 `bin/fm-zt-review.sh record-report` accepts only a report in the shared order with one shared verdict word.
+It appends the verdict to that pull request's history, with `--scope full` for a report that covers the whole change and `--scope delta` for one that covers only a fix.
 Before completion, follow `scout-completion` and `captain-hold-lifecycle`.
-`bin/fm-pr-merge.sh` refuses the merge unless the review recorded for that same URL is a PASS verdict for the live head.
+`bin/fm-pr-merge.sh` refuses the merge unless the latest verdict recorded for that same URL is a PASS for the live head.
+In a home with `config/zero-trust-required` it also refuses a pull request with no recorded review.
