@@ -549,14 +549,25 @@ report_floor() {
 }
 
 # The change of a head: its merge-base-to-head diff without context lines,
-# that is each file header and each added or removed line, in order. A head
-# that only replays the change on a newer base has the same change id.
+# that is each file header with its mode and rename lines and each added or
+# removed line, in order. A head that only replays the change on a newer
+# base has the same change id. An empty change or a binary file refuses.
 change_id() {
-  local src=$1 base=$2 head=$3 mb
+  local src=$1 base=$2 head=$3 mb change rc=0
   mb=$(git -C "$src" merge-base "$base" "$head") || die "no merge base of $base and $head in $src"
-  git -C "$src" diff -U0 --no-ext-diff --no-textconv --no-color "$mb" "$head" \
-    | awk '/^diff --git / || (/^[-+]/ && !/^(\+\+\+|---) /)' \
-    | git hash-object --stdin
+  change=$(git -C "$src" diff -U0 --no-ext-diff --no-textconv --no-color "$mb" "$head" \
+    | awk '
+      /^diff --git / { hdr = 1; print; next }
+      /^@@/ { hdr = 0; next }
+      hdr && /^Binary files / { bin = 1; exit }
+      hdr && /^(index |similarity index |dissimilarity index |--- |\+\+\+ )/ { next }
+      { print }
+      END { if (bin) exit 3 }
+    ') || rc=$?
+  [ "$rc" -ne 3 ] || die "head $head changes a binary file, so its change cannot be compared and it needs a review (ZT-LOOP-4)"
+  [ "$rc" -eq 0 ] || die "cannot read the change of $head in $src"
+  [ -n "$change" ] || die "head $head has no change over $base, so there is no replayed change to carry"
+  printf '%s\n' "$change" | git hash-object --stdin
 }
 
 # Reads the entry lines on stdin and prints the open failure, that is the
@@ -607,14 +618,21 @@ recheck_gate() {
   fi
   base=$(review_record_base "$pr")
   parsed=$(review_entries "$base") || rc=$?
-  if [ "$rc" -eq 2 ]; then printf 'first-review\n'; return 0; fi
+  if [ "$rc" -eq 2 ]; then
+    [ -z "$rescope" ] || die "--rescope only lifts the limit of two failed re-checks, and $pr has no review yet"
+    printf 'first-review\n'
+    return 0
+  fi
   [ "$rc" -eq 0 ] || die "review record $base is unreadable"
   read -r o_head o_floor failed < <(printf '%s\n' "${parsed#*$'\n'}" | open_failure)
+  if [ -n "$rescope" ] && { [ "$o_head" = - ] || [ "$failed" -lt 2 ]; }; then
+    die "--rescope only lifts the limit of two failed re-checks (ZT-LOOP-6), and $pr has no open failure at that limit"
+  fi
   if [ "$o_head" = - ]; then printf 'no-open-failure\nfailed-rechecks=%s\n' "$failed"; return 0; fi
   if [ "$failed" -ge 2 ] && [ -z "$rescope" ]; then
     die "$pr has $failed failed re-checks; the next review needs the owner's re-scope decision (ZT-LOOP-6), passed as --rescope <file>"
   fi
-  if [ "$o_head" != "$head" ] && [ -z "$rescope" ]; then
+  if [ "$o_head" != "$head" ]; then
     if [ "$o_floor" = '?' ]; then
       printf 'note: the failed review of %s was recorded before floor lines, so the fix-round scope is not checked\n' "$o_head" >&2
     else

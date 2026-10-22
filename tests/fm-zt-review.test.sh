@@ -655,6 +655,11 @@ test_floor_lines_fix_scope_and_loop_limit() {
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$rebased"
   expect_code 1 "$RUN_RC" "a fixed head that is not built on the tested head must be refused"
 
+  printf 'owner: cut back to the stated intent\n' >"$FIX/rescope.txt"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$ok_fix" --rescope "$FIX/rescope.txt"
+  expect_code 1 "$RUN_RC" "a re-scope decision below the re-check limit must be refused"
+  assert_grep 'only lifts the limit' "$FIX/stderr" "the refusal did not say --rescope is only for the limit"
+
   record t "$ok_fix" PRODUCT_FAIL full
   fix_commit "$ok_fix" D1
   c2=$COMMIT
@@ -663,9 +668,12 @@ test_floor_lines_fix_scope_and_loop_limit() {
   c3=$COMMIT
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$c3"
   expect_code 1 "$RUN_RC" "a review after two failed re-checks needs the re-scope decision"
-  printf 'owner: cut back to the stated intent\n' >"$FIX/rescope.txt"
   with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$c3" --rescope "$FIX/rescope.txt" >/dev/null \
     || fail "the owner's re-scope decision did not open the next review"
+  fix_commit "$c2" "D1, PX-1"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" recheck-gate "$PR_URL" "$SRC" "$COMMIT" --rescope "$FIX/rescope.txt"
+  expect_code 1 "$RUN_RC" "the re-scope decision must not lift the fix-round scope"
+  assert_grep 'PX-1' "$FIX/stderr" "the refusal at the limit did not name the out-of-scope ID"
 
   reset_reviews
   record t "$tested" PRODUCT_FAIL full
@@ -721,6 +729,28 @@ test_replay_carry_needs_the_same_change() {
   changed=$(git -C "$SRC" rev-parse HEAD)
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
   expect_code 1 "$RUN_RC" "a head that changes other lines must not carry the verdict"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$changed" "$changed"
+  expect_code 1 "$RUN_RC" "a base ref that holds the new head gave an empty change that carried the verdict"
+  git -C "$SRC" checkout -q --detach "$replayed"
+  chmod +x "$SRC/g"
+  git -C "$SRC" commit -qam mode
+  changed=$(git -C "$SRC" rev-parse HEAD)
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
+  expect_code 1 "$RUN_RC" "a head that also changes a file mode must not carry the verdict"
+  git -C "$SRC" checkout -q --detach "$replayed"
+  printf '%s\n' '-- x' >>"$SRC/g"
+  git -C "$SRC" commit -qam marker
+  changed=$(git -C "$SRC" rev-parse HEAD)
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
+  expect_code 1 "$RUN_RC" "an added line that looks like a diff header must not carry the verdict"
+  git -C "$SRC" checkout -q --detach "$replayed"
+  printf 'a\0b' >"$SRC/blob.bin"
+  git -C "$SRC" add blob.bin
+  git -C "$SRC" commit -qm binary
+  changed=$(git -C "$SRC" rev-parse HEAD)
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" carry t "$PR_URL" "$SRC" "$base_ref" "$changed"
+  expect_code 1 "$RUN_RC" "a head with a binary file must not carry the verdict"
+  assert_grep 'binary file' "$FIX/stderr" "the refusal did not name the binary file"
   git -C "$SRC" checkout -q --detach "$BASE_COMMIT"
   git -C "$SRC" branch -D "$base_ref" >/dev/null
   pass "a PASS carries only to a head with the same change"

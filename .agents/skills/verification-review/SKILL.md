@@ -41,6 +41,7 @@ Read the pull request's earlier verdicts with `bin/fm-zt-review.sh history` befo
 Send the author only the Floor IDs of the failed report.
 The author adds fix commits on top of the tested head, each with a `ZT-Fixes: <ID>, ...` trailer.
 `prepare` refuses a re-check whose commits name other IDs or do not build on the tested head, and refuses a review after two failed re-checks until `--rescope <file>` passes the owner's re-scope decision.
+`--rescope` is accepted only at that limit, and it lifts only the limit: the fix-round commits still need their `ZT-Fixes` trailers.
 
 ## Report and merge
 
@@ -52,4 +53,4 @@ It appends the verdict to that pull request's history, with `--scope full` for a
 Before completion, follow `scout-completion` and `captain-hold-lifecycle`.
 `bin/fm-pr-merge.sh` refuses the merge unless the latest verdict recorded for that same URL is a PASS for the live head.
 In a home with `config/zero-trust-required` it also refuses a pull request with no recorded review.
-When the head moved only by a rebase, run `bin/fm-zt-review.sh carry` instead of a new review: it records the PASS for the new head only when the new head adds and removes the same lines as the passed head.
+When the head moved only by a rebase, run `bin/fm-zt-review.sh carry` instead of a new review: it records the PASS for the new head only when the new head adds and removes the same lines, with the same file modes, as the passed head, and it refuses an empty change or a binary file.
