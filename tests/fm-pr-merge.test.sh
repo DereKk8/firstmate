@@ -4422,7 +4422,7 @@ record_verified_head() {
     printf 'Final tested head: %s\n' "$head"
     printf '%s\n' '## Setup'
     printf '%s\n' 'staffing recorded for the merge check'
-    printf '%s\n' '## Blind-review suspicions'
+    printf '%s\n' '## Independent-review suspicions'
     printf '%s\n' 'sealed review is elsewhere'
     printf '%s\n' '## Product-surface run'
     printf '%s\n' 'the product was driven'
@@ -4438,7 +4438,7 @@ record_verified_head() {
     printf '%s\n' "$case_dir/evidence"
   } >"$report"
   FM_HOME="$case_dir/home" FM_STATE_OVERRIDE="$case_dir/state" \
-    "$ROOT/bin/fm-zt-review.sh" record-report "$task_id" "$report" "$pr_url" \
+    "$ROOT/bin/fm-zt-review.sh" record-report "$task_id" "$report" "$pr_url" --scope full \
     >"$case_dir/record.out"
 }
 
@@ -4502,6 +4502,43 @@ test_review_for_another_url_does_not_block_the_merge() {
   expect_code 0 "$rc" "review-other-url: a record for a different URL must not block"
   assert_logged_gh_merge "$case_dir" 94 example/repo --squash
   pass "fm-pr-merge ignores a review record for a different pull request"
+}
+
+test_required_home_refuses_a_merge_with_no_review() {
+  local case_dir rc live
+  live=8888888888888888888888888888888888888888
+  case_dir=$(make_case review-required-none)
+  add_gh_mocks "$case_dir" "$live"
+  : > "$case_dir/gh-axi.log"
+  : > "$case_dir/home/config/zero-trust-required"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/95 \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 1 "$rc" "review-required-none: a PR with no review must refuse where zero trust is required"
+  assert_grep 'requires a zero-trust review before merge' "$case_dir/stderr" \
+    "review-required-none: the refusal did not name the requirement"
+  assert_no_grep 'pr merge' "$case_dir/gh.log" \
+    "review-required-none: gh pr merge ran with no review"
+
+  case_dir=$(make_case review-required-pass)
+  add_gh_mocks "$case_dir" "$live"
+  : > "$case_dir/gh-axi.log"
+  : > "$case_dir/home/config/zero-trust-required"
+  record_verified_head "$case_dir" task-x1 https://github.com/example/repo/pull/96 "$live"
+
+  set +e
+  run_pr_merge "$case_dir" task-x1 https://github.com/example/repo/pull/96 \
+    >"$case_dir/stdout" 2>"$case_dir/stderr"
+  rc=$?
+  set -e
+
+  expect_code 0 "$rc" "review-required-pass: a PASS of the live head must merge where zero trust is required"
+  assert_logged_gh_merge "$case_dir" 96 example/repo --squash
+  pass "fm-pr-merge refuses a PR with no review in a home that requires zero trust, and merges its PASS"
 }
 
 test_gitlab_review_head_mismatch_refuses_before_the_merge() {
@@ -4697,6 +4734,7 @@ test_allow_missing_refused_on_forgejo
 test_review_head_mismatch_refuses_before_the_github_merge
 test_review_head_match_still_merges
 test_review_for_another_url_does_not_block_the_merge
+test_required_home_refuses_a_merge_with_no_review
 test_gitlab_review_head_mismatch_refuses_before_the_merge
 test_forgejo_review_head_mismatch_refuses_before_the_merge
 test_failed_review_refuses_before_the_github_merge

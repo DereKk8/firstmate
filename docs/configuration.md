@@ -618,6 +618,14 @@ The optional local, gitignored `config/pipeline-spend` presence flag opts this h
 When the flag is absent, teardown skips recording and the recorder exits before reading task metadata, no-mistakes state, or the spend ledger.
 An existing ledger is left untouched while recording is disabled.
 
+## Zero-trust review before merge (config/zero-trust-required)
+
+The optional local, gitignored `config/zero-trust-required` presence flag records that this home's standing rule requires a zero-trust review before every merge.
+With it present, `bin/fm-pr-merge.sh` refuses a pull request that has no review recorded by `bin/fm-zt-review.sh record-report`, as it already refuses one whose latest recorded verdict is not a PASS of the live head.
+With it absent, a pull request with no recorded review merges on the other merge checks alone.
+A config directory that cannot be searched refuses the merge rather than reading as absent.
+The flag is a home-local choice and is not inherited by secondmate homes; `bin/fm-zt-review.sh`'s header owns the review history the check reads.
+
 ## Turn-end pane-churn absorb (config/turnend-churn-absorb)
 
 The optional local, gitignored `config/turnend-churn-absorb` presence flag opts this home into a default-off third form of positive work evidence in watcher triage.

@@ -129,10 +129,11 @@
 # because there is no established translation from a gh/glab-style flag into
 # a Forgejo API field yet.
 #
-# When bin/fm-zt-review.sh has recorded a review for this same URL, that
-# record must be a PASS verdict for the live head. refuse_stale_review_head
-# calls that helper before any forge merge. A missing helper refuses
-# the merge. A pull request with no review record merges as before.
+# When bin/fm-zt-review.sh has recorded a review for this same URL, the latest
+# verdict in that history must be a PASS for the live head.
+# refuse_stale_review_head calls that helper before any forge merge. A missing
+# helper refuses the merge. A pull request with no review record merges as
+# before, unless the home's config/zero-trust-required flag requires one.
 #
 # Before either forge merge, the task's existing per-task control lock
 # serializes the captain-hold check through the forge command. A still-held or

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tests for bin/fm-zt-review.sh: diff staffing, the shared brief, the blind
-# launch boundary, report shape, and the reviewed-head merge record.
+# launch boundary, report shape, the per-PR verdict history, and the merge
+# gate that reads it.
 set -u
 
 # shellcheck source=tests/lib.sh
@@ -22,6 +23,7 @@ git -C "$REPO" add shared/zero-trust-review/SKILL.md
 git -C "$REPO" -c user.email=fmtest@example.invalid -c user.name=fmtest commit -qm pin
 PIN_COMMIT=$(git -C "$REPO" rev-parse HEAD)
 PIN_BLOB=$(git -C "$REPO" rev-parse "HEAD:shared/zero-trust-review/SKILL.md")
+git -C "$REPO" update-ref refs/remotes/origin/master "$PIN_COMMIT"
 
 with_pin() {
   FM_ZT_PIN_OVERRIDE=1 \
@@ -31,6 +33,7 @@ with_pin() {
   FM_ZT_SKILL_REPO="$REPO" \
   FM_HOME="$FIX/home" \
   FM_STATE_OVERRIDE="$STATE" \
+  FM_CONFIG_OVERRIDE="$FIX/home/config" \
     "$@"
 }
 
@@ -78,6 +81,8 @@ marker_body() {
   ' "$file"
 }
 
+SUSPICIONS_HEADING='## Independent-review suspicions'
+
 write_report() {
   local dest=$1 head=$2 verdict=$3 url=${4:-$PR_URL} ident
   ident=$(with_pin "$ZT" identity)
@@ -88,7 +93,7 @@ write_report() {
     printf 'Final tested head: %s\n' "$head"
     printf '%s\n' '## Setup'
     printf '%s\n' 'one agent'
-    printf '%s\n' '## Blind-review suspicions'
+    printf '%s\n' "$SUSPICIONS_HEADING"
     printf '%s\n' 'coverage recorded'
     printf '%s\n' '## Product-surface run'
     printf '%s\n' 'the product was driven'
@@ -109,7 +114,7 @@ test_identity_shape_and_fixture_check() {
   local line rc
   line=$("$ZT" identity)
   case "$line" in
-    'Identity: zero-trust-review 2.2.0 '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+    'Identity: zero-trust-review 4.1.0 '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' '[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
     *) fail "identity line has the wrong shape: $line" ;;
   esac
   with_pin "$ZT" identity --check >/dev/null
@@ -325,21 +330,38 @@ recorded_path() {
   printf '%s\n' "${line#recorded=}"
 }
 
+# record <task> <head> <verdict> <scope> [url] records one report.
+record() {
+  local task=$1 head=$2 verdict=$3 scope=$4 url=${5:-$PR_URL}
+  write_report "$FIX/report.md" "$head" "$verdict" "$url"
+  with_pin "$ZT" record-report "$task" "$FIX/report.md" "$url" --scope "$scope" >"$FIX/record.out" \
+    || fail "record-report refused a $verdict report for $head"
+}
+
+# entry_count [url] prints how many verdicts the history holds.
+entry_count() {
+  with_pin "$ZT" history "${1:-$PR_URL}" | awk '/^head=/ { n++ } END { print n + 0 }'
+}
+
+reset_reviews() {
+  rm -f "$STATE"/zt-pr-*
+  rm -f "$FIX/home/config/zero-trust-required"
+}
+
 test_record_and_check_merge() {
   local report rc text path other_url before after
+  reset_reviews
   report=$FIX/report.md
   other_url=https://github.com/example/repo/pull/10
-  write_report "$report" "$HEAD_A" PASS
-  with_pin "$ZT" record-report task-1 "$report" "$PR_URL" >"$FIX/record.out"
+  record task-1 "$HEAD_A" PASS full
   path=$(recorded_path "$FIX/record.out")
   assert_present "$path" "record-report did not write the review record"
   case "$path" in
-    "$STATE"/task-1.zt-verified) fail "the review record is still keyed by the task id" ;;
+    "$STATE"/task-1.*) fail "the review record is still keyed by the task id" ;;
   esac
-  text=$(cat "$path")
-  assert_contains "$text" "pr=$PR_URL" "the record is missing the pull request URL"
-  assert_contains "$text" "head=$HEAD_A" "the record is missing the tested head"
-  assert_contains "$text" "verdict=PASS" "the record dropped the verdict"
+  text=$(with_pin "$ZT" history "$PR_URL")
+  assert_contains "$text" "pr=$PR_URL" "the history is missing the pull request URL"
+  assert_contains "$text" "head=$HEAD_A verdict=PASS scope=full date=" "the history is missing the entry"
   text=$(with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_A")
   assert_contains "$text" "reviewed-head=$HEAD_A" "a PASS recorded by another task was not accepted"
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_B"
@@ -352,56 +374,211 @@ test_record_and_check_merge() {
   text=$(with_pin "$ZT" check-merge task-1 "$PR_URL" "$HEAD_A")
   assert_equals no-review "$text" "a missing record blocked the merge"
 
-  write_report "$report" "$HEAD_A" PASS
-  with_pin "$ZT" record-report task-1 "$report" "$PR_URL" >"$FIX/record.out"
+  record task-1 "$HEAD_A" PASS full
   path=$(recorded_path "$FIX/record.out")
-  printf 'pr=%s\nhead=%s\nverdict=PASS\nextra=1\n' "$PR_URL" "$HEAD_A" >"$path"
+  printf 'head=%s verdict=PASS scope=full\n' "$HEAD_A" >>"$path"
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge task-1 "$PR_URL" "$HEAD_A"
   rc=$RUN_RC
-  expect_code 1 "$rc" "a malformed record must refuse the merge"
+  expect_code 1 "$rc" "a malformed history must refuse the merge"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "$PR_URL" --scope full
+  rc=$RUN_RC
+  expect_code 1 "$rc" "a malformed history must refuse a new entry"
   rm -f "$path"
+
+  record task-1 "$HEAD_A" PASS full
+  before=$(entry_count)
   write_report "$report" "$HEAD_A" NOPE
-  before=$(find "$STATE" -name '*.zt-verified' | awk 'END { print NR }')
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "$PR_URL"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "$PR_URL" --scope full
   rc=$RUN_RC
   expect_code 1 "$rc" "a report with a foreign verdict word must be refused"
-  after=$(find "$STATE" -name '*.zt-verified' | awk 'END { print NR }')
-  assert_equals "$before" "$after" "a refused report still wrote a review record"
   write_report "$report" "$HEAD_A" $'PASS\nALSO'
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "$PR_URL"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "$PR_URL" --scope full
   rc=$RUN_RC
   expect_code 1 "$rc" "two verdict words must be refused"
-
   write_report "$report" "$HEAD_A" PASS "https://github.com/example/repo/pull/1"
-  before=$(find "$STATE" -name '*.zt-verified' | awk 'END { print NR }')
-  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "https://github.com/example/repo/pull/2"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-2 "$report" "$PR_URL" --scope full
   rc=$RUN_RC
   expect_code 1 "$rc" "a report for a different pull request must be refused"
   assert_grep 'Repo / PR' "$FIX/stderr" "the refusal did not name the report pull request"
-  after=$(find "$STATE" -name '*.zt-verified' | awk 'END { print NR }')
-  assert_equals "$before" "$after" "a mismatched report still wrote a review record"
+  after=$(entry_count)
+  assert_equals "$before" "$after" "a refused report still added a verdict"
 
-  write_report "$report" "$HEAD_A" PRODUCT_FAIL
-  with_pin "$ZT" record-report scout-task-99 "$report" "$PR_URL" >"$FIX/record.out"
-  path=$(recorded_path "$FIX/record.out")
-  assert_contains "$(cat "$path")" "verdict=PRODUCT_FAIL" "a failed verdict was not stored"
+  record scout-task-99 "$HEAD_A" PRODUCT_FAIL full
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_A"
   rc=$RUN_RC
   expect_code 1 "$rc" "a PRODUCT_FAIL review must refuse the matching head"
   assert_grep 'not PASS' "$FIX/stderr" "the refusal did not name the verdict"
-  write_report "$report" "$HEAD_A" INCOMPLETE
-  with_pin "$ZT" record-report scout-task-99 "$report" "$PR_URL" >/dev/null
+  record scout-task-99 "$HEAD_A" INCOMPLETE full
   run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_A"
   rc=$RUN_RC
   expect_code 1 "$rc" "an INCOMPLETE review must refuse the matching head"
 
-  write_report "$report" "$HEAD_A" PASS
-  with_pin "$ZT" record-report scout-task-99 "$report" "$PR_URL" >/dev/null
-  write_report "$report" "$HEAD_B" PASS "$other_url"
-  with_pin "$ZT" record-report scout-task-99 "$report" "$other_url" >/dev/null
+  record scout-task-99 "$HEAD_A" PASS full
+  record scout-task-99 "$HEAD_B" PASS full "$other_url"
   text=$(with_pin "$ZT" check-merge ship-task-1 "$PR_URL" "$HEAD_A")
   assert_contains "$text" "reviewed-head=$HEAD_A" "a later record for another URL removed the first review"
   pass "record-report stores the verdict by pull request URL and check-merge requires PASS"
+}
+
+test_history_is_append_only_and_the_gate_reads_the_latest() {
+  local text rc first
+  reset_reviews
+  record review-1 "$HEAD_A" PRODUCT_FAIL full
+  first=$(head -n 2 "$(recorded_path "$FIX/record.out")")
+  record review-2 "$HEAD_B" PRODUCT_FAIL full
+  record review-3 "$HEAD_B" PASS delta
+  text=$(with_pin "$ZT" history "$PR_URL")
+  assert_equals 4 "$(printf '%s\n' "$text" | awk 'END { print NR }')" "the history did not keep every verdict"
+  printf '%s\n' "$text" | awk -v a="$HEAD_A" -v b="$HEAD_B" '
+    NR == 2 && index($0, "head=" a " verdict=PRODUCT_FAIL scope=full date=") == 1 { ok++ }
+    NR == 3 && index($0, "head=" b " verdict=PRODUCT_FAIL scope=full date=") == 1 { ok++ }
+    NR == 4 && index($0, "head=" b " verdict=PASS scope=delta date=") == 1 { ok++ }
+    $0 ~ /date=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$/ { dated++ }
+    END { exit !(ok == 3 && dated == 3) }
+  ' || fail "the history lost the order, scope, or date of a verdict: $text"
+  assert_equals "$first" "$(head -n 2 "$(recorded_path "$FIX/record.out")")" "a later verdict rewrote an earlier one"
+  text=$(with_pin "$ZT" check-merge ship-1 "$PR_URL" "$HEAD_B")
+  assert_equals "reviewed-head=$HEAD_B" "$text" "the latest PASS of the live head did not merge"
+
+  record review-4 "$HEAD_B" PRODUCT_FAIL full
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-1 "$PR_URL" "$HEAD_B"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "an earlier PASS of the live head must not outweigh a later failure"
+  assert_grep 'latest review verdict is PRODUCT_FAIL' "$FIX/stderr" "the refusal did not name the latest verdict"
+  assert_equals 4 "$(entry_count)" "the history does not count every verdict"
+  pass "the history keeps every verdict in order and the merge gate reads the latest"
+}
+
+test_record_report_requires_a_scope() {
+  local rc
+  reset_reviews
+  write_report "$FIX/report.md" "$HEAD_A" PASS
+  for args in '' '--scope' '--scope partial' '--scope full extra'; do
+    # shellcheck disable=SC2086
+    run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-1 "$FIX/report.md" "$PR_URL" $args
+    rc=$RUN_RC
+    expect_code 1 "$rc" "record-report accepted scope arguments '$args'"
+  done
+  assert_equals no-review "$(with_pin "$ZT" history "$PR_URL")" "a refused scope still recorded a verdict"
+  pass "record-report requires --scope full or delta"
+}
+
+test_legacy_record_is_read_until_a_history_exists() {
+  local base legacy text rc
+  reset_reviews
+  record seed "$HEAD_A" PASS full
+  base=$(recorded_path "$FIX/record.out")
+  base=${base%.zt-history}
+  rm -f "$base.zt-history"
+  legacy=$base.zt-verified
+  printf 'pr=%s\nhead=%s\nverdict=PRODUCT_FAIL\n' "$PR_URL" "$HEAD_A" >"$legacy"
+  cp "$legacy" "$FIX/legacy-before"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-1 "$PR_URL" "$HEAD_A"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "a failed legacy record must still refuse the merge"
+  text=$(with_pin "$ZT" history "$PR_URL")
+  assert_contains "$text" "head=$HEAD_A verdict=PRODUCT_FAIL scope=unknown date=unknown" \
+    "history did not show the legacy record"
+  record review-1 "$HEAD_A" PASS full
+  text=$(with_pin "$ZT" check-merge ship-1 "$PR_URL" "$HEAD_A")
+  assert_equals "reviewed-head=$HEAD_A" "$text" "a new history did not supersede the legacy record"
+  cmp -s "$FIX/legacy-before" "$legacy" || fail "recording a verdict changed the legacy record"
+  pass "a legacy single record gates the merge until the first history entry, and is never changed"
+}
+
+test_required_home_refuses_a_merge_with_no_review() {
+  local rc text config
+  reset_reviews
+  config=$FIX/home/config
+  mkdir -p "$config"
+  text=$(with_pin "$ZT" check-merge ship-1 "$PR_URL" "$HEAD_A")
+  assert_equals no-review "$text" "a home without the flag refused a merge with no review"
+  : >"$config/zero-trust-required"
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-1 "$PR_URL" "$HEAD_A"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "a home that requires zero trust merged a PR with no review"
+  assert_grep 'requires a zero-trust review before merge' "$FIX/stderr" "the refusal did not name the requirement"
+  record review-1 "$HEAD_A" PASS full
+  text=$(with_pin "$ZT" check-merge ship-1 "$PR_URL" "$HEAD_A")
+  assert_equals "reviewed-head=$HEAD_A" "$text" "a home that requires zero trust refused a PASS of the live head"
+  reset_reviews
+  if [ "$(id -u)" -ne 0 ]; then
+    chmod 000 "$config"
+    run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge ship-1 "$PR_URL" "$HEAD_A"
+    rc=$RUN_RC
+    chmod 755 "$config"
+    expect_code 1 "$rc" "a config directory that cannot be searched read as no requirement"
+  fi
+  pass "a home with config/zero-trust-required refuses a merge that has no review recorded"
+}
+
+test_old_report_shape_is_refused() {
+  local rc
+  reset_reviews
+  SUSPICIONS_HEADING='## Blind-review suspicions'
+  write_report "$FIX/report.md" "$HEAD_A" PASS
+  SUSPICIONS_HEADING='## Independent-review suspicions'
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" record-report task-1 "$FIX/report.md" "$PR_URL" --scope full
+  rc=$RUN_RC
+  expect_code 1 "$rc" "a report in the retired 2.x shape was accepted"
+  assert_grep 'report shape refused' "$FIX/stderr" "the refusal did not name the report shape"
+  pass "record-report accepts only the pinned release's report shape"
+}
+
+# A real skill file is larger than one pipe write, so reading only its
+# version line must not end git early and fail under pipefail.
+test_identity_check_reads_a_large_skill_every_time() {
+  local big commit blob n=0 rc
+  big=$FIX/big-skill-repo
+  git init -q "$big"
+  mkdir -p "$big/shared/zero-trust-review"
+  {
+    printf -- '---\nname: zero-trust-review\n---\n\nSkill version: 8.8.8\n'
+    awk 'BEGIN { for (i = 0; i < 20000; i++) print "rule text line " i }'
+  } >"$big/shared/zero-trust-review/SKILL.md"
+  git -C "$big" add shared/zero-trust-review/SKILL.md
+  git -C "$big" commit -qm big
+  commit=$(git -C "$big" rev-parse HEAD)
+  blob=$(git -C "$big" rev-parse "HEAD:shared/zero-trust-review/SKILL.md")
+  git -C "$big" update-ref refs/remotes/origin/master "$commit"
+  while [ "$n" -lt 10 ]; do
+    run_capture "$FIX/stdout" "$FIX/stderr" env FM_ZT_PIN_OVERRIDE=1 FM_ZT_VERSION=8.8.8 \
+      FM_ZT_COMMIT="$commit" FM_ZT_BLOB="$blob" FM_ZT_SKILL_REPO="$big" "$ZT" identity --check
+    rc=$RUN_RC
+    expect_code 0 "$rc" "identity --check failed on a large skill file: $(cat "$FIX/stderr")"
+    n=$((n + 1))
+  done
+  pass "identity --check reads a large skill file's version every time"
+}
+
+test_identity_check_refuses_a_pin_older_than_master() {
+  local rc newer
+  git -C "$REPO" checkout -q -b newer "$PIN_COMMIT"
+  printf 'unrelated\n' >"$REPO/README"
+  git -C "$REPO" add README
+  git -C "$REPO" commit -qm unrelated
+  git -C "$REPO" update-ref refs/remotes/origin/master HEAD
+  with_pin "$ZT" identity --check >/dev/null \
+    || fail "a master change to another file made the pin stale"
+  printf 'Skill version: 9.9.10\nrule text\n' >"$REPO/shared/zero-trust-review/SKILL.md"
+  git -C "$REPO" commit -qam newer-rules
+  newer=$(git -C "$REPO" rev-parse HEAD)
+  printf 'unrelated again\n' >"$REPO/README"
+  git -C "$REPO" commit -qam unrelated-again
+  git -C "$REPO" update-ref refs/remotes/origin/master HEAD
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" identity --check
+  rc=$RUN_RC
+  expect_code 1 "$rc" "identity --check accepted a pin older than master"
+  assert_grep "$newer" "$FIX/stderr" "the refusal did not name the newest master change"
+  assert_grep '9.9.10' "$FIX/stderr" "the refusal did not name the newest version"
+  git -C "$REPO" update-ref -d refs/remotes/origin/master
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" identity --check
+  rc=$RUN_RC
+  expect_code 1 "$rc" "identity --check passed with no origin/master to compare"
+  git -C "$REPO" update-ref refs/remotes/origin/master "$PIN_COMMIT"
+  git -C "$REPO" checkout -q -
+  with_pin "$ZT" identity --check >/dev/null || fail "the fixture pin no longer checks"
+  pass "identity --check refuses a pin that is not the newest master change to the skill"
 }
 
 test_diff_count_keeps_marker_like_code_lines() {
@@ -433,3 +610,10 @@ test_brief_fields_and_marker_lines
 test_prepare_asserts_and_cleans_up
 test_launch_runs_in_the_blind_directory
 test_record_and_check_merge
+test_history_is_append_only_and_the_gate_reads_the_latest
+test_record_report_requires_a_scope
+test_legacy_record_is_read_until_a_history_exists
+test_required_home_refuses_a_merge_with_no_review
+test_old_report_shape_is_refused
+test_identity_check_reads_a_large_skill_every_time
+test_identity_check_refuses_a_pin_older_than_master

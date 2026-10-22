@@ -5,8 +5,9 @@
 # This script does not restate those rules. It counts the pinned diff,
 # prints the staffing that count calls for, writes the shared brief,
 # launches the blind reviewer in a directory that is not a repository,
-# checks the report shape, and refuses a merge unless the review recorded
-# for that pull request URL is a PASS of the live head.
+# checks the report shape, keeps each pull request's verdict history, and
+# refuses a merge when the latest review recorded for that pull request URL
+# is not a PASS of the live head.
 #
 # The diff and its size come from git on the pinned commits: --source names
 # a local repository that has both the merge base and the head. git's own
@@ -20,11 +21,22 @@
 # directory and without the common forge tokens. It is not a sandbox: the
 # command keeps the caller's filesystem access.
 #
-# A missing review record for the pull request URL does not change merge.
-# The record is keyed by that URL, so a review stored from another task
-# is the one the merge sees. record-report refuses a report whose
-# "Repo / PR" line is not that same URL. A record whose verdict is not
-# PASS, or whose head is not the live head, is a refusal.
+# identity --check also refuses a pin that is not the newest commit on the
+# skill clone's origin/master that changed the skill file, which is the
+# source commit /sync-zero-trust names. It reads origin/master as last
+# fetched and never fetches.
+#
+# record-report appends one entry (head, verdict, scope, UTC date) to the
+# append-only review history for the pull request URL; --scope says whether
+# the report covers the full change or only a delta. history prints that
+# history in order. A history from another task is the one the merge sees,
+# because the record is keyed by the URL, and record-report refuses a report
+# whose "Repo / PR" line is not that same URL. check-merge reads the latest
+# entry: a verdict that is not PASS, or a head that is not the live head, is
+# a refusal. A single-record file left by an earlier version is read only
+# while no history exists. A missing review does not change merge, unless
+# the home has the config/zero-trust-required presence flag, which refuses
+# a merge that has no review recorded.
 #
 # Usage:
 #   fm-zt-review.sh identity
@@ -37,13 +49,15 @@
 #   fm-zt-review.sh prepare --out DIR [same brief flags]
 #   fm-zt-review.sh assert <dir>
 #   fm-zt-review.sh launch <dir> -- <command> [args]
-#   fm-zt-review.sh record-report <task-id> <report-file> <pr-url>
+#   fm-zt-review.sh record-report <task-id> <report-file> <pr-url> --scope full|delta
+#   fm-zt-review.sh history <pr-url>
 #   fm-zt-review.sh check-merge <task-id> <pr-url> <live-head>
 #
 # identity --check and show-skill read the pinned commit from
 # FM_ZT_SKILL_REPO, or from $FM_HOME/projects/project-skills.
 # FM_ZT_PIN_OVERRIDE=1 with FM_ZT_VERSION, FM_ZT_COMMIT, and FM_ZT_BLOB
 # substitutes the pin. Leave those unset for a real review.
+# The config directory is FM_CONFIG_OVERRIDE, or $FM_HOME/config.
 set -euo pipefail
 
 SCRIPT_DIR=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
@@ -65,7 +79,7 @@ pin_version() {
     printf '%s\n' "$FM_ZT_VERSION"
     return 0
   fi
-  printf '%s\n' '2.2.0'
+  printf '%s\n' '4.1.0'
 }
 
 pin_commit() {
@@ -74,7 +88,7 @@ pin_commit() {
     printf '%s\n' "$FM_ZT_COMMIT"
     return 0
   fi
-  printf '%s\n' 'cc3992c1f790fcf5de5c0a48849fc79533c1e8e3'
+  printf '%s\n' '2de135997bd80ce0884f707f7e1815eebff97519'
 }
 
 pin_blob() {
@@ -83,7 +97,7 @@ pin_blob() {
     printf '%s\n' "$FM_ZT_BLOB"
     return 0
   fi
-  printf '%s\n' '0489404d2b1dedc4b25dc42d4adef3ea8a2aea2c'
+  printf '%s\n' '9bac1e9c09599491944e512617cf107f78e58650'
 }
 
 identity_line() {
@@ -122,10 +136,28 @@ skill_bytes() {
     || die "pinned skill commit $commit has no shared/zero-trust-review/SKILL.md in $repo"
   [ "$got" = "$blob" ] || die "pinned skill blob drift: commit $commit has $got, pin is $blob"
   version=$(git -C "$repo" show "${commit}:shared/zero-trust-review/SKILL.md" \
-    | awk 'BEGIN { found = 0 } /^Skill version: / { print substr($0, 16); found = 1; exit } END { if (!found) exit 1 }') \
+    | awk '!found && /^Skill version: / { print substr($0, 16); found = 1 } END { if (!found) exit 1 }') \
     || die "pinned skill has no Skill version line"
   [ "$version" = "$(pin_version)" ] || die "pinned skill version is $version, pin is $(pin_version)"
   git -C "$repo" show "${commit}:shared/zero-trust-review/SKILL.md"
+}
+
+# The pin must be the source commit /sync-zero-trust names: the newest commit
+# on master that changed the skill file. This reads the clone's origin/master
+# as last fetched, so a clone that was never refreshed cannot see a newer one.
+require_newest_pin() {
+  local repo commit newest newest_version
+  repo=$(skill_repo)
+  commit=$(pin_commit)
+  newest=$(git -C "$repo" log -1 --format=%H refs/remotes/origin/master -- shared/zero-trust-review/SKILL.md 2>/dev/null) \
+    || die "could not read origin/master in $repo"
+  [ -n "$newest" ] || die "origin/master in $repo has no commit that changed shared/zero-trust-review/SKILL.md"
+  [ "$newest" = "$commit" ] && return 0
+  # awk reads to the end, because an early exit would end git with SIGPIPE
+  # and pipefail would discard the version it printed.
+  newest_version=$(git -C "$repo" show "${newest}:shared/zero-trust-review/SKILL.md" 2>/dev/null \
+    | awk '!found && /^Skill version: / { print substr($0, 16); found = 1 }') || newest_version=
+  die "pinned skill $(pin_version) at $commit is not the newest master change $newest (version ${newest_version:-unknown}); re-pin this script"
 }
 
 inside_worktree() {
@@ -337,7 +369,7 @@ report_ok() {
       next
     }
     $0 == "## Setup" { if (stage != 1 || tested == "") { bad = "order"; exit } stage = 2; seen = 0; next }
-    $0 == "## Blind-review suspicions" { if (stage != 2 || seen == 0) { bad = "order"; exit } stage = 3; seen = 0; next }
+    $0 == "## Independent-review suspicions" { if (stage != 2 || seen == 0) { bad = "order"; exit } stage = 3; seen = 0; next }
     $0 == "## Product-surface run" { if (stage != 3 || seen == 0) { bad = "order"; exit } stage = 4; seen = 0; next }
     $0 == "## Attack phase" { if (stage != 4 || seen == 0) { bad = "order"; exit } stage = 5; seen = 0; next }
     $0 == "## Findings" { if (stage != 5 || seen == 0) { bad = "order"; exit } stage = 6; seen = 0; next }
@@ -374,7 +406,12 @@ report_ok() {
   printf '%s\n' "$head"
 }
 
-review_record_path() {
+# Each pull request URL names two files in the state directory.
+# zt-pr-<sha256 of the URL>.zt-history is the append-only verdict history
+# this script writes: a pr= line, then one line per recorded report.
+# zt-pr-<same>.zt-verified is the single overwritten record that earlier
+# versions wrote. It is read only while no history exists and never written.
+review_record_base() {
   local url=$1 sum
   sum=$(printf '%s' "$url" | sha256sum)
   sum=${sum%% *}
@@ -382,18 +419,48 @@ review_record_path() {
   case "$sum" in
     *[!0-9a-f]*) die "could not name the review record" ;;
   esac
-  printf '%s\n' "$STATE/zt-pr-$sum.zt-verified"
+  printf '%s\n' "$STATE/zt-pr-$sum"
 }
 
-write_record() {
-  local path=$1 pr=$2 head=$3 verdict=$4 tmp
+VERDICT_WORDS='PASS|PRODUCT_FAIL|INFRA_FAIL|FLAKY|BLOCKED|ENVIRONMENT_NOT_READY|INCOMPLETE'
+
+# Prints the URL, then each entry line in order. Returns 2 when there is no
+# history and 1 when any line is malformed.
+read_history() {
+  local path=$1
+  [ -e "$path" ] || [ -L "$path" ] || return 2
+  [ -f "$path" ] && [ ! -L "$path" ] || return 1
+  awk -v words="$VERDICT_WORDS" '
+    BEGIN { entry = "^head=[0-9a-f]{40} verdict=(" words ") scope=(full|delta) date=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" }
+    NR == 1 {
+      if ($0 !~ /^pr=./) { bad = 1; exit }
+      print substr($0, 4)
+      next
+    }
+    $0 ~ entry { print; next }
+    { bad = 1; exit }
+    END { if (bad || NR == 0) exit 1 }
+  ' "$path"
+}
+
+append_history() {
+  local path=$1 pr=$2 head=$3 verdict=$4 scope=$5 tmp parsed rc=0
   mkdir -p -- "$STATE"
-  tmp=$path.tmp.$$
-  printf 'pr=%s\nhead=%s\nverdict=%s\n' "$pr" "$head" "$verdict" >"$tmp"
-  mv -f -- "$tmp" "$path"
+  if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+    tmp=$path.tmp.$$
+    printf 'pr=%s\n' "$pr" >"$tmp"
+    # ln never replaces an existing path, so two first records write one header.
+    ln -- "$tmp" "$path" 2>/dev/null || true
+    rm -f -- "$tmp"
+  fi
+  parsed=$(read_history "$path") || rc=$?
+  [ "$rc" -eq 0 ] || die "review history $path is unreadable, so nothing was recorded"
+  [ "${parsed%%$'\n'*}" = "$pr" ] || die "review history $path does not match $pr, so nothing was recorded"
+  printf 'head=%s verdict=%s scope=%s date=%s\n' "$head" "$verdict" "$scope" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$path"
 }
 
-read_record() {
+read_legacy_record() {
   local path=$1 pr='' head='' verdict='' line key value
   [ -f "$path" ] && [ ! -L "$path" ] || return 2
   while IFS= read -r line || [ -n "$line" ]; do
@@ -418,11 +485,39 @@ read_record() {
     esac
   done <"$path"
   [ -n "$pr" ] && hex40 "$head" || return 1
-  case "$verdict" in
-    PASS|PRODUCT_FAIL|INFRA_FAIL|FLAKY|BLOCKED|ENVIRONMENT_NOT_READY|INCOMPLETE) ;;
+  case "|$VERDICT_WORDS|" in
+    *"|$verdict|"*) ;;
     *) return 1 ;;
   esac
-  printf '%s\n%s\n%s\n' "$pr" "$head" "$verdict"
+  printf '%s\nhead=%s verdict=%s scope=unknown date=unknown\n' "$pr" "$head" "$verdict"
+}
+
+# Prints the URL and the entry lines from the history, or from the legacy
+# record while no history exists. Returns 2 when neither exists and 1 when
+# the one it reads is malformed.
+review_entries() {
+  local base=$1 rc=0 out
+  out=$(read_history "$base.zt-history") || rc=$?
+  # A history that holds only its pr= line lost its first entry to a crash.
+  if [ "$rc" -eq 0 ] && [ "$out" != "${out%%$'\n'*}" ]; then
+    printf '%s\n' "$out"
+    return 0
+  fi
+  [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || return "$rc"
+  read_legacy_record "$base.zt-verified"
+}
+
+# A home opts in with the config/zero-trust-required presence flag. A config
+# directory that cannot be searched refuses rather than reading as absent.
+zero_trust_required() {
+  local config=${FM_CONFIG_OVERRIDE:-$FM_HOME/config}
+  if [ -e "$config/zero-trust-required" ] || [ -L "$config/zero-trust-required" ]; then
+    return 0
+  fi
+  if [ -d "$config" ] && [ ! -x "$config" ]; then
+    die "cannot search $config for zero-trust-required, so the merge is refused"
+  fi
+  return 1
 }
 
 cmd=${1:-}
@@ -433,6 +528,7 @@ case "$cmd" in
   identity)
     if [ "${1:-}" = --check ]; then
       skill_bytes >/dev/null
+      require_newest_pin
     elif [ -n "${1:-}" ]; then
       die "unknown identity option ${1}"
     fi
@@ -495,39 +591,64 @@ case "$cmd" in
     launch_blind "$dir" "$@"
     ;;
   record-report)
-    [ "$#" -eq 3 ] || die "record-report needs a task id, a report file, and a pull request URL"
+    [ "$#" -eq 5 ] && [ "$4" = --scope ] \
+      || die "record-report needs a task id, a report file, a pull request URL, and --scope full|delta"
     fm_pr_task_id_valid "$1" || die "invalid task id"
     require_text_arg "pr-url" "$3"
+    case "$5" in
+      full|delta) ;;
+      *) die "--scope must be full or delta" ;;
+    esac
     parsed=$(report_ok "$2")
     tested=$(printf '%s\n' "$parsed" | awk 'NR == 1 { print; exit }')
     verdict=$(printf '%s\n' "$parsed" | awk 'NR == 2 { print; exit }')
     report_pr=$(printf '%s\n' "$parsed" | awk 'NR == 3 { print; exit }')
     [ "$report_pr" = "$3" ] || die "report Repo / PR is $report_pr, not $3"
-    path=$(review_record_path "$3")
-    write_record "$path" "$3" "$tested" "$verdict"
-    printf 'recorded=%s\nhead=%s\nverdict=%s\n' "$path" "$tested" "$verdict"
+    path=$(review_record_base "$3").zt-history
+    append_history "$path" "$3" "$tested" "$verdict" "$5"
+    printf 'recorded=%s\nhead=%s\nverdict=%s\nscope=%s\n' "$path" "$tested" "$verdict" "$5"
+    ;;
+  history)
+    [ "$#" -eq 1 ] || die "history needs a pull request URL"
+    require_text_arg "pr-url" "$1"
+    base=$(review_record_base "$1")
+    rc=0
+    parsed=$(review_entries "$base") || rc=$?
+    if [ "$rc" -eq 2 ]; then
+      printf 'no-review\n'
+      exit 0
+    fi
+    [ "$rc" -eq 0 ] || die "review record $base is unreadable"
+    [ "${parsed%%$'\n'*}" = "$1" ] || die "review record $base does not match $1"
+    printf 'pr=%s\n' "$parsed"
     ;;
   check-merge)
     [ "$#" -eq 3 ] || die "check-merge needs a task id, a pull request URL, and a live head"
     fm_pr_task_id_valid "$1" || die "invalid task id"
     require_text_arg "pr-url" "$2"
     hex40 "$3" || die "live head is not 40 hex characters"
-    path=$(review_record_path "$2")
-    if [ ! -e "$path" ]; then
+    base=$(review_record_base "$2")
+    rc=0
+    parsed=$(review_entries "$base") || rc=$?
+    if [ "$rc" -eq 2 ]; then
+      if zero_trust_required; then
+        die "refusing to merge $2 because this home requires a zero-trust review before merge and none is recorded"
+      fi
       printf 'no-review\n'
       exit 0
     fi
-    if ! parsed=$(read_record "$path"); then
-      die "review record $path is unreadable, so the merge is refused"
-    fi
-    recorded_pr=$(printf '%s\n' "$parsed" | awk 'NR == 1 { print; exit }')
-    recorded_head=$(printf '%s\n' "$parsed" | awk 'NR == 2 { print; exit }')
-    recorded_verdict=$(printf '%s\n' "$parsed" | awk 'NR == 3 { print; exit }')
+    [ "$rc" -eq 0 ] || die "review record $base is unreadable, so the merge is refused"
+    recorded_pr=${parsed%%$'\n'*}
+    latest=${parsed##*$'\n'}
     if [ "$recorded_pr" != "$2" ]; then
-      die "review record $path does not match $2, so the merge is refused"
+      die "review record $base does not match $2, so the merge is refused"
     fi
+    recorded_head=${latest#head=}
+    recorded_head=${recorded_head%% *}
+    recorded_verdict=${latest#* verdict=}
+    recorded_verdict=${recorded_verdict%% *}
     if [ "$recorded_verdict" != PASS ]; then
-      die "refusing to merge $2 because the review verdict is $recorded_verdict, not PASS"
+      die "refusing to merge $2 because the latest review verdict is $recorded_verdict, not PASS"
     fi
     if [ "$recorded_head" != "$3" ]; then
       die "refusing to merge $2 because the live head $3 is not the reviewed head $recorded_head"
