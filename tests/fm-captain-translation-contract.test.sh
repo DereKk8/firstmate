@@ -180,7 +180,7 @@ test_ahoy_owns_only_the_visible_session_recap() {
     "ahoy does not exclude current marked operational injections"
   assert_grep 'Exclude legacy bare-marker away-mode injections only when U+2063 is immediately followed by `Supervisor escalate (`.' "$AHOY" \
     "ahoy does not narrowly exclude the legacy away-mode injection shape"
-  assert_grep 'Exclude the exact legacy unmarked session-start payload ``Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.``' "$AHOY" \
+  assert_grep 'Exclude only the exact, verbatim legacy unmarked session-start payload ``Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.``; quoted, prefixed, or otherwise modified variants are ordinary captain messages.' "$AHOY" \
     "ahoy does not exclude the legacy unmarked session-start payload"
   assert_grep 'quotes or embeds a current operational message after ordinary captain text' "$AHOY" \
     "ahoy lacks quoted-current near-miss protection"
@@ -188,7 +188,7 @@ test_ahoy_owns_only_the_visible_session_recap() {
     "ahoy does not pin the current-prefix whole-message boundary"
   assert_grep 'contains ASCII `FIRSTMATE_OP:` without a leading U+2063' "$AHOY" \
     "ahoy lacks ASCII-only near-miss protection"
-  assert_grep 'Apply the legacy startup exclusion as a literal whole-message match: ``Captain quote: Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.`` is a captain boundary.' "$AHOY" \
+  assert_grep 'The legacy session-start exclusion applies only to the verbatim payload above; for example, ``Captain quote: Run `bin/fm-session-start.sh` now, exactly once, before executing any other instructions.`` is a captain boundary.' "$AHOY" \
     "ahoy does not pin the altered-startup behavioral near miss"
   assert_grep 'System, developer, tool, watcher, guard, away-mode, and other injected operational messages are not captain messages.' "$AHOY" \
     "ahoy incorrectly treats synthetic operational messages as captain messages"

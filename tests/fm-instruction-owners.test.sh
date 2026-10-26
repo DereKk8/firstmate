@@ -38,11 +38,11 @@ test_new_skill_metadata_and_triggers() {
     count=$(grep -Fc -- "- \`$name\` -" "$ROOT/AGENTS.md")
     [ "$count" -eq 1 ] || fail "$name must have exactly one AGENTS.md trigger entry, found $count"
   done
-  assert_grep 'Use before scoping a reported bug and before acting on a diagnostic report.' "$DIAG" \
+  assert_grep 'Load before scoping a reported bug and before acting on a diagnostic report.' "$DIAG" \
     "diagnostic skill metadata lost its precise load trigger"
   assert_grep '`diagnostic-reasoning` - load before scoping a reported bug and before acting on a diagnostic report.' "$ROOT/AGENTS.md" \
     "AGENTS.md lost the diagnostic-reasoning trigger"
-  assert_grep 'Use before adding, creating, removing, or initializing a project.' "$PROJECT" \
+  assert_grep 'Load before adding, creating, removing, or initializing a project.' "$PROJECT" \
     "project-management skill metadata lost its precise load trigger"
   assert_grep '`project-management` - load before adding, creating, removing, or initializing a project.' "$ROOT/AGENTS.md" \
     "AGENTS.md lost the project-management trigger"
@@ -199,7 +199,7 @@ test_agent_owned_quota_array_dispatch_contract() {
     "model discovery guidance lost Claude's interactive picker"
   assert_grep '| Model discovery | Open the current interactive session' "$CODEX" \
     "model discovery guidance lost Codex's interactive picker"
-  assert_grep '| Model discovery | Run `opencode models [provider]` to list available provider/model identifiers. |' "$OPENCODE" \
+  assert_grep '| Model discovery | Run `opencode models` to list available provider/model identifiers; OpenCode 2.0.21 no longer accepts a provider positional argument. |' "$OPENCODE" \
     "model discovery guidance lost OpenCode's model listing"
   assert_grep '| Model discovery | Run the selected executable as `<executable> --list-models [search]`; Pi' "$PI" \
     "model discovery guidance lost Pi's model listing"
