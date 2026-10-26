@@ -1,0 +1,23 @@
+-`decision-hold-lifecycle` is a compatibility pointer for historical decision identities and records; it is not the current policy owner.
++`docs/decision-hold-lifecycle.md` is a compatibility pointer for historical decision identities and records; it is not the current policy owner.
+-`decision-hold-lifecycle` and `bin/fm-decision-hold.sh` remain compatibility pointers for historical records and are not current owners.
++`docs/decision-hold-lifecycle.md` and `bin/fm-decision-hold.sh` remain compatibility pointers for historical records and are not current owners.
+
+.agents/skills/refactor-review/SKILL.md:140:`docs/decision-hold-lifecycle.md` is a compatibility pointer for historical decision identities and records; it is not the current policy owner.
+docs/verification/refactor-review.md:7:`docs/decision-hold-lifecycle.md` and `bin/fm-decision-hold.sh` remain compatibility pointers for historical records and are not current owners.
+
+.agents/skills/captain-hold-lifecycle/SKILL.md
+docs/decision-hold-lifecycle.md
+ls: cannot access '.agents/skills/decision-hold-lifecycle': No such file or directory
+# Decision hold lifecycle compatibility mechanism
+
+The current normative policy is owned by `.agents/skills/captain-hold-lifecycle/SKILL.md` and the current command owner is `bin/fm-captain-hold.sh`.
+This document and `bin/fm-decision-hold.sh` remain compatibility pointers for historical decision identities and records.
+This document records the deterministic mechanism, structured surfaces, and privacy-safe regression evidence.
+
+## Mechanism
+
+Historical investigations and visual reviews used `bin/fm-decision-hold.sh`; current work uses `bin/fm-captain-hold.sh` for the lifecycle command.
+The command runs tasks-axi in the active `FM_HOME`, so the existing backlog remains the only durable work database and a secondmate-owned decision stays in the secondmate home.
+It never reads report bodies, review artifacts, terminal output, or chat.
+

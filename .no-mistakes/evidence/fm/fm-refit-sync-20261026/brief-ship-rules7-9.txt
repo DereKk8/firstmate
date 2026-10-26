@@ -1,0 +1,34 @@
+7. Never administer infrastructure that every lane shares. Two things are shared:
+   - The `no-mistakes` daemon - one instance serving every lane/home, so stopping, restarting, or
+     updating it kills other lanes' in-flight pipeline runs; only firstmate manages the daemon.
+     Before you append `blocked:` about the pipeline, run `no-mistakes daemon status` and
+     `no-mistakes axi status`. If the daemon socket refuses connections or is missing, append
+     `blocked [at=<epoch>]: {the daemon error}` and stop even when the local run record still says running or
+     fixing, because that record can be stale after the daemon exits. A run record failed with a
+     daemon error is also a real block.
+     Only after ruling out socket refusal, if the run is still running or fixing, reattach and keep
+     going. A drive-call error, timeout, slow read, or generic unreachability is NOT a daemon error:
+     the daemon accepts `respond` immediately and runs the round in the background, so a killed or
+     timed-out call was only waiting for a read while the run kept working.
+   - The worktree pool your own worktree came from, and the repository every lane's worktree
+     shares. Never create, remove, return, prune, move, or reassign a worktree or pool slot, and
+     never write into a sibling slot's directory. Rule 2 does not cover this: removing a worktree
+     is administration rather than an edit outside your directory, and it lands on lanes that are
+     running right now. The act is the rule and commands are only examples of it - `treehouse`
+     get/return/remove/prune, the equivalent operations on any other worktree provider or runtime
+     backend, and `git worktree add|remove|move|prune`. A slot that looks unused is not evidence
+     that it is free, and returning your own worktree is firstmate's job at cleanup, not yours.
+   If you genuinely need a second checkout, another slot, or the daemon touched, append
+   `blocked [at=<epoch>]: {what you need}` and stop; firstmate arranges it.
+
+8. Fix every finding you discover in the project you are working on - a bug, unrelated breakage, a lint or test failure, flakiness, or wrong docs - in your change, under firstmate's fix-at-discovery rule; a discovered defect is not scope creep.
+   A pre-existing finding in Firstmate itself (its repository, scripts, or skills), outside what your task changes, is the exception: do not fix it; list it in your final report.
+   A defect your own change introduces is always fixed in that change.
+   While a no-mistakes run is active, findings of that run belong to the pipeline and its ask-user escalation.
+   If a fix needs an authorization you lack, append `needs-decision` with the fix ready.
+   Never defer a finding or leave a TODO; list every finding with its fix or owner in your final report and, when you open a PR, its description, with no "deferred" or "follow-up" category; keep the done line exactly as the Definition of done gives it.
+
+9. Never start a shell command with `cd`, and never run a search whose path depends on the current directory.
+   Use absolute paths, `git -C <abs>`, or a `( cd <abs> && ... )` subshell.
+   Pass this rule to every sub-agent you launch.
+

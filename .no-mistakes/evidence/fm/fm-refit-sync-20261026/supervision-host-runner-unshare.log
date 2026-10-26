@@ -1,0 +1,224 @@
+FM_TEST_BEGIN 2026-10-26T16:34:45Z tests/fm-supervision-host.test.sh family=afk expected_gate_skip=none
+ok - host+hook: a main-only close after a handled turn restores inherited handling and rewakes main
+ok - host+hook: a refused inherited handling restore delivers a failure instead of silent success
+ok - host+hook: a driver returning to an idle worker is stale-handled while attended
+ok - host+hook: a driver returning to an idle worker is stale-handled while away
+grep: /tmp/fm-supervision-host.lpl7tp/lost-handoff-boundary/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/lost-handoff-boundary/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/lost-handoff-boundary/state/.supervision-handoff.log: No such file or directory
+ok - host+hook: boundary survives a lost continuation, retries, and transfers one watcher after acknowledgement
+grep: /tmp/fm-supervision-host.lpl7tp/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+ok - host+hook: pass-through survives a lost continuation, retries, and transfers one watcher after acknowledgement
+ok - host+hook: an acknowledged hand-back at the turn keeps its pass-through row
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /tmp/fm-supervision-host.lpl7tp/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+ok - host+hook: hand-back retry submits only to the idle owning pane without replacing human input
+ok - host+hook: a successor closed before exit_to_main does not suppress the branch-outcome rewake
+ok - host+hook: a successor that closes during a held engine turn does not suppress the branch-outcome rewake
+ok - host+hook: a refused hand-back becomes a delivered failure notice
+ok - host+hook: a refused hand-back on an announced handling marker becomes a delivered failure notice
+ok - host: parked child-exit sampling uses ordinary half-second sleeps
+ok - report surface: only the branch actor's current turn may report, and only on the tasks its wake names
+ok - report surface: visible late outcomes queue a relay, while silent outcomes remain stored without a wake or note
+(node:87056) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87063) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87072) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87081) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87090) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87099) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87108) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:87127) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok - dispatch entry: the host reads branch eligibility, the offer rule, and the wake prompt from the Pi branch's own owner
+ok - drain: BRANCH OUTCOMES runs on a Claude home by default and on another primary with the file, never with off, and never on Pi
+ok - drain: captain outcomes come first, and routine overflow collapses into a count one drain clears
+ok - drain: repeated captain outcomes collapse per task, and the byte cap presents only the run its acknowledgement covers
+ok - drain: a long away window costs one short drain, captain outcomes collapsed per task and routine overflow counted, and nothing from it is shown again
+ok - drain: the BRANCH OUTCOMES budgets count bytes, cutting multibyte summaries by whole characters in any locale
+ok - drain: branch outcomes stay unread when a projection of the store fails
+ok - drain: branch outcomes stay unread and the drain fails when jq is missing
+ok - drain: branch outcomes stay unread when the drain cannot print them
+ok - drain: a legacy backlog is presented with each outcome's age and a check-first instruction, never adopted
+ok - drain: a keyed decision survives acknowledgement through a newer outcome for its task
+ok - drain: an outcome carried across a switch off Pi comes back with its age, never adopted
+ok - drain: an outcome nothing has shown is presented until acknowledged, and a repeated acknowledgement changes nothing
+ok - drain: an outcome the host drain presented but main never acknowledged stays unprocessed across a switch to Pi
+ok - drain: an outcome the host drain presented but main never acknowledged survives an outcome index repair
+ok - host: an attended wake the branch may take is handled on the engine, and its routine outcome never wakes main
+ok - host: a host stopped right after a handled wake exits and leaves the wake queue usable
+ok - host: an engine in another time zone than the host drains, reports, and acknowledges its granted rows
+ok - host: an attended captain outcome wakes main once and stays in its drain until main acknowledges it
+ok - host: a captain outcome recorded after the captain left waits for the return, then reaches main's drain
+ok - host: a quiet record without its daemon is a present captain, so outcomes and decisions reach main
+ok - host: an attended decision close stays main's exactly as the plain arm delivers it
+ok - host: an off written while the host is parked sends the next attended close to main, naming the opt-out
+ok - host: a main-only pass-through leaves the successor watcher running and the close undelivered for main
+ok - host: an attended close whose main session cannot be identified reaches main and runs no engine turn
+ok - host: a decision close accepted away whose turn starts attended still reaches main unchanged
+(node:168627) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M5WGGBEPK7D1E59Z3QMVZX1N/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok - host: an attended close whose task turns main-only before its turn still reaches main unchanged
+ok - host+hook: an attended main-only pass-through rewakes main and keeps its successor watcher
+ok - host+hook: an inbox note queued while the host is parked on a handled wake's successor rewakes main
+ok - host+hook: a captain outcome beside a quiet record rewakes the present captain with no away note
+ok - host+hook: a Claude home without config/supervision-host runs the host at the default engine, and an off file restores the plain arm
+ok - host+hook: a close that turns main-only at its turn rewakes main and keeps its successor watcher
+ok - host+hook: the successor a close that turns main-only at its turn leaves for main survives the hook's process group teardown
+ok - host+hook: failed at-turn downtime write notifies main despite a healthy successor
+ok - host+hook: a successor close that lands during main's turn is delivered at the next turn end
+ok - host+hook: the successor a pass-through leaves for main survives the hook's process group teardown
+ok - host+hook: the next park takes over the cycle a main-only pass-through left, so one arm owns it
+ok - host+hook: a park stopped mid take-over leaves the take-over to the next park
+ok - host+hook: a successor that cannot be recorded is stopped, and main's next turn end arms a fresh cycle
+ok - host: a primary with no verified dialog mirror keeps every attended close on main, and its away posture still runs
+ok - host: each wake carries the captain's dialog since the last wake, without operational input
+ok - host: the dialog mirror, its feed, and the wake file are owner-only
+ok - host: dialog a turn never completed with its report (a park boundary, a stopped turn, no report) reaches the next turn
+ok - host: an attended wake whose mirror is missing, cannot be read (at the feed or at the prompt), or holds a malformed entry reaches main before any engine turn, and the cursor stays put
+ok - host: an away wake is handled on the engine through the branch contract and never reaches main
+ok - host: an engine turn that records no outcome hands its durable wake to main
+ok - host: a captain return during an engine turn hands that turn's outcomes to main
+ok - host: silent outcomes are excluded from both captain-return handoff paths
+ok - host: an early visible outcome survives more than 1,000 same-turn receipts
+ok - host: an outcome lookup failure forces a visible main handoff
+ok - host: an outcome recorded after the return reaches main even when its host dies at the turn's end
+ok - host: a killed predecessor's engine is reaped and the next host removes its turn files
+ok - host: a turn that reports but leaves its granted rows queued hands the wake to main
+ok - host: a captain return during a failed engine turn still hands that turn's outcomes to main
+ok - host: an engine turn whose result is incomplete hands its wake to main
+ok - host: two engine errors latch the session, main keeps every away wake in the cooldown, a failed probe doubles it up to its cap, and a report recovers it silently
+ok - host: an attended close in a latched session reaches main as the arm printed it and leaves the latch as it was, and a home that opted out with off never reads it
+ok - host: attended, two engine errors latch the session, main keeps every close unchanged in the cooldown, a failed probe doubles it up to its cap, and a routine probe's recovery stays in the ledger, off main
+ok - host: an engine turn is bounded, and tool processes outside its process group are reaped
+ok - host: a restarted host stops, by recorded identity, the cycle a killed predecessor left running
+ok - host: the park ends itself with a boundary wake and a stopped watcher
+ok - host: waiting closes cannot carry the park past its boundary
+ok - host: a close whose margin runs out while the successor starts reaches main at the boundary without a turn
+ok - host: the park's test clock is inert without the test marker
+ok - host: a park at or beyond the Stop-hook registration falls back to the default boundary
+ok - host: an owner's later park limit lets a turn outlive the boundary, and no other limit does
+ok - host: the first cycle's status streams once, --restart replaces a stale watcher, and an owner predecessor makes a handling successor
+ok - host: an unchanged held outcome reaches the captain once across cadences, and a later decision on the task still does
+ok - host: a home naming an unverified engine hands every away wake to main with the reason
+ok - host: a host outside the session-lock owner stands down without arming
+ok - host: a Windows-tagged session-lock holder reaches the engine's lease whole
+ok - host: a host under a superseded auto-arm generation stands down without touching the owner
+FM_TEST_END 2026-10-26T16:41:32Z tests/fm-supervision-host.test.sh exit=0 duration_ms=406682 gate_skip=false
+FM_TEST_BEGIN 2026-10-26T16:41:32Z tests/fm-test-run.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - exact suite coverage: --all lists every tests/*.test.sh once
+ok - family selection returns a proper subset of the suite
+ok - single-script selection lists exactly that path
+ok - changed-file selection stays conservative (never silent full suite)
+ok - a task marker refuses execution in the primary checkout and leaves worktrees and inspection alone
+ok - runner and its documentation surfaces select their curated family, not just their contract owners
+ok - shell line-ending policy selects runner coverage
+fm-test-run: no tests selected for changes vs HEAD (map is conservative; use --all for the complete suite)
+ok - changed selection covers dependents, fails closed for live unmapped source, and accepts retired unconsumed source
+ok - a bin reference selects the referencing scripts, and consumers still select their curated families
+ok - changed defaults to bounded automatic scheduling with serial override
+ok - Windows emulation exempts only synthetic POSIX modes
+ok - a plain script list defaults to bounded automatic concurrency without an automatic timeout
+ok - family proofs run concurrently only within separate family phases
+ok - empty changed selection emits deterministic text and JSON summaries
+ok - timing markers and JSON artifact are valid
+ok - aggregate exit reflects any script failure
+ok - gate-skip accounting is honest and non-failing
+ok - a gate skip records why it skipped
+ok - a script that actually ran records no skip reason
+ok - live guards are recorded as a capability class, not a bare env opt-in
+ok - fail-on-gate-skip converts herdr-not-found into a hard failure
+ok - exclude-family drops the named primary family after selection
+ok - fm-test-run: family tern selects the tern suite and smoke test, and the lane coverage guard accepts them
+ok - proven-isolated scheduling ignores parallel hints
+ok - family, all, changed, and script selections ignore parallel hints
+ok - portable shard union, disjointness, and coverage guard hold
+ok - portable parallel lanes are fully hinted and packed within 5% of each other
+ok - portable serial shards are a deterministic disjoint cover of the serial lane
+ok - coverage guard bounds the unmeasured share and serial packing within twenty minutes
+ok - serial packing accepts the exact budget and refuses one millisecond above it
+ok - portable serial shard lanes refuse mismatched, out-of-range, and countless names
+ok - --jobs refuses non-proven / stateful selections
+ok - --jobs admits and schedules a family with a recorded concurrent proof
+ok - an unclassified new test stays serial while the proven residual family runs concurrently
+ok - a changed shared test fixture selects its readers while an unread tests/ path still refuses
+ok - a changed T3 fake or adapter selects the suites that read it beyond backend-dispatch
+ok - a concurrent run starts the longest-hint script first
+ok - --per-script-timeout-secs turns a hung script into a bounded failure
+ok - the automatic --changed bound gives the slow watcher suite at least 1500s
+ok - --max-wall-ms fails an over-budget run and refuses a malformed budget
+ok - jobs scheduler runs proven scripts; failure propagates; non-proven refused
+ok - Herdr CI family-run step times out at 20 min under a 75 min job backstop
+ok - aggregate-json merges lane timing artifacts
+FM_TEST_END 2026-10-26T16:44:32Z tests/fm-test-run.test.sh exit=0 duration_ms=179711 gate_skip=false
+FM_TEST_BEGIN 2026-10-26T16:44:32Z tests/fm-zt-review.test.sh family=unclassified expected_gate_skip=none
+ok - identity prints the pinned line and checks the loaded bytes
+ok - staffing follows the shared diff-size table
+ok - the diff count is git's own count on the pinned commits
+ok - the brief uses the shared fields and keeps marker lines intact
+ok - prepare publishes only the pinned skill and removes a failed directory
+ok - launch runs the command in the blind directory, returns its status, and refuses a bad directory or option
+ok - record-report stores the verdict by pull request URL and check-merge requires PASS
+ok - the history keeps every verdict in order and the merge gate reads the latest
+ok - record-report requires --scope full or delta
+ok - a legacy single record gates the merge until the first history entry, and is never changed
+ok - a home with config/zero-trust-required refuses a merge that has no review recorded
+ok - record-report accepts only the pinned release's report shape
+ok - identity --check reads a large skill file's version every time
+ok - identity --check refuses a pin that is not the newest master change to the skill
+ok - floor lines, fix-round scope and the re-check limit hold
+ok - fix scope ignores merged base history but still checks branch commits
+ok - a PASS carries only to a head with the same change
+FM_TEST_END 2026-10-26T16:44:34Z tests/fm-zt-review.test.sh exit=0 duration_ms=2624 gate_skip=false
+FM_TEST_SUMMARY total=3 failed=0 skipped_gate=0 duration_ms=589081
+FM_TEST_SUMMARY_FAMILY family=afk count=1 duration_ms=406682 failed=0
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=179711 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=2624 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-supervision-host.test.sh duration_ms=406682
+FM_TEST_SLOWEST rank=2 script=tests/fm-test-run.test.sh duration_ms=179711
+FM_TEST_SLOWEST rank=3 script=tests/fm-zt-review.test.sh duration_ms=2624
+exit=0

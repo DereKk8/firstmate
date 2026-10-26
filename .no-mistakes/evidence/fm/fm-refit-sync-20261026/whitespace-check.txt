@@ -1,0 +1,13 @@
+$ GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.whitespace GIT_CONFIG_VALUE_0=cr-at-eol git diff --check 22eadfaa da8cdc47
+rc=0
+$ git diff --check 22eadfaa da8cdc47 (no scoped setting, for contrast)
+tests/fixtures/rex-opencode-1.19.3/opencode-1.19.3-idle-format.vt:1: trailing whitespace.
++[0m[38;2;255;255;255m[48;2;10;10;10m                                                                                                                                                              [0m[38;2;255;255;255m[48;2;20;20;20m                                          [0m
+tests/fixtures/rex-opencode-1.19.3/opencode-1.19.3-idle-format.vt:2: trailing whitespace.
++[0m[38;2;255;255;255m[48;2;10;10;10m  [0m[38;2;92;156;245m[48;2;10;10;10m┃[0m[38;2;255;255;255m[48;2;20;20;20m                                                                                                                                                         [0m[38;2;255;255;255m[48;2;10;10;10m  [0m[38;2;255;255;255m[48;2;20;20;20m  [0m[1m[38;2;238;238;238m[48;2;20;20;20mGreeting[0m[38;2;255;255;255m[48;2;20;20;20m                                [0m
+tests/fixtures/rex-opencode-1.19.3/opencode-1.19.3-idle-format.vt:3: trailing whitespace.
+rc=141
+$ git config --get core.whitespace (shared config unchanged)
+rc=1
+$ CRLF capture blob identical to upstream
+CRLF file: tests/fixtures/rex-opencode-1.19.3/opencode-1.19.3-idle-format.vt merge=1c30353256fdb9849ecce5e8686eaed6fe0a0e91 upstream=1c30353256fdb9849ecce5e8686eaed6fe0a0e91
