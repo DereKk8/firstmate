@@ -4,7 +4,7 @@ Audience: maintainer verification.
 
 This record supports the on-demand `/refactor-review` contract in `.agents/skills/refactor-review/SKILL.md`.
 The skill is instruction-owned: the existing scout lifecycle, captain-hold lifecycle, and delivery paths remain the executable owners.
-`decision-hold-lifecycle` and `bin/fm-decision-hold.sh` remain compatibility pointers for historical records and are not current owners.
+`docs/decision-hold-lifecycle.md` and `bin/fm-decision-hold.sh` remain compatibility pointers for historical records and are not current owners.
 
 ## Verification record
 
