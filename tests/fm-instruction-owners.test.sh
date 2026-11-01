@@ -185,7 +185,7 @@ test_agent_owned_quota_array_dispatch_contract() {
     'Firstmate alone resolves a matched profile array' \
     'TOON-then-`--json` fallback only for genuine ambiguity' \
     'evaluate every configured candidate against that current output' \
-    'choose with inspectable `spendPriority` as the one quota-perspective ranker' \
+    "choose under the skill's \`preferred_provider\` procedure with inspectable \`spendPriority\` as the one quota-perspective ranker" \
     'never omit a candidate, guess, fall back silently, or call the result quota-informed' \
     'Preserve malformed profile configuration as an actionable error' \
     "preserve the captain's strongest-reasoning class rather than silently downgrading it" \
