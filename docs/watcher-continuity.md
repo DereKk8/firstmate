@@ -88,14 +88,14 @@ The hook fires on every Stop.
 On each Stop, an eligible primary with supervision need admits one home-scoped owner, which foregrounds `bin/fm-watch-arm.sh` inside the hook-owned process tree.
 If a session exits mid-cycle and leaves an orphaned Stop hook, the replacement session's first eligible Stop supersedes its claim, attaches to the running watcher through `bin/fm-watch-arm.sh`, and delivers the cycle's close.
 [`turnend-guard.md`](turnend-guard.md#auto-arm-generation-claim) owns the open-claim definition.
-While supervision is still needed and away mode remains inactive, an actionable close wakes the idle session through exit 2.
+While supervision is still needed and `state/.afk` is absent (neither away nor quiet mode), an actionable close wakes the idle session through exit 2.
 
 ### Claude session-lock ownership
 
 The hook handles the session lock as follows:
 
-- A numeric session-lock owner that fails the shared `fm_harness_pid_alive` predicate is reclaimed through `bin/fm-lock.sh` before auto-arm state changes.
-- A live owner the session does not own, an absent lock, or a malformed lock keeps the competing hook inert.
+- A session-lock owner, including a tagged `win:<pid>` holder on Windows/Git Bash, that fails the shared `fm_harness_pid_alive` predicate is reclaimed through `bin/fm-lock.sh` before auto-arm state changes.
+- A live owner the session does not own, an absent lock, or an unusable lock keeps the competing hook inert.
 
 Whether the session owns that lock is the shared `fm_session_lock_owned_by_self` verdict in `bin/fm-session-lock-lib.sh`.
 That verdict accepts either of two cases:
@@ -114,12 +114,8 @@ The beacon is `state/.last-watcher-beat`, which only the watcher process touches
 
 - A cycle-end failure is benign when that live-watcher predicate is true.
   In that case the hook suppresses the arm output and continues silently.
-- Only an exhausted failure with no verified watcher commits one last-resort notice for the continuous failure episode.
-- A refused notice commit stays silent for a later retry.
-- After a successful notice, later Stop cycles exit 2 without repeating it until the turn-end guard consumes the attended fail-open.
 
-The Claude turn-end guard owns that notice commit contract, the monotonic failure progression, one-time attended fail-open, post-alarm continuation suppression, and positive recovery reset described in [`turnend-guard.md`](turnend-guard.md#harness-integrations).
-While supervision is still needed and `state/.afk` is absent (neither away nor quiet mode), an actionable close wakes the idle session through exit 2.
+[`turnend-guard.md`](turnend-guard.md#failure-progression-and-block-budget) owns the failure-notice commit contract, monotonic failure progression, attended-alarm writers, suppression reasons, and positive recovery reset.
 
 ### Supervision host
 
@@ -280,6 +276,7 @@ Every presented row is claimed to exactly one actor under the durable queue lock
 - A branch grant is published through `bin/fm-wake-grant.sh` under that same lock in `state/.branch-eligible-rows`.
   The grant is bound to the live branch process and extension generation recorded in `state/.branch-eligible-owner`.
   Publication is refused if main already claimed any requested row.
+  Activation, publication, release, and deactivation exit nonzero if queue-lock acquisition fails, preserving both grant records and leaving another owner's lock intact.
 - A main drain validates that owner evidence under the queue lock and reclaims the grant when its process is gone or its identity no longer matches.
 - A main drain claims every currently unclaimed row and excludes an active branch grant from both presentation and acknowledgement.
 
@@ -349,7 +346,8 @@ Under the away-posture record the exclusion lifts and a check row is offered to 
 
 `fm-wake-drain.sh` never reclassifies a row itself.
 It filters the queue to the current actor's opaque claim before same-key deduplication, then presents and acknowledges only that actor-local view.
-A missing or empty branch snapshot is refused loudly rather than read as "nothing eligible", because reaching the drain without the non-empty handoff promised by the extension is a wiring bug.
+A missing or empty branch snapshot is refused loudly rather than read as "nothing eligible".
+With a live branch owner, a missing snapshot means the branch's own acknowledgement already consumed the grant, and the refusal says so; otherwise reaching the drain without the non-empty handoff promised by the extension is a wiring bug.
 A branch acknowledgement retires the check-row receipts - inactive-outcome, inactive-reconcile notice, and secondmate stall - of exactly the granted sequences it consumes, so a branch-consumed check is never re-queued by its producer.
 Attended, a grant names no check row and each scan finds nothing.
 
@@ -423,6 +421,27 @@ The watcher uses bash's native fatal handling for HUP and TERM, including during
 The EXIT cleanup bounds its wait for `state/.watcher-down.lock` while persisting recovery state with `FM_WATCHER_CLEANUP_LOCK_BOUND` (default 2 seconds).
 Only positive decimal integers are accepted, including leading-zero forms such as `08`; empty, non-numeric, and zero values (including `00`) fall back to 2 seconds.
 A live foreign holder therefore cannot strand a TERM'd watcher in this marker-lock wait: on timeout the recovery transition fails without releasing the singleton, leaving dead-pid stale evidence for the next arm to republish and clear.
+The bounded wait allows itself one extra lock-freshness window past the bound when the only remaining blocker is a lock whose holder never published its pid: `fm_lock_mid_acquire_is_fresh` defers to that residue for a whole freshness window before it can be stolen, so a creator killed inside its claim write would otherwise consume the entire bound without ever becoming reclaimable.
+A published numeric pid, live or dead, grants no extension to the original wait bound.
+
+### Startup interruption window
+
+The watcher installs its EXIT cleanup trap immediately after claiming the singleton lock, before any recovery-marker or queue lock is touched, and publishes its home-bound lock identity (`fm-home`, `watcher-path`, `pid-identity`) right after.
+The claim also removes the predecessor's `state/.last-watcher-beat` before that identity exists, so a home-bound identity never pairs with an inherited beacon: health, and with it the arm's confirmation, requires the new watcher's own first poll.
+If the watcher cannot obtain a nonempty process identity or write any required identity record, it exits through that trap instead of entering an unconfirmable poll loop.
+Everything past that point - marker transitions, queue reads, delivery records - runs inside the trap's coverage.
+Cleanup joins any in-flight owner-directory creation or lock publication before releasing its own micro-locks and discarding its scoped unpublished staging directories; foreign staging and ownership are preserved.
+It then attempts the same bounded downtime publication an ordinary exit performs.
+The only window outside cleanup coverage is the singleton claim itself, so the arm never stops a child there.
+The arm treats that published identity as the startup safe point: it forwards a signal or its confirmation-deadline TERM only once the child's identity matches, waiting past the deadline if it must, and otherwise waits for the child to exit on its own; only a removed state directory, which leaves no lock to strand, skips the wait.
+An interrupted start leaves no self-owned singleton, steal mutex, micro-lock, or staging directory when downtime publication succeeds.
+The foreign marker-lock contention exception described above still retains singleton evidence deliberately.
+
+`FM_WATCHER_STARTUP_LOCK_BOUND` bounds the downtime publish inside a `.watch.lock` steal and, after identity publication, the startup recovery reopen and arm-check transitions.
+A live foreign holder that outlasts the bound during singleton-steal publication or a recovery transition ends the child with `watcher: FAILED - startup lock <path> held by live pid <n>`; the arm relays the child's final output even when startup exits during the safe-point wait.
+A handling successor's resurface decision reads the queue inside the same arm-check lock hold that announces the marker, so no separate queue wait can skip a wake the transition already announced.
+`FM_ARM_CONFIRM_TIMEOUT` is a liveness backstop rather than a fork budget, while successor hand-off confirmation uses the separate `FM_ARM_SUCCESSOR_CONFIRM_TIMEOUT`.
+Defaults and overrides, including Claude Stop's outer successor-status wait, are owned by [configuration](configuration.md#environment-variables).
 
 ## Regression coverage
 
@@ -491,9 +510,11 @@ It checks that a newly appended keyed decision is classified without rereading e
 `tests/fm-watcher-lock.test.sh` covers:
 
 - Verified-successor attach.
+- Bounded lock-wait extension for an unpublished pid, while a published live holder retains the original bound.
 - Recovery publication before stale-lock removal.
 - The typed self-eviction failure.
 - Bounded and successor-linked lifecycle rows.
+- Startup-stop resilience: slow post-claim confirmation, typed startup-lock and identity-publication failures, safe-point deadline and signal forwarding, and cleanup of published locks and in-flight staging while preserving foreign owners.
 - A SIGSTOP counterfactual that distinguishes a live PID from a stale beacon before classifying termination.
 
 ### Claude auto-arm and turn-end guard
@@ -507,7 +528,8 @@ It checks that a newly appended keyed decision is classified without rereading e
 - Unchanged AFK and need boundaries.
 - Single-flight.
 - Supersession of a dead session's orphaned claim by the replacement session's first Stop, including a resumed session that carries the dead one's conversation id, and a claim with no readable session lock.
-- A recycled background bridge keeping its live claim on the trusted session id pinned to the lock holder's recorded pid-identity.
+- A recycled background bridge keeping its live claim on the trusted session id pinned to the lock holder's recorded session-lock identity.
+- The Windows/Git Bash session-lock readers for the supervision-host key, claim read-back, and mid-turn health, plus untagged-value parity with the numeric helpers, in `tests/fm-session-lock-windows-consumers.test.sh`.
 - Bounded failure retries.
 - Benign live-watcher cycle ends.
 - One-notice failure episodes.

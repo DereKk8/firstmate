@@ -6,11 +6,12 @@
 #   . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 #
 # It provides the boilerplate every test file used to re-roll: ok/not-ok
-# reporters, a self-cleaning temp root, fakebin/PATH-shim helpers, deterministic
-# git identity and fixture builders, state/<id>.meta writers, and the common
-# string/exit-code/file assertions. Shared fake-toolchain and spawn-world
+# reporters, TAP plan and completion (fm_test_run), a self-cleaning temp root,
+# fakebin/PATH-shim helpers, deterministic git identity and fixture builders,
+# state/<id>.meta writers, and the common string/exit-code/file assertions. Shared fake-toolchain and spawn-world
 # builders live in tests/fixtures.sh; wake-queue mocks in wake-helpers.sh;
-# secondmate-lifecycle mocks in secondmate-helpers.sh. Suite-specific fakes
+# secondmate-lifecycle mocks in secondmate-helpers.sh; supervision-host
+# fixtures in supervision-host-helpers.sh. Suite-specific fakes
 # that encode a single test's terminal or lifecycle assumptions still belong
 # with the tests that own them.
 #
@@ -57,6 +58,28 @@ export FM_TEST_SEAM=1
 # it runs a copied bin/fm-test-run.sh in, and that runner refuses the primary
 # under the marker. A case that verifies the refusal sets FM_TASK_ID itself.
 unset FM_TASK_ID
+
+# Clear the launcher identity, terminal marker, runtime-backend selector, and
+# home/state overrides a suite inherits from the terminal that started it. A
+# session running inside herdr exports HERDR_ENV/HERDR_PANE_ID/HERDR_SOCKET_PATH/...
+# into every child process, an operator or lab shell may export FM_BACKEND (as
+# bin/fm-live-lab.sh's lab environment does), which outranks config/backend and
+# runtime auto-detection, and a supervisor's own shell may export a home or
+# state override. Spawn and backend fixtures then bind to the host's REAL herdr
+# session instead of the isolated one their case creates: on a herdr-hosted
+# machine several spawn/backend suites failed with `herdr launcher pane '...'
+# belongs to the server at ... not session 'default'`, or recorded a real
+# workspace's pane path as a fixture worktree,
+# while the same suites passed in CI. bin/fm-test-run.sh already clears the
+# overrides and FM_BACKEND per worker; this covers a direct run and the herdr
+# identity, so every suite that sources this library starts from the environment
+# CI gives it. A case that deliberately exercises a launcher identity, a backend,
+# or a home/state override exports its own value after this point (or inside its
+# own subshell).
+unset HERDR_ENV HERDR_PANE_ID HERDR_TAB_ID HERDR_WORKSPACE_ID HERDR_SOCKET_PATH \
+  HERDR_SESSION HERDR_BIN_PATH TERM_PROGRAM \
+  FM_BACKEND FM_HOME FM_ROOT FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE \
+  FM_CONFIG_OVERRIDE FM_PROJECTS_OVERRIDE
 
 # Clear the tasks-axi env overrides. An operator shell exports TASKS_AXI_FILE
 # (and may export TASKS_AXI_BACKEND) at its real home's backlog, and tasks-axi
@@ -105,6 +128,32 @@ fail() {
 
 pass() {
   printf 'ok - %s\n' "$1"
+}
+
+# fm_test_run <test-function>...
+# Print a TAP plan 1..N derived from the function names (N is $#), run each
+# function (each must emit exactly one `ok - ` line via pass), then print
+# FM_TEST_COMPLETE. Adding a test is adding a name to this call; N is not a
+# separately maintained numeral. The names given are the names run.
+# bin/fm-test-tap-verify.sh is the completeness checker the stock macOS Bash
+# job uses against that plan and marker. A suite that defines
+# fm_test_after_each gets it called after every test function, for per-case
+# cleanup such as stopping processes the case left running.
+fm_test_run() {
+  local name kind
+  [ "$#" -gt 0 ] || fail "fm_test_run: no tests registered"
+  printf '1..%s\n' "$#"
+  while [ "$#" -gt 0 ]; do
+    name=$1
+    shift
+    kind=$(type -t "$name" 2>/dev/null || true)
+    [ "$kind" = function ] || fail "fm_test_run: $name is not a function"
+    "$name"
+    if declare -F fm_test_after_each >/dev/null; then
+      fm_test_after_each
+    fi
+  done
+  printf 'FM_TEST_COMPLETE\n'
 }
 
 # Harness argument assertions reuse the emitted prefix rather than duplicating

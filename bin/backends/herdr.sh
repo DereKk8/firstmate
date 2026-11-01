@@ -506,7 +506,7 @@ fm_backend_herdr_client_select() {  # <session> [force]
 
 # fm_backend_herdr_tool_check: refuse loudly if herdr or jq is missing.
 fm_backend_herdr_tool_check() {
-  command -v herdr >/dev/null 2>&1 || { echo "error: backend=herdr selected but the 'herdr' CLI is not installed (https://herdr.dev) (dual-licensed AGPL-3.0-or-later/commercial)" >&2; return 1; }
+  command -v herdr >/dev/null 2>&1 || { echo "error: backend=herdr selected but the 'herdr' CLI is not installed (https://herdr.dev) (Apache-2.0)" >&2; return 1; }
   command -v jq >/dev/null 2>&1 || { echo "error: backend=herdr selected but 'jq' is not installed (required to parse herdr's JSON output)" >&2; return 1; }
   return 0
 }
@@ -1673,6 +1673,31 @@ fm_backend_herdr_projection_order_best_effort() {  # <session> <created-workspac
   return 0
 }
 
+# External server ownership (issue #7320). A service manager such as a systemd
+# user unit can own a session's server, and then only it may start one: a
+# Firstmate-started server races the owner during a unit restart or a
+# `server live-handoff`, while `status` briefly reports not running, and splits
+# panes across two servers. The owner declares itself with marker files in the
+# session directory, the directory holding the `.server.socket` that
+# `status --json` reports whether or not the server is running
+# (docs/verification/runtime-backends.md "Session directory"), shared by every
+# Firstmate home on that session:
+#   firstmate-server-owner      persistent; first line names the owner
+#   firstmate-server-replacing  present only while the owner replaces the server
+# docs/herdr-backend.md "Externally managed servers" owns the operator contract.
+FM_BACKEND_HERDR_SERVER_OWNER_MARKER=firstmate-server-owner
+FM_BACKEND_HERDR_SERVER_REPLACING_MARKER=firstmate-server-replacing
+
+# fm_backend_herdr_server_owner_name: the owner named by <owner-marker>'s first
+# line, or a generic name when it names none.
+fm_backend_herdr_server_owner_name() {  # <owner-marker>
+  local name
+  name=$(head -n 1 "$1" 2>/dev/null | tr -d '[:cntrl:]' | cut -c1-200)
+  name=${name#"${name%%[![:space:]]*}"}
+  name=${name%"${name##*[![:space:]]}"}
+  printf '%s' "${name:-an external service manager}"
+}
+
 # fm_backend_herdr_server_ensure: start the herdr server for <session>
 # headless (no TUI client) if not already running, mirroring tmux's `tmux
 # has-session || tmux new-session -d`. Verified: a bare socket CLI call does
@@ -1681,10 +1706,43 @@ fm_backend_herdr_projection_order_best_effort() {  # <session> <created-workspac
 # every later pane, so remove home, harness identity, and supervision selection
 # inherited from whichever agent happened to start it. Bounded poll for the
 # server to report running.
+#
+# A running server returns after one marker check in the session directory,
+# unless that directory holds a replacement marker. While the session directory
+# holds an owner marker with the server down, or a replacement marker at all,
+# this never starts or releases callers to the server: it polls the
+# non-starting fm_backend_herdr_server_running_state read up to 60 times, 0.5s
+# apart, until the replacement marker is gone and the server reports running,
+# and fails naming the replacement or the owner otherwise. A replacement marker that
+# clears with no owner marker hands back to the Firstmate-owned start below.
 fm_backend_herdr_server_ensure() {  # <session>
-  local session=$1 running out i
-  running=$(fm_backend_herdr_cli "$session" status --json 2>/dev/null | jq -r '.server.running // false' 2>/dev/null)
-  [ "$running" = "true" ] && return 0
+  local session=$1 status running socket out i dir owner_marker replacing_marker owner polls=60
+  status=$(fm_backend_herdr_cli "$session" status --json 2>/dev/null)
+  running=$(printf '%s' "$status" | jq -r '.server.running // false' 2>/dev/null)
+  socket=$(printf '%s' "$status" | jq -r '.server.socket // empty' 2>/dev/null)
+  if [ -z "$socket" ]; then
+    [ "$running" = "true" ] && return 0
+  else
+    dir=$(dirname "$socket")
+    owner_marker="$dir/$FM_BACKEND_HERDR_SERVER_OWNER_MARKER"
+    replacing_marker="$dir/$FM_BACKEND_HERDR_SERVER_REPLACING_MARKER"
+    [ "$running" = "true" ] && [ ! -e "$replacing_marker" ] && return 0
+    i=0
+    while [ -e "$owner_marker" ] || [ -e "$replacing_marker" ]; do
+      if [ "$i" -ge "$polls" ]; then
+        if [ -e "$replacing_marker" ]; then
+          echo "error: herdr server for session '$session' is being replaced ($replacing_marker) and the replacement did not finish after $polls checks; Firstmate will not start or use a server while that marker exists" >&2
+        else
+          owner=$(fm_backend_herdr_server_owner_name "$owner_marker")
+          echo "error: herdr server for session '$session' is managed by $owner ($owner_marker) and did not report running after $polls checks; Firstmate will not start it - start or repair it through $owner" >&2
+        fi
+        return 1
+      fi
+      sleep 0.5
+      i=$((i + 1))
+      [ ! -e "$replacing_marker" ] && [ "$(fm_backend_herdr_server_running_state "$session")" = running ] && return 0
+    done
+  fi
   (
     unset FM_HOME FM_ROOT_OVERRIDE FM_STATE_OVERRIDE FM_DATA_OVERRIDE FM_PROJECTS_OVERRIDE FM_CONFIG_OVERRIDE \
       CURSOR_AGENT CURSOR_INVOKED_AS CLAUDECODE PI_CODING_AGENT FM_PI_HARNESS GROK_AGENT FM_SUPERVISION_MODEL
@@ -2158,40 +2216,50 @@ fm_backend_herdr_pane_process_state() {  # <session> <pane_id>
 # for fm_backend_herdr_pane_process_state, which owns the verdict contract and
 # the settle retry.
 fm_backend_herdr_pane_process_state_sample() {  # <session> <pane_id>
-  local session=$1 pane_id=$2 info shell_pid count i pid name argv0 args verdict
+  local session=$1 pane_id=$2 info tag shell_pid pid name argv0 args
   local others=0 ps_bin rows
   info=$(fm_backend_herdr_cli "$session" pane process-info --pane "$pane_id" 2>/dev/null) \
     || { printf 'unreadable'; return 0; }
-  printf '%s' "$info" | jq -e --arg pane "$pane_id" '
-    .result.type == "pane_process_info"
-    and .result.process_info.pane_id == $pane
-  ' >/dev/null 2>&1 || { printf 'unreadable'; return 0; }
-  shell_pid=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.shell_pid | select(type == "number" and . > 1) | floor' 2>/dev/null) \
-    || { printf 'unreadable'; return 0; }
-  count=$(printf '%s' "$info" | jq -er \
-    '.result.process_info.foreground_processes | select(type == "array") | length' 2>/dev/null) \
-    || { printf 'unreadable'; return 0; }
-  i=0
-  while [ "$i" -lt "$count" ]; do
-    pid=$(printf '%s' "$info" | jq -r --argjson i "$i" \
-      '.result.process_info.foreground_processes[$i].pid | select(type == "number") | floor' 2>/dev/null)
-    name=$(printf '%s' "$info" | jq -r --argjson i "$i" \
-      '.result.process_info.foreground_processes[$i].name // empty' 2>/dev/null)
-    argv0=$(printf '%s' "$info" | jq -r --argjson i "$i" '
-      .result.process_info.foreground_processes[$i] as $p
-      | (($p.argv // [])[0]) // $p.argv0 // empty' 2>/dev/null)
-    args=$(printf '%s' "$info" | jq -r --argjson i "$i" '
-      .result.process_info.foreground_processes[$i] as $p
-      | $p.cmdline // (($p.argv // []) | join(" ")) // empty' 2>/dev/null)
-    verdict=$(fm_agent_process_classify "$name" "$argv0" "$args" "$pid")
-    case "$verdict" in
-      agent) printf 'agent'; return 0 ;;
-      shell) ;;
-      *) others=$((others + 1)) ;;
-    esac
-    i=$((i + 1))
-  done
+
+  # One jq pass validates the response and emits NUL-separated fields: `ok`,
+  # the shell pid, then pid, name, argv0 and args for each foreground process.
+  # The watcher classifies every busy pane on every poll, so a jq process per
+  # field per process made one fleet scan outrun the watcher heartbeat grace.
+  # NUL keeps args with spaces, tabs or newlines intact. A field that is
+  # missing or malformed reads as empty, and an invalid response emits nothing.
+  {
+    if ! { IFS= read -r -d '' tag && [ "$tag" = ok ] && IFS= read -r -d '' shell_pid; }; then
+      printf 'unreadable'
+      return 0
+    fi
+    while IFS= read -r -d '' pid && IFS= read -r -d '' name \
+      && IFS= read -r -d '' argv0 && IFS= read -r -d '' args; do
+      case "$(fm_agent_process_classify "$name" "$argv0" "$args" "$pid")" in
+        agent) printf 'agent'; return 0 ;;
+        shell) ;;
+        *) others=$((others + 1)) ;;
+      esac
+    done
+  } < <(printf '%s' "$info" | jq -j --arg pane "$pane_id" '
+    def field(f): [try f catch empty]
+      | if length == 0 then ""
+        else .[0] | (if type == "string" then . else tojson end) | gsub("\u0000"; "") | sub("\n+$"; "")
+        end;
+    .result as $r
+    | if ($r.type == "pane_process_info" and $r.process_info.pane_id == $pane) | not then empty
+      else
+        ($r.process_info.shell_pid | select(type == "number" and . > 1) | floor) as $shell
+        | ($r.process_info.foreground_processes | select(type == "array")) as $procs
+        | ["ok", ($shell | tostring)]
+          + [$procs[] as $p | $p | (
+              field(.pid | select(type == "number") | floor),
+              field(.name // empty),
+              field((($p.argv // [])[0]) // $p.argv0 // empty),
+              field($p.cmdline // (($p.argv // []) | join(" ")) // empty)
+            )]
+        | map(. + "\u0000") | add
+      end
+  ' 2>/dev/null)
 
   # Nothing in the foreground is a harness. A foreground that is not purely
   # shells is already `other`, whatever else the pane holds. Before calling a
