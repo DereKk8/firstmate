@@ -1,0 +1,9 @@
+$ fm-project-mode.sh pred-api -> no-mistakes off
+$ fm-project-mode.sh --pr pred-api -> manual
+$ fm-project-mode.sh pred-web -> 
+$ fm-project-mode.sh --pr pred-web -> 
+$ fm-project-mode.sh plain -> no-mistakes off
+$ fm-project-mode.sh --pr plain -> auto
+$ fm-project-mode.sh --pr broken
+refused: misplaced annotation "pr=manual" for broken in /home/derekk/.cache/tmp/fm-lab.YuZ9kt/data/projects.md: branch=, forge=, pr=, and +yolo are read only inside the [mode ...] brackets; correct data/projects.md
+exit=3

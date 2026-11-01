@@ -1,0 +1,5 @@
+not ok - expected exactly 2 hook-owned arm cycles, got 4: arm-run=1 pid=3823254
+arm-run=2 pid=3823455
+arm-run=3 pid=3830648
+arm-run=4 pid=3831006
+exit=1

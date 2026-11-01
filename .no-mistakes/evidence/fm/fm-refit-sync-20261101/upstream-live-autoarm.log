@@ -1,0 +1,22 @@
+Note: switching to '41a47c095d0d126349ab392158a365c117a2c9d2'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+not ok - expected exactly 2 hook-owned arm cycles, got 4: arm-run=1 pid=3097529
+arm-run=2 pid=3097764
+arm-run=3 pid=3105929
+arm-run=4 pid=3106368
+exit=1

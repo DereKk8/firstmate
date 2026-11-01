@@ -1,0 +1,60 @@
+1..24
+ok - host+hook: a main-only close after a handled turn restores inherited handling and rewakes main
+ok - host+hook: a refused inherited handling restore delivers a failure instead of silent success
+ok - host+hook: a driver returning to an idle worker is stale-handled while attended
+ok - host+hook: a driver returning to an idle worker is stale-handled while away
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/lost-handoff-boundary/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/lost-handoff-boundary/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/lost-handoff-boundary/state/.supervision-handoff.log: No such file or directory
+ok - host+hook: boundary survives a lost continuation, retries, and transfers one watcher after acknowledgement
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/lost-handoff-pass-through/state/.supervision-handoff.log: No such file or directory
+ok - host+hook: pass-through survives a lost continuation, retries, and transfers one watcher after acknowledgement
+ok - host+hook: an acknowledged hand-back at the turn keeps its pass-through row
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+grep: /home/derekk/.cache/tmp/fm-supervision-host.ZbkhwV/handoff-doorbell/state/.supervision-handoff.log: No such file or directory
+ok - host+hook: hand-back retry submits only to the idle owning pane without replacing human input
+ok - host+hook: a successor closed before exit_to_main does not suppress the branch-outcome rewake
+ok - host+hook: a successor that closes during a held engine turn does not suppress the branch-outcome rewake
+ok - host+hook: a refused hand-back becomes a delivered failure notice
+ok - host+hook: a refused hand-back on an announced handling marker becomes a delivered failure notice
+ok - host+hook: an attended main-only pass-through rewakes main and keeps its successor watcher
+ok - host+hook: an inbox note queued while the host is parked on a handled wake's successor rewakes main
+ok - host+hook: a captain outcome beside a quiet record rewakes the present captain with no away note
+ok - host+hook: a Claude home without config/supervision-host runs the host at the default engine, and an off file restores the plain arm
+ok - host+hook: a close that turns main-only at its turn rewakes main and keeps its successor watcher
+ok - host+hook: the successor a close that turns main-only at its turn leaves for main survives the hook's process group teardown
+ok - host+hook: failed at-turn downtime write notifies main despite a healthy successor
+ok - host+hook: a successor close that lands during main's turn is delivered at the next turn end
+ok - host+hook: the successor a pass-through leaves for main survives the hook's process group teardown
+ok - host+hook: the next park takes over the cycle a main-only pass-through left, so one arm owns it
+ok - host+hook: a park stopped mid take-over leaves the take-over to the next park
+ok - host+hook: a successor that cannot be recorded is stopped, and main's next turn end arms a fresh cycle
+FM_TEST_COMPLETE

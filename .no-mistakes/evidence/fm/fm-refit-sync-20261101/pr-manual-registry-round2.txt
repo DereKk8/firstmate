@@ -1,0 +1,24 @@
+$ bin/fm-project-mode.sh  pred-api
+no-mistakes off
+[exit 0]
+$ bin/fm-project-mode.sh --pr pred-api
+manual
+[exit 0]
+$ bin/fm-project-mode.sh  pred-web
+no-mistakes on
+[exit 0]
+$ bin/fm-project-mode.sh --pr pred-web
+manual
+[exit 0]
+$ bin/fm-project-mode.sh  plain
+no-mistakes off
+[exit 0]
+$ bin/fm-project-mode.sh --pr plain
+auto
+[exit 0]
+$ bin/fm-project-mode.sh  bad
+refused: unknown PR-text binding "pr=auto" registered for bad in /home/derekk/.cache/tmp/fm-lab.V14Qfl/data/projects.md; the only accepted value is pr=manual, or no pr token at all for the pipeline's own PR text; correct the registry entry
+[exit 3]
+$ bin/fm-project-mode.sh --pr bad
+refused: unknown PR-text binding "pr=auto" registered for bad in /home/derekk/.cache/tmp/fm-lab.V14Qfl/data/projects.md; the only accepted value is pr=manual, or no pr token at all for the pipeline's own PR text; correct the registry entry
+[exit 3]

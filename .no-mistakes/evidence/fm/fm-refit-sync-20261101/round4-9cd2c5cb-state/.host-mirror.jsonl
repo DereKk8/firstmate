@@ -1,0 +1,3 @@
+{"seq":1,"epoch":1793560244,"key":"3881901:1752632074:2150887885","id":"174696fa-8cb6-431a-b92c-4a2f31e73fee","tag":"captain","text":"After reading the complete session-start digest, reply with exactly CYCLE0 and stop. Whenever a Stop hook feedback message wakes you, run exactly `bin/fm-wake-drain.sh` once with Bash, then reply with exactly ACK and stop. Never run bin/fm-watch-arm.sh or any other arm command, and never use any other tool."}
+{"seq":2,"epoch":1793560248,"key":"3881901:1752632074:2150887885","id":"174696fa-8cb6-431a-b92c-4a2f31e73fee","tag":"main","text":"CYCLE0"}
+{"seq":3,"epoch":1793560251,"key":"3881901:1752632074:2150887885","id":"174696fa-8cb6-431a-b92c-4a2f31e73fee","tag":"main","text":"ACK"}

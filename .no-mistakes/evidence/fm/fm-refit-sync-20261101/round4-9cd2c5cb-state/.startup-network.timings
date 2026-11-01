@@ -1,0 +1,6 @@
+v1	phase	gh-auth	203	469	
+v1	phase	fleet-sync	677	1	
+v1	phase	secondmate-liveness	678	4	
+v1	phase	secondmate-sync	686	14	
+v1	phase	handoff-delivery	704	1	
+v1	stage	network-checks	22	696	probe_sweeps

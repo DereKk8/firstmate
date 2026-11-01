@@ -1,0 +1,13 @@
+ok - fm-project-mode: an entry with no forge token reports forge none and keeps its two-word default output
+ok - fm-project-mode: forge=forgejo placed after the mode token binds forgejo without a warning
+ok - fm-project-mode: forge=forgejo binds in any token order and keeps +yolo
+ok - fm-project-mode: forge=forgejo on local-only is refused like every forge
+ok - fm-project-mode: the colon spelling forge:forgejo is not a forge binding
+ok - fm-project-mode: a value outside none|gerrit|forgejo|external is refused and the refusal names the accepted values
+ok - fm-project-mode: forge=external binds direct-PR, reports yolo=off with a refusal, and is refused on local-only
+ok - fm-project-mode: a missing project or absent registry defaults --forge to none
+ok - fm-project-mode: an entry with no pr token, a missing project, or an absent registry reports pr auto
+ok - fm-project-mode: pr=manual binds in any token order and leaves mode, yolo, forge, and branch alone
+ok - fm-project-mode: pr=manual is kept on a no-mistakes-prod-only project
+ok - fm-project-mode: pr=manual refuses another mode, a bound forge, an empty value, and an unknown value, but leaves --forge answerable
+# fm-project-mode.test.sh: all assertions passed

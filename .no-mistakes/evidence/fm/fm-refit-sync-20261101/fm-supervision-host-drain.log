@@ -1,0 +1,52 @@
+1..17
+ok - report surface: only the branch actor's current turn may report, and only on the tasks its wake names
+ok - report surface: visible late outcomes queue a relay, while silent outcomes remain stored without a wake or note
+(node:1428212) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M6C56HPG6BRW00RXW8T657WV/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1428724) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M6C56HPG6BRW00RXW8T657WV/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1429341) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M6C56HPG6BRW00RXW8T657WV/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1429807) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M6C56HPG6BRW00RXW8T657WV/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1430363) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M6C56HPG6BRW00RXW8T657WV/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1431039) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M6C56HPG6BRW00RXW8T657WV/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1431702) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M6C56HPG6BRW00RXW8T657WV/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:1433148) [MODULE_TYPELESS_PACKAGE_JSON] Warning: Module type of file:///home/derekk/.no-mistakes/worktrees/b6eb6f6aa8bf/01M6C56HPG6BRW00RXW8T657WV/.pi/extensions/lib/fm-branch-dispatch.ts is not specified and it doesn't parse as CommonJS.
+Reparsing as ES module because module syntax was detected. This incurs a performance overhead.
+To eliminate this warning, add "type": "module" to /home/derekk/package.json.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ok - dispatch entry: the host reads branch eligibility, the offer rule, and the wake prompt from the Pi branch's own owner
+ok - drain: BRANCH OUTCOMES runs on a Claude home by default and on another primary with the file, never with off, and never on Pi
+ok - drain: captain outcomes come first, and routine overflow collapses into a count one drain clears
+ok - drain: repeated captain outcomes collapse per task, and the byte cap presents only the run its acknowledgement covers
+ok - drain: a long away window costs one short drain, captain outcomes collapsed per task and routine overflow counted, and nothing from it is shown again
+ok - drain: the BRANCH OUTCOMES budgets count bytes, cutting multibyte summaries by whole characters in any locale
+ok - drain: branch outcomes stay unread when a projection of the store fails
+ok - drain: branch outcomes stay unread and the drain fails when jq is missing
+ok - drain: branch outcomes stay unread when the drain cannot print them
+ok - drain: a legacy backlog is presented with each outcome's age and a check-first instruction, never adopted
+ok - drain: a keyed decision survives acknowledgement through a newer outcome for its task
+ok - drain: an outcome carried across a switch off Pi comes back with its age, never adopted
+ok - drain: an outcome nothing has shown is presented until acknowledged, and a repeated acknowledgement changes nothing
+ok - drain: an outcome the host drain presented but main never acknowledged stays unprocessed across a switch to Pi
+ok - drain: an outcome the host drain presented but main never acknowledged survives an outcome index repair
+FM_TEST_COMPLETE
+exit=0

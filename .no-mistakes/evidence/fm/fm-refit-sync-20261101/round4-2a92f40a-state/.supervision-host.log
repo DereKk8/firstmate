@@ -1,0 +1,7 @@
+1793560249	start	gen=host-3895953-1793560249	primary=claude
+1793560249	pass-through	attended	main-only	stale: fixture-rapid-1
+1793560249	pass-through	successor-unrecorded	stale: fixture-rapid-1
+1793560252	start	gen=host-3900494-1793560252	primary=claude
+1793560252	pass-through	a close without a wake
+1793560252	start	gen=host-3900874-1793560252	primary=claude
+1793560252	pass-through	a close without a wake

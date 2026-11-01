@@ -1,0 +1,25 @@
+tar: .claude-autoarm-live-e2e.1653285/project: file changed as we read it
+warning: adding embedded git repository: .claude-autoarm-live-e2e.1653285/project
+hint: You've added another git repository inside your current repository.
+hint: Clones of the outer repository will not contain the contents of
+hint: the embedded repository and will not know how to obtain it.
+hint: If you meant to add a submodule, use:
+hint:
+hint: 	git submodule add <url> .claude-autoarm-live-e2e.1653285/project
+hint:
+hint: If you added this path by mistake, you can remove it from the
+hint: index with:
+hint:
+hint: 	git rm --cached .claude-autoarm-live-e2e.1653285/project
+hint:
+hint: See "git help submodule" for more information.
+hint: Disable this message with "git config set advice.addEmbeddedRepo false"
+# 13:19:47 primary idle in Herdr pane w1:p1 (2.1.311 (Claude Code), herdr 0.9.5, model haiku); host pid 1743617
+# 13:20:06 engine conversation e0ec6206-ad60-4118-812e-b9866a5c270f handled one away wake
+# 13:20:52 primary: warm-compact	primary	sent
+# 13:21:24 engine: warm-compact	engine	compacted
+# 13:21:24 primary transcript compaction boundaries: 1
+# 13:21:44 engine context after compaction: 18846 tokens
+# 13:21:52 compacted primary drained and acknowledged the wake queued after compaction
+ok - warm-cache compaction: primary and engine compacted once each, pending wake picked up from disk
+exit=0

@@ -1,0 +1,44 @@
+$ FM_HOME=lab bin/fm-project-mode.sh  pred-api
+no-mistakes off
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh --pr pred-api
+manual
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh  pred-web
+no-mistakes on
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh --pr pred-web
+manual
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh  plain
+no-mistakes off
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh --pr plain
+auto
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh  bad
+refused: unknown PR-text binding "pr=auto" registered for bad in /home/derekk/.cache/tmp/fm-lab.yuea9C/data/projects.md; the only accepted value is pr=manual, or no pr token at all for the pipeline's own PR text; correct the registry entry
+[exit 3]
+$ FM_HOME=lab bin/fm-project-mode.sh --pr bad
+refused: unknown PR-text binding "pr=auto" registered for bad in /home/derekk/.cache/tmp/fm-lab.yuea9C/data/projects.md; the only accepted value is pr=manual, or no pr token at all for the pipeline's own PR text; correct the registry entry
+[exit 3]
+$ FM_HOME=lab bin/fm-project-mode.sh  misplaced
+refused: misplaced annotation "pr=manual" for misplaced in /home/derekk/.cache/tmp/fm-lab.yuea9C/data/projects.md: branch=, forge=, pr=, and +yolo are read only inside the [mode ...] brackets; correct data/projects.md
+[exit 3]
+$ FM_HOME=lab bin/fm-project-mode.sh --pr misplaced
+refused: misplaced annotation "pr=manual" for misplaced in /home/derekk/.cache/tmp/fm-lab.yuea9C/data/projects.md: branch=, forge=, pr=, and +yolo are read only inside the [mode ...] brackets; correct data/projects.md
+[exit 3]
+$ FM_HOME=lab bin/fm-project-mode.sh  dup
+no-mistakes off
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh --pr dup
+manual
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh  unknown
+warn: project "unknown" not in registry; defaulting to no-mistakes off
+no-mistakes off
+[exit 0]
+$ FM_HOME=lab bin/fm-project-mode.sh --pr unknown
+warn: project "unknown" not in registry; defaulting to no-mistakes off
+auto
+[exit 0]

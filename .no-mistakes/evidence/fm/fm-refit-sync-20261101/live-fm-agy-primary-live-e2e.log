@@ -1,0 +1,6 @@
+tar: .: file changed as we read it
+ok - agy primary live: SessionStart hook acquires lock and injects digest into live model context
+ok - agy primary live: PreToolUse --agy deny blocks a direct watcher command
+ok - agy primary live: Stop hook parks on a real watcher and delivers its wake to a follow-up turn
+ok - agy secondmate live: pre-seeded workspace trust launches straight into the secondmate home's digest
+exit=0

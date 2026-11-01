@@ -1,0 +1,2 @@
+not ok - expected one session-start drain plus two model wake drains, got 2 drains
+exit=1
