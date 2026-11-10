@@ -21,7 +21,7 @@
 #
 # Safety (2026-07-02 incident, see tests/herdr-test-safety.sh): every lifecycle
 # operation goes through bin/fm-herdr-lab.sh, which appends the named session
-# flag and verifies the default fleet session is unchanged after teardown.
+# flag and verifies the configured fleet session is unchanged after teardown.
 set -u
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -429,7 +429,7 @@ pass "real herdr E2E: a --secondmate launch still stands up that secondmate's ow
 
 # --- 8. teardown closes only the worker's own pane --------------------------
 
-FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$PRIMARY_HOME/state" FM_DATA_OVERRIDE="$PRIMARY_HOME/data" \
+FM_HOME="$PRIMARY_HOME" FM_ROOT_OVERRIDE="$ROOT" FM_STATE_OVERRIDE="$PRIMARY_HOME/state" FM_DATA_OVERRIDE="$PRIMARY_HOME/data" \
   FM_CONFIG_OVERRIDE="$PRIMARY_HOME/config" \
   "$ROOT/bin/fm-teardown.sh" dupC >"$TMP_ROOT/teardown.out" 2>&1
 status=$?
@@ -445,8 +445,8 @@ pass "real herdr E2E: teardown closes only the worker's own pane and leaves the 
 
 if ! cleanup_all; then
   trap - EXIT
-  printf 'not ok - isolated Herdr lab teardown failed or the default fleet session changed\n' >&2
+  printf 'not ok - isolated Herdr lab teardown failed or the configured fleet session changed\n' >&2
   exit 1
 fi
 trap - EXIT
-pass "real herdr E2E: isolated lab session removed and default fleet session unchanged"
+pass "real herdr E2E: isolated lab session removed and configured fleet session unchanged"

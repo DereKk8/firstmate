@@ -1,106 +1,142 @@
 #!/usr/bin/env bash
-# Contract tests for the pinned Herdr / Treehouse CI installers and the
-# bounded Herdr lab cleanup helper. These tests do not download release assets
-# and never start or stop the captain's default Herdr session.
-set -u
-
+# fm-install-herdr.test.sh - the pinned CI installers and the CI Herdr lab
+# cleanup helper. The Herdr installer downloads from Herdr's current repository
+# and the Treehouse installer requests its pinned release asset and refuses a
+# checksum mismatch: PATH curl stubs record the requested URL, so nothing is
+# fetched or installed. The cleanup helper runs against a stateful PATH herdr
+# stub and must only stop and delete job-owned, non-default fm-lab-* sessions.
+set -eu
 # shellcheck source=tests/lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
-HERDR_INSTALL="$ROOT/bin/fm-install-herdr.sh"
-TREEHOUSE_INSTALL="$ROOT/bin/fm-install-treehouse.sh"
-CLEANUP="$ROOT/bin/fm-herdr-ci-cleanup.sh"
-CI="$ROOT/.github/workflows/ci.yml"
+TMP=$(fm_test_tmproot fm-install-herdr)
+FAKEBIN=$(fm_fakebin "$TMP")
+cat > "$FAKEBIN/curl" <<'SH'
+#!/usr/bin/env bash
+for arg in "$@"; do
+  case "$arg" in https://*) printf '%s\n' "$arg" > "$FM_CURL_URL_LOG" ;; esac
+done
+exit 22
+SH
+chmod +x "$FAKEBIN/curl"
 
-assert_present "$HERDR_INSTALL" "bin/fm-install-herdr.sh is missing"
-assert_present "$TREEHOUSE_INSTALL" "bin/fm-install-treehouse.sh is missing"
-assert_present "$CLEANUP" "bin/fm-herdr-ci-cleanup.sh is missing"
-[ -x "$HERDR_INSTALL" ] || fail "fm-install-herdr.sh must be executable"
-[ -x "$TREEHOUSE_INSTALL" ] || fail "fm-install-treehouse.sh must be executable"
-[ -x "$CLEANUP" ] || fail "fm-herdr-ci-cleanup.sh must be executable"
+code=0
+FM_CURL_URL_LOG="$TMP/url" PATH="$FAKEBIN:$PATH" RUNNER_TEMP="$TMP" \
+  bash "$ROOT/bin/fm-install-herdr.sh" "$TMP/dest" 2>"$TMP/err" || code=$?
+[ "$code" -ne 0 ] || fail "installer succeeded although the download was refused"
+[ -s "$TMP/url" ] || fail "installer requested no release URL: $(cat "$TMP/err")"
+case "$(cat "$TMP/url")" in
+  https://github.com/herdrdev/herdr/releases/download/v*/herdr-*) ;;
+  *) fail "installer requested $(cat "$TMP/url"), not a herdrdev/herdr release asset" ;;
+esac
+[ ! -e "$TMP/dest/herdr" ] || fail "installer installed a binary after a refused download"
+pass "installer downloads the pinned asset from herdrdev/herdr"
 
-test_herdr_installer_pins_exact_version_and_checksums() {
-  assert_grep 'FM_HERDR_CI_VERSION=0.7.4' "$HERDR_INSTALL" \
-    "Herdr installer must pin suite-verified 0.7.4"
-  assert_grep 'FM_HERDR_CI_MIN_PROTOCOL=16' "$HERDR_INSTALL" \
-    "Herdr installer must require protocol floor 16"
-  assert_grep 'ogulcancelik/herdr' "$HERDR_INSTALL" \
-    "Herdr installer must use the official GitHub release source"
-  assert_grep 'herdr-linux-x86_64' "$HERDR_INSTALL" \
-    "Herdr installer must name the Linux x86_64 release asset"
-  assert_grep 'bc0fc02d4ba500f9cac2353a43e67fe036785ecca6eb55378e050fac3c103059' "$HERDR_INSTALL" \
-    "Herdr installer must pin the Linux x86_64 SHA-256"
-  assert_grep 'sha256sum' "$HERDR_INSTALL" \
-    "Herdr installer must verify a SHA-256 checksum"
-  assert_grep '--max-filesize' "$HERDR_INSTALL" \
-    "Herdr installer must bound the download size"
-  assert_no_grep 'brew install' "$HERDR_INSTALL" \
-    "Herdr installer must not use a floating package-manager install"
-  assert_no_grep 'apt-get install' "$HERDR_INSTALL" \
-    "Herdr installer must not use a floating package-manager install"
-  pass "Herdr installer pins exact version, asset, checksum, and protocol floor"
+TH_TMP="$TMP/treehouse"
+TH_BIN=$(fm_fakebin "$TH_TMP")
+cat > "$TH_BIN/uname" <<'SH'
+#!/usr/bin/env bash
+case "${1:-}" in -m) echo x86_64 ;; *) echo Linux ;; esac
+SH
+cat > "$TH_BIN/curl" <<'SH'
+#!/usr/bin/env bash
+out=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -o) out=$2; shift ;;
+    https://*) printf '%s\n' "$1" > "$FM_CURL_URL_LOG" ;;
+  esac
+  shift
+done
+[ -n "$out" ] || exit 2
+printf 'not the pinned treehouse release\n' > "$out"
+SH
+chmod +x "$TH_BIN/uname" "$TH_BIN/curl"
+
+code=0
+FM_CURL_URL_LOG="$TH_TMP/url" PATH="$TH_BIN:$PATH" RUNNER_TEMP="$TH_TMP" \
+  bash "$ROOT/bin/fm-install-treehouse.sh" "$TH_TMP/dest" 2>"$TH_TMP/err" || code=$?
+[ "$(cat "$TH_TMP/url" 2>/dev/null)" = "https://github.com/kunchenguid/treehouse/releases/download/v2.0.1/treehouse-v2.0.1-linux-amd64.tar.gz" ] ||
+  fail "treehouse installer requested '$(cat "$TH_TMP/url" 2>/dev/null)', not the pinned 2.0.1 linux-amd64 asset: $(cat "$TH_TMP/err")"
+[ "$code" -ne 0 ] || fail "treehouse installer accepted an asset whose SHA-256 does not match the pin"
+grep -q 'checksum mismatch' "$TH_TMP/err" ||
+  fail "treehouse installer failed for a reason other than the checksum pin: $(cat "$TH_TMP/err")"
+[ ! -e "$TH_TMP/dest/treehouse" ] || fail "treehouse installer installed a binary with a mismatched checksum"
+pass "treehouse installer requests the pinned 2.0.1 asset and refuses a checksum mismatch"
+
+# Stateful herdr stub: `session list --json` prints $HERDR_STATE/sessions.json,
+# `session delete` removes the named session, and every call is logged. When
+# $HERDR_STATE/flip.json exists, the list call numbered $HERDR_STATE/flip-at
+# first replaces the state with it, so a session can turn default mid-teardown.
+CL_TMP="$TMP/cleanup"
+CL_BIN=$(fm_fakebin "$CL_TMP")
+cat > "$CL_BIN/herdr" <<'SH'
+#!/usr/bin/env bash
+state=$HERDR_STATE
+printf '%s\n' "$*" >> "$state/calls"
+case "$1 ${2:-}" in
+  "session list")
+    n=$(( $(cat "$state/list-count" 2>/dev/null || echo 0) + 1 ))
+    printf '%s\n' "$n" > "$state/list-count"
+    if [ -f "$state/flip.json" ] && [ "$n" -eq "$(cat "$state/flip-at")" ]; then
+      mv "$state/flip.json" "$state/sessions.json"
+    fi
+    cat "$state/sessions.json"
+    ;;
+  "session stop") ;;
+  "session delete")
+    jq --arg n "$3" '.sessions |= map(select(.name != $n))' "$state/sessions.json" > "$state/next.json"
+    mv "$state/next.json" "$state/sessions.json"
+    ;;
+  *) exit 64 ;;
+esac
+SH
+chmod +x "$CL_BIN/herdr"
+
+cleanup_state() {
+  local dir=$CL_TMP/$1
+  mkdir -p "$dir"
+  printf '%s\n' "$dir"
 }
 
-test_treehouse_installer_pins_exact_version_and_checksums() {
-  assert_grep 'FM_TREEHOUSE_CI_VERSION=2.0.1' "$TREEHOUSE_INSTALL" \
-    "Treehouse installer must pin the suite-verified 2.0.1 release"
-  assert_grep 'kunchenguid/treehouse' "$TREEHOUSE_INSTALL" \
-    "Treehouse installer must use the official GitHub release source"
-  assert_grep 'linux-amd64.tar.gz' "$TREEHOUSE_INSTALL" \
-    "Treehouse installer must name the Linux amd64 archive"
-  assert_grep '1d5a32751ab921670103fd201ddb2b91b47338cb13976f45642b827cf8976af2' "$TREEHOUSE_INSTALL" \
-    "Treehouse installer must pin the Linux amd64 SHA-256"
-  assert_grep '--max-filesize' "$TREEHOUSE_INSTALL" \
-    "Treehouse installer must bound the download size"
-  assert_no_grep 'brew install' "$TREEHOUSE_INSTALL" \
-    "Treehouse installer must not use a floating package-manager install"
-  pass "Treehouse installer pins exact version, asset, and checksum"
+run_cleanup() {
+  HERDR_STATE=$1 PATH="$CL_BIN:$PATH" bash "$ROOT/bin/fm-herdr-ci-cleanup.sh" "$2" "$1/snapshot.json" 2>>"$1/err"
 }
 
-test_cleanup_only_targets_job_owned_lab_sessions() {
-  assert_grep 'fm-lab-' "$CLEANUP" \
-    "cleanup must only consider fm-lab-* session names"
-  assert_grep 'default == false' "$CLEANUP" \
-    "cleanup must refuse default sessions"
-  assert_grep 'snapshot' "$CLEANUP" \
-    "cleanup must support a pre-suite snapshot"
-  assert_grep 'teardown' "$CLEANUP" \
-    "cleanup must support post-suite teardown of the delta"
-  # Must not call ambient server stop.
-  assert_no_grep 'server stop' "$CLEANUP" \
-    "cleanup must never call ambient herdr server stop"
-  pass "cleanup is bounded to job-owned fm-lab-* sessions"
+sessions_json() {
+  local entries='' pair
+  for pair in "$@"; do
+    entries="$entries${entries:+,}{\"name\":\"${pair%%=*}\",\"default\":${pair#*=}}"
+  done
+  printf '{"sessions":[%s]}\n' "$entries"
 }
 
-test_ci_wires_installers_and_required_lane() {
-  assert_grep 'tests-herdr:' "$CI" "CI must define the required Herdr Behavior job"
-  assert_grep 'fm-install-herdr.sh' "$CI" "CI must call the Herdr installer"
-  assert_grep 'fm-install-treehouse.sh' "$CI" "CI must call the Treehouse installer"
-  assert_grep 'fm-herdr-ci-cleanup.sh snapshot' "$CI" "CI must snapshot sessions before the suite"
-  assert_grep 'fm-herdr-ci-cleanup.sh teardown' "$CI" "CI must teardown job-owned sessions after"
-  assert_grep "fail-on-gate-skip 'herdr not found'" "$CI" \
-    "CI Herdr lane must fail on herdr-not-found"
-  assert_grep 'family real-herdr-gated' "$CI" \
-    "CI Herdr lane must run only the real-herdr-gated family"
-  assert_grep 'lane portable-parallel-1' "$CI" \
-    "portable CI must run parallel shard 1"
-  assert_grep 'lane portable-parallel-2' "$CI" \
-    "portable CI must run parallel shard 2"
-  assert_grep 'FM_SERIAL_LANE: portable-serial-' "$CI" \
-    "portable CI must run the serial remainder"
-  assert_grep 'fm-test-run.sh --check-coverage' "$CI" \
-    "CI must prove portable lanes and Herdr partition the complete inventory"
-  # Live harness credential tests must stay out of the default Herdr lane.
-  assert_no_grep 'live-harness-optin' "$CI" \
-    "CI must not run live-harness-optin in the required Herdr lane"
-  assert_no_grep 'FM_AFK_PI_HERDR_E2E' "$CI" \
-    "CI must not enable live Pi/Herdr credential tests"
-  assert_no_grep 'FM_SEND_MARKER_HERDR_E2E' "$CI" \
-    "CI must not enable live marker Herdr credential tests"
-  pass "CI wires pinned installers into a required serial Herdr lane"
-}
+S=$(cleanup_state owned)
+sessions_json default=true fm-lab-old=false > "$S/sessions.json"
+run_cleanup "$S" snapshot || fail "cleanup snapshot failed: $(cat "$S/err")"
+sessions_json default=true fm-lab-old=false fm-lab-new=false fm-lab-dflt=true \
+  other-new=false > "$S/sessions.json"
+run_cleanup "$S" teardown || fail "cleanup teardown failed: $(cat "$S/err")"
+mutations=$(grep -v '^session list' "$S/calls" | sort | tr '\n' ';')
+[ "$mutations" = "session delete fm-lab-new --json;session stop fm-lab-new --json;" ] ||
+  fail "cleanup must stop and delete only the job-owned fm-lab-new session, got: $mutations"
+remaining=$(jq -r '[.sessions[].name] | sort | join(",")' "$S/sessions.json")
+[ "$remaining" = "default,fm-lab-dflt,fm-lab-old,other-new" ] ||
+  fail "cleanup left the wrong sessions: $remaining"
+! grep -q '^server' "$S/calls" || fail "cleanup called herdr server: $(grep '^server' "$S/calls")"
+pass "cleanup removes only new non-default fm-lab-* sessions and leaves default, snapshotted, and non-lab sessions"
 
-test_herdr_installer_pins_exact_version_and_checksums
-test_treehouse_installer_pins_exact_version_and_checksums
-test_cleanup_only_targets_job_owned_lab_sessions
-test_ci_wires_installers_and_required_lane
+S=$(cleanup_state flip)
+sessions_json default=true > "$S/sessions.json"
+run_cleanup "$S" snapshot || fail "cleanup snapshot failed: $(cat "$S/err")"
+sessions_json default=true fm-lab-flip=false > "$S/sessions.json"
+sessions_json default=false fm-lab-flip=true > "$S/flip.json"
+printf '3\n' > "$S/flip-at"
+code=0
+run_cleanup "$S" teardown || code=$?
+[ "$code" -ne 0 ] || fail "cleanup reported success after refusing a session that turned default"
+grep -q "refusing cleanup of 'fm-lab-flip' (default=true)" "$S/err" ||
+  fail "cleanup did not refuse the session that turned default: $(cat "$S/err")"
+! grep -qv '^session list' "$S/calls" ||
+  fail "cleanup mutated Herdr after a session turned default: $(grep -v '^session list' "$S/calls")"
+pass "cleanup refuses a session that reports default on the fresh pre-stop check and never calls herdr server"

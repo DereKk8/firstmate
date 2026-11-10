@@ -426,6 +426,29 @@ test_record_and_check_merge() {
   pass "record-report stores the verdict by pull request URL and check-merge requires PASS"
 }
 
+# bin/fm-pr-merge.sh passes the live head it read, which on a SHA-256
+# repository is 64 hex characters, so the merge check must take that length
+# and still refuse a head that is neither length or not lowercase hex.
+test_check_merge_takes_a_sha256_live_head() {
+  local rc text head64
+  reset_reviews
+  head64=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  text=$(with_pin "$ZT" check-merge task-1 "$PR_URL" "$head64")
+  assert_equals no-review "$text" "a 64-character live head with no review did not pass the merge check"
+  record task-1 "$HEAD_A" PASS full
+  run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge task-1 "$PR_URL" "$head64"
+  rc=$RUN_RC
+  expect_code 1 "$rc" "a 64-character live head that is not the reviewed head must be refused"
+  assert_grep 'not the reviewed head' "$FIX/stderr" "the 64-character refusal did not name the reviewed head"
+  for bad in "${head64%?}" "${head64}0" "0123456789ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef"; do
+    run_capture "$FIX/stdout" "$FIX/stderr" with_pin "$ZT" check-merge task-1 "$PR_URL" "$bad"
+    rc=$RUN_RC
+    expect_code 1 "$rc" "a malformed live head ($bad) must be refused"
+    assert_grep 'live head is not 40 or 64 hex characters' "$FIX/stderr" "the malformed live head refusal did not name the accepted lengths"
+  done
+  pass "check-merge takes a 64-character live head and refuses a malformed one"
+}
+
 test_history_is_append_only_and_the_gate_reads_the_latest() {
   local text rc first
   reset_reviews
@@ -815,6 +838,7 @@ test_brief_fields_and_marker_lines
 test_prepare_asserts_and_cleans_up
 test_launch_runs_in_the_blind_directory
 test_record_and_check_merge
+test_check_merge_takes_a_sha256_live_head
 test_history_is_append_only_and_the_gate_reads_the_latest
 test_record_report_requires_a_scope
 test_legacy_record_is_read_until_a_history_exists
