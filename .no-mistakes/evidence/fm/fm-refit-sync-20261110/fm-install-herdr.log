@@ -1,0 +1,4 @@
+ok - installer downloads the pinned asset from herdrdev/herdr
+ok - treehouse installer requests the pinned 2.0.1 asset and refuses a checksum mismatch
+ok - cleanup removes only new non-default fm-lab-* sessions and leaves default, snapshotted, and non-lab sessions
+ok - cleanup refuses a session that reports default on the fresh pre-stop check and never calls herdr server

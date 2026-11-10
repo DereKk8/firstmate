@@ -1,0 +1,4 @@
+ok - real named lab reproduced the exact restored one-tab one-pane childless no-agent shell shape
+ok - real named lab cleanup closes only the exact stale pane and preserves exact focus
+ok - real named lab cleanup is idempotent and leaves the configured fleet session to the teardown tripwire
+evidence: herdr=0.9.5 protocol=22 fleet-session-tripwire=armed

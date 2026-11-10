@@ -1,0 +1,11 @@
+ok - Herdr waits past the former deadline for a delayed shell cwd
+ok - Herdr recovers a dropped initial cd with one resend
+ok - Herdr refuses a never-moving pane with diagnostic context and no launch
+ok - a fresh herdr spawn leases the copy and moves the pane's top-level shell into it
+ok - a failed lease refuses the spawn and falls back to nothing
+ok - an aborted spawn keeps the lease and names the command that releases it
+ok - a spawn rolled back after its launch keeps the lease and names the command that releases it
+ok - an abort whose pane Herdr reports gone returns a clean lease
+ok - an abort whose pane Herdr reports gone keeps a copy with uncommitted work leased
+ok - an abort whose pane is still present keeps the lease and names it
+# all fm-spawn-herdr-lease tests passed

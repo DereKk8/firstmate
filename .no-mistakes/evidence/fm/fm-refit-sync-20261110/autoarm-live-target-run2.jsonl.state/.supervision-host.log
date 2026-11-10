@@ -1,0 +1,7 @@
+1794321233	start	gen=host-1395186-1794321233	primary=claude
+1794321233	pass-through	attended	main-only	stale: fixture-rapid-1
+1794321233	pass-through	successor-unrecorded	stale: fixture-rapid-1
+1794321240	start	gen=host-1406542-1794321240	primary=claude
+1794321240	pass-through	a close without a wake
+1794321240	start	gen=host-1407519-1794321240	primary=claude
+1794321240	pass-through	a close without a wake

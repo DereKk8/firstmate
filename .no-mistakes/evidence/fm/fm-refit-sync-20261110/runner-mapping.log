@@ -1,0 +1,3 @@
+family pure-contract-unit:
+27:tests/fm-install-herdr.test.sh
+family real-herdr-gated:
