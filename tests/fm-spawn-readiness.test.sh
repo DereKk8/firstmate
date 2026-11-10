@@ -36,8 +36,16 @@ case "${1:-} ${2:-}" in
   *) : ;;
 esac
 SH
-  chmod +x "$fakebin/herdr"
-  fm_fake_exit0 "$fakebin" treehouse
+  # A Herdr spawn leases its task copy durably, so the fake reports the case's
+  # worktree for `treehouse get --lease`, as the real pool does.
+  cat > "$fakebin/treehouse" <<'SH'
+#!/usr/bin/env bash
+case "$*" in
+  'get --lease '*) printf '%s\n' "${FM_FAKE_PANE_PATH:?}" ;;
+esac
+exit 0
+SH
+  chmod +x "$fakebin/herdr" "$fakebin/treehouse"
   printf '%s\n' "$fakebin"
 }
 

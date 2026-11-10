@@ -126,6 +126,15 @@ hex40() {
   return 1
 }
 
+# A live pull-request head comes from bin/fm-pr-merge.sh, which accepts a
+# SHA-1 (40) or SHA-256 (64) commit, so the merge check takes either length.
+hexhead() {
+  hex40 "${1:-}" && return 0
+  [ "${#1}" -eq 64 ] || return 1
+  case "$1" in *[!0-9a-f]*) return 1 ;; esac
+  return 0
+}
+
 skill_repo() {
   local candidate
   if [ -n "${FM_ZT_SKILL_REPO:-}" ]; then
@@ -814,7 +823,7 @@ case "$cmd" in
     [ "$#" -eq 3 ] || die "check-merge needs a task id, a pull request URL, and a live head"
     fm_pr_task_id_valid "$1" || die "invalid task id"
     require_text_arg "pr-url" "$2"
-    hex40 "$3" || die "live head is not 40 hex characters"
+    hexhead "$3" || die "live head is not 40 or 64 hex characters"
     base=$(review_record_base "$2")
     rc=0
     parsed=$(review_entries "$base") || rc=$?

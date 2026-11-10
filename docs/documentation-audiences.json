@@ -246,6 +246,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": ".agents/skills/harness-adapters/references/harness/hermes.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": ".agents/skills/harness-adapters/references/harness/kiro.md",
       "audience": "agent-runtime"
     },
@@ -530,6 +534,10 @@
       "audience": "agent-runtime"
     },
     {
+      "path": "docs/supervision-protocols/codex-checkpoint.md",
+      "audience": "agent-runtime"
+    },
+    {
       "path": "docs/supervision-protocols/cursor.md",
       "audience": "agent-runtime"
     },
@@ -607,6 +615,10 @@
     },
     {
       "path": "docs/verification/dispatch-resolve.md",
+      "audience": "maintainer-verification"
+    },
+    {
+      "path": "docs/verification/hermes.md",
       "audience": "maintainer-verification"
     },
     {
@@ -695,6 +707,10 @@
     },
     {
       "path": ".agents/skills/away-quiet-supervision/SKILL.md",
+      "audience": "agent-runtime"
+    },
+    {
+      "path": ".agents/skills/lavish-url/SKILL.md",
       "audience": "agent-runtime"
     },
     {
