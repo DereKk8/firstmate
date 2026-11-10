@@ -981,7 +981,6 @@ tests/fm-archive-task.test.sh 298
 tests/fm-captain-translation-contract.test.sh 776
 tests/fm-external-tooling-check.test.sh 375
 tests/fm-herdr-attached-viewer-live-e2e.test.sh 19000
-tests/fm-install-herdr.test.sh 92
 tests/fm-instruction-owners.test.sh 138
 tests/fm-merge-content-check.test.sh 9457
 tests/fm-merge-local.test.sh 276
