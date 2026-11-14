@@ -26,6 +26,7 @@ Retire a custom check only through `bin/fm-check-unregister.sh <id>` (or `bin/fm
 
 Before ordering cleanup for a task whose artifacts matter, firstmate runs `bin/fm-archive-task.sh` while the local copy still exists.
 The watcher's merge-time cleanup below sends no cleanup order, so for such a task firstmate runs that archive before the lane parks under `config/park-on-review`, before its PR can merge in a home with `config/auto-land`, and before it creates `config/auto-land` while such a lane is open.
+If the lane changes those artifacts again before the merge, for example after a resume from a park or more review work, firstmate refreshes that task's archive with `bin/fm-archive-task.sh <id> --force`.
 The watcher owns teardown of a merged lane whose merge poll is armed, including a PR merged through `bin/fm-pr-merge.sh`, when the lane is parked or its home has `config/auto-land` ([`docs/configuration.md`](../../../docs/configuration.md#park-on-review)).
 Otherwise, firstmate tears it down after landing is confirmed.
 A lane parked on review (`bin/fm-park.sh`) has no agent and relaunches itself on review activity; `bin/fm-park.sh park <id>` parks one clean lane on request and `bin/fm-park.sh resume <id> --trigger <text>` relaunches one by hand.
