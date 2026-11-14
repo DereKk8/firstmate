@@ -1,0 +1,1086 @@
+FM_TEST_BEGIN 2026-11-14T21:51:55Z tests/fm-captain-hold-lifecycle.test.sh family=pure-contract-unit expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T21:51:55Z tests/fm-park.test.sh family=pr-forge expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T21:51:55Z tests/fm-pr-merge.test.sh family=pr-forge expected_gate_skip=none
+not ok - updated-draft-pending: missing the actual refusal reason
+FM_TEST_END 2026-11-14T21:51:56Z tests/fm-pr-merge.test.sh exit=1 duration_ms=917 gate_skip=false
+1..34
+ok - github gate: clean PR parks, and draft, closed, conflict, behind, unknown mergeability, CI pending/failing/absent, changes requested, unresolved and unread threads each refuse
+ok - github gate refuses while a required check of the base branch has not reported on the head, or the requirement cannot be read
+ok - github gate waits for every reviewer bot to submit a review of the current head, or the quiet window since it was pushed
+ok - gitlab gate: clean MR parks, and draft, conflict, rebase, CI running/failed/absent, changes requested, other merge blockers, unresolved threads, a pipeline on an older commit, and a review bot that has not finished each refuse, across every page of discussions; a failed page is unreadable for gate and tick
+ok - park evaluates the gate twice, leases the slot, writes a private record, stops the agent once, and declares the wait
+ok - park refuses an unsupported backend before leasing, recording, or stopping
+ok - a head change between the verdict and the stop refuses the park and leaves the agent running
+ok - an instruction or a new turn arriving after the preflight refuses the park before the agent is stopped
+ok - park holds the inbox delivery lock across its final check and stop, refusing a newly delivered instruction without stopping the agent
+ok - park leaves the task metadata lock available to fm-control exit
+ok - a pending park stays watched during stop, promotes a later stop, and expires only after the stop bound
+not ok - pending-hang: the tick did not save the lane it never reached
+FM_TEST_END 2026-11-14T21:52:14Z tests/fm-park.test.sh exit=1 duration_ms=18928 gate_skip=false
+ok - marked hold reasons round-trip through public reads, fleet, startup, and return without changing other fields
+ok - new, active, and released holds publish origins after backend success with and without deferral
+Terminated                 PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" bash -c 'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b > "$home/hold.out" 2> "$home/hold.err"
+Terminated                 PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" bash -c 'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b > "$home/hold.out" 2> "$home/hold.err"
+Terminated                 PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" bash -c 'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b > "$home/hold.out" 2> "$home/hold.err"
+Terminated                 PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" bash -c 'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b > "$home/hold.out" 2> "$home/hold.err"
+ok - failed and interrupted origin moves cannot inherit active, expired, replayed, or completed calls
+ok - historical self-inventories name a workable repair that preserves sibling entries
+ok - completion and verification compare backend identities for entries and current or stored origins
+ok - complete refuses the origin as its own captain-call inventory
+ok - complete refuses an entry held for another origin and flags one with none recorded
+ok - report-only unresolved captain call is reproduced and completion refuses before loss
+ok - both body-decoding paths work without the allow_nonref default
+ok - cleanup preserves every byte of a retained body's non-ASCII characters
+ok - the completion gate attests captain-held inventory and transfers open status decisions
+ok - answer records the captain's words, closes idempotently, and releases routed work
+ok - release frees held work with the captain's words recorded and the body preserved
+ok - a captain hold is released only in an attended session: away refuses, quiet and no record release
+ok - a release waiting on the task lock rechecks the away posture under the lock
+ok - captain holds become visible only after their hold-set timestamp is durable
+ok - an interrupted answer preserves its hold age until close retry
+ok - a deferred captain call leaves the live Captain's Call until its date and stays answerable
+ok - an out-of-band close is recordable with the captain's word and nothing else
+ok - ended visual review follows the same captain-hold completion owner
+ok - resolved findings and decision-like prose do not create captain-held tasks
+ok - completion keeps an armed PR identity last in the task record
+ok - completion replaces a completion pair recorded after pr= by the previous writer
+ok - terminal single-owner stale status decisions do not block empty inventory
+ok - main-home and secondmate-home captain calls remain correctly routed
+ok - a secondmate home publishes each hold occurrence and its answer on the parent channel
+ok - secondmate resolutions publish before retiring durable retry triggers
+ok - a bound channel's captured answers close their captain-held tasks at answer time
+ok - only a bound captured source creates reconcile requests
+ok - normal answers and their replays retire reconcile requests
+ok - reconcile closes a moot call with evidence and keeps an active one open with a note
+ok - reconcile outcomes apply durable mutations once across partial failures
+ok - a channel source with no decision binding closes nothing
+ok - legacy identities, metadata, bindings, and the shim keep working
+ok - a board answer reaches the keyed-answer intake and wakes firstmate
+ok - the chat channel feeds the same keyed-answer intake a captured review does
+ok - completion and verification validate origins before constructing paths
+ok - a status resolution over a still-open captain-held task is signalled, not closed
+ok - a captain call with no routed work, a verified transfer, an open decision, and an answered call all stay silent
+ok - cleanup leaves a captain-held work item open with its deliverable, and only an answer closes it
+ok - release and scout report retention distinguish deliveries from rejected merge answers
+ok - an interrupted cleanup keeps the captain call recoverable and session start retains it
+ok - an answer before cleanup replay preserves the retained report
+ok - an answer before cleanup replay notes the retained Gerrit change
+ok - an unusable pending-close record names its reason instead of a bare refusal
+ok - an unsupported relocated report does not wedge the captain's answer
+ok - cleanup retains captain calls in the configured backlog
+ok - cleanup keeps a captain-held Gerrit task open and records its change URL
+ok - merge approval releases before zero-retention cleanup records completion
+ok - the PR merge entrypoint refuses a captain-held task before merging
+ok - the local merge entrypoint refuses a captain-held task before merging
+ok - the PR merge entrypoint separates an unreadable authority record from an absent one
+ok - the local merge entrypoint separates an unreadable authority record from an absent one
+ok - merge entrypoints reject unsafe identities and absent state before locking
+ok - merge entrypoints refuse a replacement incarnation after waiting for cleanup
+ok - merge entrypoints own task state before forced cleanup can retire it
+ok - a released merge passes the guarded entrypoint and remains recently landed
+ok - cleanup refuses a ship row when its captain hold cannot be read
+ok - skipped on markdown-only tasks-axi: verify against a beads-migrated hold
+ok - skipped on markdown-only tasks-axi: verify against a prefix-migrated hold
+ok - skipped on markdown-only tasks-axi: prefer a marker-noted row over a prefix namesake
+ok - skipped on markdown-only tasks-axi: complete against a beads-migrated hold
+ok - skipped on markdown-only tasks-axi: verify an unresolvable beads legacy id
+ok - skipped on markdown-only tasks-axi: verify a derived pre-collapse key
+ok - captain-hold mutations address the beads backend without a markdown override
+ok - skipped on markdown-only tasks-axi: captain-hold create under due.required without types.custom
+ok - an answered captain call archived by Done retention still satisfies the completion gate
+mise ERROR error parsing config file: ~/.config/mise/config.toml
+mise ERROR Config files in ~/.config/mise/config.toml are not trusted.
+Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
+mise ERROR Version: 2026.11.3 linux-x64 (2026-11-06)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+not ok - could not create the user-config origin
+FM_TEST_END 2026-11-14T22:00:45Z tests/fm-captain-hold-lifecycle.test.sh exit=1 duration_ms=530076 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T22:00:45Z tests/fm-watch-triage-pause.test.sh family=watcher-wake-lock expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T22:00:45Z tests/fm-watcher-lock.test.sh family=watcher-wake-lock expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T22:00:45Z tests/fm-inactive-reconcile.test.sh family=watcher-wake-lock expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-14T22:00:45Z tests/fm-session-lock-ancestry.test.sh family=watcher-wake-lock expected_gate_skip=none
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - main direct terminal presentation has a durable receipt
+ok - busy agent withholds the terminal outcome
+ok - idle agent on a newer incarnation withholds the terminal outcome
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - idle finished agent keeps the terminal outcome
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - idle finished agent with rewritten meta keeps the terminal outcome
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - dead agent keeps the terminal outcome
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - a branch-actor acknowledgement retires the inactive-outcome receipt and later scans stay quiet
+ok - unpushed CI-ready ship done: is not published upstream
+ok - inactive reconciliation pins local readiness under its existing lock before one parent delivery
+ok - a delivered ship done: skips the git gate on later polls
+ok - secondmate delivers a child's terminal ledger line once, on the next poll, from the ledger alone
+ok - multiline terminal outcomes are reported once before or during a state read
+ok - an unterminated continuation line does not withhold a proven child outcome
+ok - later status prose does not change the inactive terminal receipt identity
+ok - busy child locks do not starve later ledger outcomes
+ok - ledger delivery carries the report pointer, the failed verb, and each new terminal line
+ok - pr= requires the recorded PR or a ready-signal terminal line, whatever its stamp, and never a scout
+ok - terminal lines arriving during state reads remain ledger-owned
+ok - inactive and ledger paths reconcile one raced completion without hiding later events
+ok - progress after an inactive fallback starts a distinct terminal event
+ok - complete long ledger lines retain distinct receipt identities
+ok - a ledger line still being appended waits for its newline
+ok - the remote route carries a child's ledger line once
+ok - report delivers a child's final line, owes nothing twice, and refuses only an unwritable channel
+actionable: child outcome needs parent report: child=child state=done (missing or unreadable parent binding .fm-secondmate-parent)
+ok - a pending ship done: is delivered by report after teardown removed the worktree
+ok - report preserves teardown's metadata-before-scan lock order
+actionable: child outcome needs parent report: child=child state=failed (missing or unreadable parent binding .fm-secondmate-parent)
+ok - relative local parent homes fail closed
+ok - invalid secondmate markers block routing and surface the obligation
+ok - remote parent-replies mirror input is durable and idempotent
+ok - reused task ids retain per-incarnation terminal receipts
+ok - legacy metadata rewrites preserve terminal receipt identity
+ok - relaunch cannot replace metadata during terminal snapshot
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - terminal reconciliation ignores heartbeat backoff state
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - scan marker replaces a symlink without overwriting its target
+ok - nonterminal and captain-held workers remain outside inactive terminal reporting
+ok - watcher hook wakes for terminal loss and preserves idle secondmate exemption
+ok - the real watcher poll delivers a child's terminal ledger line to the parent channel
+actionable: inactive terminal outcome awaiting captain presentation: child=b state=done
+ok - stalled state reads are bounded without starving later children
+actionable: inactive terminal outcome awaiting captain presentation: child=b state=done
+actionable: inactive terminal outcome awaiting captain presentation: child=a state=failed
+ok - stalled liveness reads are bounded without starving later children
+ok - aggregate scan budget includes durable wake operations
+actionable: inactive terminal outcome needs parent report: child=child state=failed (missing or unreadable parent binding .fm-secondmate-parent)
+ok - notice recovery remains idempotent across queue acknowledgement
+ok - a secondmate home with no parent binding names the missing binding instead of failing quietly
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - reconciliation makes zero forge or PR API calls
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - reconciliation state reads set no-forge mode
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=failed
+ok - a terminal outcome names no pull request when its run opened none
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done pr=https://example.test/owner/repo/pull/42
+ok - a terminal outcome names the pull request its own run opened
+ok - with the scan opt-in, a child report names a replacement or forge PR and keeps a recorded PR the log never named
+ok - without the scan opt-in, a child report keeps the recorded PR and accepts only a GitHub-shaped ready line
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done pr=https://github.com/owner/repo/pull/7
+ok - a status-log sourced outcome keeps the pull request that record named
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done pr=https://gitlab.example/group/sub/project/-/merge_requests/8
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done pr=https://gerrit.example/c/group/project/+/4201
+ok - a status-log outcome keeps GitLab and Gerrit review links
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - a status-log outcome without its own pull request carries none
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - a status-log outcome takes no pull request from another line
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - a status-log outcome never claims a pull request mentioned in prose
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=done
+ok - a scout's terminal outcome carries no pull request
+ok - a failure the crew's own last word contradicts is never presented
+ok - a success the crew's own last word contradicts is never presented
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=failed
+ok - a run-step failure is not suppressed by the crew's own earlier word
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=failed
+ok - a stale pause line does not suppress the failure that followed it
+actionable: inactive terminal outcome awaiting captain presentation: child=child state=failed
+ok - a genuine, uncontradicted failure still reaches the captain
+all inactive reconciliation tests passed
+FM_TEST_END 2026-11-14T22:01:28Z tests/fm-inactive-reconcile.test.sh exit=0 duration_ms=42928 gate_skip=false
+ok - session-lock: a version-named Claude Code session is identified from its install path and argv[0]
+ok - session-lock: a harness that is pid 1 of its own namespace is examined, not skipped
+ok - session-lock: a bun-run omp script is identified under both platforms' comm reporting
+ok - session-lock: ordinary script paths under a harness directory are not harness processes
+ok - session-lock: ownership stops at the first non-harness gap above the contiguous run
+ok - session-lock: a live version-named session holding the lock is not mistaken for a stale owner
+ok - session-lock: a trusted same-session id keeps owning a recycled background chain, and nothing weaker does
+ok - session-lock: a trusted id anchors the lock on the model-loop process, anything else on the outermost pid
+ok - session-lock: a Windows session is identified from its published pid across the severed parent link
+ok - session-lock: a published Windows pid is confirmed against the process table before it is trusted
+ok - session-lock: a tagged Windows pid is never resolved against the Cygwin process table
+ok - session-lock: a published identity is accepted by every gate that reads the lock
+ok - session-lock: a live tagged lock holder is a live foreign owner to a second Windows session
+ok - session-lock: fm-lock.sh protects valid tagged owners and reclaims dead or malformed records
+ok - session-lock: a published Windows Claude pid is accepted only with its session id
+ok - session-lock: a Windows /clear keeps the lock and re-keys its session id
+ok - session-lock: a Windows-tagged lock stays inert off Windows
+ok - session-lock: a task lease follows a live tagged lock holder and goes stale when it exits
+ok - session-lock: a harness in the local process table resolves untagged when ps has no -o option
+ok - session-lock e2e: a version-named session claims the home and arms supervision
+ok - session-lock e2e: a session parented by a harness-named daemon claims the home and arms supervision
+ok - session-lock e2e: a version-named session under a harness-named daemon keeps its own lock
+not ok - the pty-host was not reparented to init after the daemon ended
+FM_TEST_END 2026-11-14T22:02:09Z tests/fm-session-lock-ancestry.test.sh exit=1 duration_ms=84319 gate_skip=false
+ok - disposable watcher refuses inherited state outside its marked lab
+ok - tombstone cleanup respects a live reaper and recovers a recycled reaper pid
+ok - wait deadline diagnoses and reaps a stopped test child without hanging
+ok - simultaneous watcher starts leave exactly one live process
+ok - fm_pid_identity real ps fallback is locale-invariant
+ok - fm_pid_identity is locale-invariant across LC_ALL/LC_TIME
+ok - fm_pid_identity ps fallback is terminal-width-invariant
+ok - /proc process identity ignores simulated btime changes
+ok - /proc process identity detects pid reuse
+ok - MSYS /proc process identity regression skipped on non-Windows host
+ok - killed watcher stale lock is reclaimed
+ok - dead watcher reclaim fails promptly when downtime marker cannot be published
+tests/fm-watcher-lock.test.sh: line 2737: 3419481 Killed                     FM_STATE_OVERRIDE="$state" bash -c '
+    . "$1"
+    fm_lock_remove_path() {
+      if [ "$1" = "$STATE/.watch.lock" ]; then
+        kill -KILL "${BASHPID:-$$}"
+      fi
+      return 1
+    }
+    fm_lock_try_acquire "$2"
+  ' _ "$LIB" "$lockdir" > /dev/null 2>&1
+ok - stale watcher reclaim publishes durable recovery evidence before clear
+ok - live watcher lock with stale heartbeat is actionable
+ok - live watcher lock with a beacon past the hard bound is replaced, under it is still refused
+ok - a fresh watcher replaces a live holder whose pre-UTC-pin identity no longer recomputes, and the old holder stands down unsignalled
+ok - a replaced holder stands down cleanly even when its successor has already exited and released the lock
+ok - guard banner leads when down with pending wakes (repair-after-drain) and stays silent when live and fresh
+ok - concurrent fm_lock_try_acquire yields exactly one winner
+ok - dead-pid stale lock is reclaimed by a single acquirer
+ok - concurrent stale-lock steal yields exactly one winner
+ok - dead steal owner is reclaimed once without a nested steal marker
+ok - dead nested steal chain from an interrupted reclaim is recovered
+ok - a competing link reaper cannot remove the successor's steal mutex
+ok - a competing directory reaper cannot remove the successor's steal mutex
+ok - a steal mutex abandoned by this process does not block its own reclaim
+ok - a steal reap interrupted in this process is resumed from its own tombstone
+ok - live steal mutex is not reclaimed
+ok - live-held lock is not stolen
+ok - lock whose recorded holder pid was reused by a live process is reclaimed
+ok - live holder matching its recorded start time keeps its lock
+ok - lock whose recorded identity no longer recomputes is reclaimed without signalling its pid; a matching or unrecorded identity stays held
+ok - live supervise-daemon lock with a stale local-time identity and no start time is not reclaimed
+ok - dead real-directory primary and steal locks recover without leaked owners
+ok - a live nested owner blocks reclamation even in an old directory
+ok - unreapable real-directory locks refuse promptly naming the wedged path
+ok - inaccessible primary and steal directories refuse by name on both session claim paths
+ok - failed directory entry stays retriable after concurrent removal or replacement
+ok - ordinary wait keeps waiting until directory residue can be reclaimed
+ok - failed owner publication discards the staging directory
+ok - session-lock acquisition recovers directory residue and honors named refusal on both claim paths
+ok - empty mid-acquire lock keeps a minimum grace
+ok - late original claimant cannot claim a recreated lock
+ok - bounded wait earns one grace window for an unpublished-pid lock, still bounds a live holder
+ok - bounded deadline with an unpublished holder is retriable
+ok - bounded deadline with an exited holder is retriable
+ok - bounded deadline with a released lock is retriable
+ok - bounded deadline preserves the live holder advisory
+ok - bounded deadline rejects malformed pid data and non-directory locks
+ok - paused mid-acquire claimant backs off to active stealer
+ok - watch restart preserves recovery without signaling a reused pid
+ok - watch restart attaches to a verified healthy peer and later surfaces a successor gap
+ok - watcher self-evicts when the lock pid no longer names it
+ok - watcher exits 1 with its reason when its state directory is torn down and recreated during startup
+ok - arm turns clean self-eviction without a successor into a typed failure
+ok - arm attaches to a live fresh watcher and fails loudly when that cycle has no successor
+ok - attached arm signals record a classified lifecycle entry
+ok - arm starts cleanly and resurfaces recovery after a dead-pid lock
+ok - arm cleans child watcher and temp output on HUP
+ok - arm defers TERM until startup watcher can run its lock cleanup
+ok - arm TERM waits out a stalled singleton claim past the deadline and leaves no lock evidence
+WAKE_ACK_REQUIRED: after handling completes run bin/fm-wake-drain.sh --ack-through 1 --recovery-generation 3579597.1794693696.3nVgZF
+WARNING: queued wakes pending - drain them with bin/fm-wake-drain.sh before anything else.
+ok - arm propagates an immediate watcher wake before confirmation
+ok - arm attaches to a peer watcher after child stands down and surfaces a missing successor
+watcher: lock held by live pid 3607771 but heartbeat is stale for 847990908s (>300s); inspect or stop that watcher before re-arming.
+ok - arm reports FAILED and exits non-zero when no fresh watcher can be confirmed
+ok - cycle-exit ledger links a verified successor and remains size-capped
+ok - arm confirms a watcher whose post-claim startup exceeds the legacy budget
+watcher: FAILED - startup lock ~/.cache/tmp/fm-test-run.xxjITL/w5/tmp/fm-watcher-lock-tests.5rjZKg/arm-startup-lock-held/state/.wake-queue.lock held by live pid 3657220
+ok - arm relays a live-holder startup-lock refusal and keeps the downtime drainable
+ok - staged-owner cleanup removes only unpublished empty or self-owned staging
+ok - startup cleanup waits for in-flight staging and publication, preserving foreign owners
+ok - a stop forced before the safe point waits for it and leaves no lock evidence
+ok - a watcher that cannot publish its identity exits through its cleanup
+ok - SIGSTOP distinguishes live PID from stale beacon and termination records the exit class
+FM_TEST_END 2026-11-14T22:02:38Z tests/fm-watcher-lock.test.sh exit=0 duration_ms=113098 gate_skip=false
+1..50
+ok - all four required captain-hold tests fail when tasks-axi is unavailable
+ok - a not-provably-working non-terminal stale is surfaced immediately (never left to wait out the timer)
+ok - a declared pause is absorbed on first sight, then re-surfaced as a recheck past the threshold, never wedge-escalated
+ok - declared waits surface unreported gates and terminal runs once, while working runs and answered gates keep the pause cadence on idle and busy paths
+ok - without config/paused-wait-supersession superseding states keep the declared-wait cadence and spend no extra crew-state read
+ok - with the away-mode flag present an armed busy paused worker at a human gate behaves exactly as with the flag absent: no superseded wake and no crew-state read
+ok - exited declared-pause and captain-held panes use bounded pause cadence while a live decision gate still surfaces once
+ok - own-work waits keep one first alert, then bounded rechecks without wedges; undeclared idle still alarms
+ok - absorbed paused and captain-held replacements each start their own re-surface cadence
+ok - a parked live worker surfaces once, absorbs pane churn for the whole re-surface window, then re-surfaces when it elapses
+ok - a live paused worker stays absorbed until its declared time, then rechecks
+ok - work under an open captain call surfaces once, absorbs pane churn, then re-surfaces when the window elapses
+ok - a stale window with no open captain call keeps alarming on every new hash
+ok - a wake that never reached the durable queue arms no re-surface throttle
+ok - a released-then-re-held task is a distinct captain call whose first sight still alarms
+ok - a declared paused secondmate re-surfaces on the bounded normal-mode cadence
+ok - a captain-held secondmate re-surfaces on the bounded normal-mode cadence
+ok - a non-paused secondmate retains normal stale suppression
+ok - a resumed secondmate clears pause and stale tracking before stale exemption
+ok - unchanged stale hashes reclassify when a crew enters or leaves pause
+ok - a declared pause is periodically rechecked against authoritative active-run state
+ok - a paused status overridden by authoritative working preserves its wedge timer, is rechecked rather than wedge-escalated while the declaration stands, and escalates once it is lifted
+ok - a captain-held item is never rechecked while the away-posture record exists, and the recheck returns once the record is archived
+ok - a live captain-held pane is absorbed on first sight while the away-posture record exists
+ok - a delivery the captain already holds is never rechecked while the away-posture record exists
+ok - the daemon-owned one-shot never hands off a captain-held pane while the away-posture record exists
+ok - quiet mode's record silences no captain-held recheck, on the watcher's cadence or through a quiet daemon's one-shot
+ok - a declared wait naming a near-future until time stays quiet until that time
+ok - a wrong-year declared time cannot silence the watcher beyond the recheck cadence
+ok - a declared wait whose until time has passed is rechecked at once, then held to the cadence
+ok - with config/pause-ceiling, a dated pause past its ceiling opens one keyed decision that a worker event closes
+date: invalid date ‘@’
+ok - without config/pause-ceiling an old pause keeps the plain recheck and opens no decision
+ok - overdue publication reconciles resumes before or after the blocker append without a stale alert
+ok - busy overdue decisions suppress wedge alerts until a worker event, then restore ordinary tracking
+date: invalid date ‘@’
+ok - a fresh overdue marker survives reconciliation and closes when the worker resumes
+ok - an open overdue decision suppresses terminal stale wakes caused only by pane display churn
+date: invalid date ‘@’
+ok - a reused task id with fresh working status does not inherit overdue pause state
+date: invalid date ‘@’
+ok - malformed dated pauses remain on bounded recheck
+ok - the undated bound uses the pause timestamp and rejects zero
+date: invalid date ‘@’
+ok - undated pauses stay quiet through the bound and close their overdue decision on resume
+ok - with paused-recheck-silent on, an unchanged paused declaration is rechecked without a wake
+ok - with paused-recheck-silent absent, the unchanged paused recheck still wakes
+ok - with paused-recheck-silent on, an open decision still wakes
+ok - with paused-recheck-silent on, a changed declaration still wakes
+ok - with paused-recheck-silent on, an unchanged paused recheck for a live ship agent is silent
+ok - with paused-recheck-silent on, a ticking pane on an unchanged paused declaration is silent
+ok - with paused-recheck-silent on, a paused recheck for an exited agent still wakes
+ok - with paused-recheck-silent on, a due declared time still wakes
+ok - without until, a worker paused on its own ended background job is not rechecked inside the cadence
+ok - until set to a background job's timeout rechecks the worker paused on it once the job must have ended
+FM_TEST_COMPLETE
+FM_TEST_END 2026-11-14T22:08:25Z tests/fm-watch-triage-pause.test.sh exit=0 duration_ms=459970 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T22:08:25Z tests/fm-dod-lib.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - scout done: is not gated
+ok - unpushed ship done: is refused
+ok - no-mistakes pre-validation done: is not gated
+ok - named head on a remote-tracking ref is accepted
+ok - named head only on the no-mistakes gate mirror is refused, even after a refresh; on origin it is accepted
+ok - head origin holds through the gate clone is accepted after a refresh, and later reads see it
+ok - a project clone with its own git directory is refreshed too, and its origin's head is accepted
+ok - past the refresh deadline nothing is fetched and the refusal says it used the last-known refs
+ok - a failed refresh still refuses and says the verdict used the last-known refs
+ok - a remote that hangs and sorts before origin cannot take origin's refresh; origin's head is accepted and the hanging remote is named
+ok - a hanging remote in a standalone copy cannot take the project clone's refresh; its origin's head is accepted and failed remotes name their repository
+ok - local-only named branch stays reachable when the gate mirror also holds it
+ok - a moved remote branch that lacks the named head is refused
+ok - a 40-hex token in the note is not the named head
+ok - a recorded merged PR satisfies the gate after prune
+ok - the merged-PR short-circuit applies only to the recorded PR the done line names
+ok - a forge-recorded head for the named PR is accepted without a local object
+ok - a direct-PR recorded head does not cover a later unpushed commit
+ok - CI-ready notes require checks green and an actual PR reference
+ok - no-mistakes CI-ready done: with extra text is gated
+ok - keyed and spaced ship done: lines are gated
+ok - local-only linked named branch is reachable from the project clone
+ok - local-only detached HEAD only in the disposable copy is refused
+ok - standalone local-only done: requires the named head in the project clone
+ok - non-done lines are not gated
+ok - fenced and indented Captain lines are not authorized intent
+ok - PR-based DoD draft check uses gh-axi
+ok - promotion keeps a scout's recorded base branch and refuses local-only for it
+ok - forge=external composes with direct-PR only and refuses a base branch
+ok - external rule one forbids origin and task-prefixed pushes and names only the backup copy
+ok - external DoD renders the contract, the review grammar, and the adapter, and refuses without one
+ok - external review done: accepted on a canonical URL alone without a backup; PR, non-https, query, fragment, forge, and pattern mismatches refused
+ok - external review done with a backup: refused until HEAD is under refs/remotes/backup/backup/, then accepted
+ok - worker role names the skill and its fallback skill file
+all fm-dod-lib tests passed
+FM_TEST_END 2026-11-14T22:08:35Z tests/fm-dod-lib.test.sh exit=0 duration_ms=9802 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T22:08:35Z tests/fm-teardown.test.sh family=pr-forge expected_gate_skip=none
+ok - teardown leaves opencode's busy plugin in the returned pool worktree as on main
+ok - hidden untracked work is refused before return while a clean control returns
+ok - content fallback distinguishes unavailable Git proof, containment, conflicts, and unlanded content
+orca/reap-refusal: teardown_exit=1 replay_exit=0 metadata_after_replay=retained backlog_after_replay=in_flight
+tmux/reap-refusal: teardown_exit=1 replay_exit=0 metadata_after_replay=retained backlog_after_replay=in_flight
+ok - post-reap proof retains late work and retry records on ordinary and Orca paths, preserving clean/force/scout behavior
+ok - status archival is opt-in and preserves the complete log
+ok - a status log archived by record hygiene survives the next status-archive teardown
+ok - config-absent teardown does not read or invoke record export
+ok - unopted teardown ignores symlinked config when record export is absent
+ok - teardown commits the record archive before deleting sources and fails closed when export cannot commit
+ok - forced secondmate teardown exports task records from the child sub-state
+ok - record export waits for endpoint quiescence and retry captures records changed after refusal
+ok - forced secondmate retirement preserves two descendant levels and refuses linked child directories
+ok - local missing-status retirement stays lock-free without creating an archive
+ok - reused task IDs never overwrite archives and retention removes only old owned logs
+ok - archive sources and directories reject symlinks; pruning never follows children links
+ok - failed archive publication preserves presentation and watcher bookkeeping
+ok - cursor retirement failure removes its archive so retry publishes one history
+ok - archive publication and cold logs never re-wake or re-present
+ok - retention failures warn without aborting unrelated teardown
+ok - a missing teardown startup source refuses before cleanup
+ok - an unreadable teardown startup source refuses before cleanup
+ok - a missing adapter sibling refuses before cleanup
+ok - a forced descendant with a missing adapter sibling refuses before cleanup
+ok - a forced secondmate with a missing own adapter sibling refuses before child cleanup
+ok - present required sources still reach the ordinary teardown refusal
+ok - local-only worktree with HEAD on a fork remote is torn down and the home summary is refreshed
+ok - teardown closes its own backlog item before reporting success
+ok - teardown closes a landed Gerrit task with its change URL as a note and a GitHub task with --pr
+ok - teardown closes a landed GitLab task with its merge request URL as a note and GitHub and Forgejo tasks with --pr
+ok - teardown honors config/backlog-backend=manual and still finishes cleanly
+ok - local-only worktree with truly unpushed work is refused (safety preserved)
+ok - local-only worktree with work merged into local main is torn down (no regression)
+ok - teardown leaves a merge cleanup request for the detached cleanup that owns it
+ok - work landed on another origin branch from another clone is proven after a refresh
+ok - a failed refresh refuses and names the remote it could not reach
+ok - commits on no remote branch still refuse after a successful refresh
+ok - uncommitted work refuses even when the commits have landed
+ok - a file saved during the refresh refuses teardown and survives
+ok - a project with no remote refuses as before and fetches nothing
+ok - the refresh keeps a dropped branch's tracking ref even with fetch.prune set
+ok - work the tracking refs already show adds no network call
+ok - a hung refresh is cut off at its bound and refuses
+ok - commits held only by the no-mistakes gate are not refreshed into landed
+ok - no-mistakes worktree with HEAD on origin is torn down (no regression)
+ok - no-mistakes worktree with genuinely unlanded work is refused (safety preserved)
+ok - branch pushed only to the no-mistakes mirror is refused as unlanded
+ok - local-only worktree with unpushed work is torn down under --force (escape hatch)
+ok - fm-pr-check publishes the PR-ready line on a secondmate's parent channel once
+ok - fm-pr-check withholds the PR-ready line until checks are green when config/ready-after-green is present
+ok - fm-pr-check releases the PR-ready line on a checks-green report that carries surrounding text
+ok - a secondmate home's teardown delivers the child's final line or refuses until it can
+ok - teardown completes when an exact busy-state sidecar is already absent
+ok - teardown retires a polytoken task's generated worktree wiring on pool return
+ok - teardown never deletes a tracked .polytoken hook layer
+ok - teardown never deletes a .polytoken hook layer firstmate did not generate
+ok - teardown scopes .polytoken wiring removal to polytoken tasks
+ok - herdr teardown removes pane-owned escalation dedupe state
+ok - herdr flat teardown refuses before returning the isolated copy under lock contention and the retry completes cleanly
+ok - herdr flat teardown never erases records when pane presence is unparseable
+ok - herdr flat teardown preflight refuses before every destructive change
+ok - herdr teardown takes its lock in a per-account namespace another account cannot block, and still refuses a foreign-owned or wrong-mode one
+ok - forced secondmate teardown preflights every Herdr child before cleanup mutation
+ok - forced secondmate teardown holds every descendant lifecycle and metadata lock
+ok - forced secondmate teardown retains Herdr child identity until exact pane disappearance
+ok - forced teardown retains a nested secondmate home and its grandchild's Herdr identity when the grandchild close is unconfirmed
+ok - herdr projection teardown retires its journal only after confirming the exact recorded pane is gone
+ok - herdr projection teardown retains every record when post-close presence is unknown
+ok - herdr projection teardown surfaces failed focus restoration without turning confirmed cleanup into a hard failure
+ok - herdr projection teardown closes its exact pane, restoring focus, before returning the copy that holds its shell
+ok - herdr projection teardown retains the task, pane shell, and leased copy after a refused close
+ok - teardown retires the task's own watcher markers and orphaned presentation journal, leaving other tasks' markers alone
+ok - teardown retains a presentation journal bound to a pane other than the closed endpoint
+ok - teardown retires a v1 presentation journal once its token workspace is confirmed gone
+ok - teardown retains a v1 presentation journal while its token workspace is still present
+ok - teardown retains a v1 presentation journal when the workspace query is ambiguous
+ok - squash-merged + deleted-branch worktree (PR merged) is torn down (the fix)
+ok - squash-merged PR accepts a local HEAD that is an ancestor of the final PR head
+ok - teardown discovers a merged PR by branch name and tears down when no pr= was ever recorded
+ok - squash-merged PR accepts replayed unpushed local patches contained in the PR head
+ok - merged PR patch matching preserves indentation, allows exact replays, and refuses unsupported Git
+ok - merged PR does not allow teardown after a later local commit
+ok - squash-merged task whose local branch followed the pipeline rebase is torn down
+ok - teardown proves a Forgejo task landed from the merged pull request when the content check is inconclusive
+ok - teardown proves a squash- or train-merged GitLab MR landed from the MR head only with an opt-in flag, and refuses an open one
+ok - squash-merged same-path different content still refuses
+ok - squash-merged rebased local still refuses a genuinely unlanded follow-up commit
+ok - squash-merged stale local still refuses when the forge is unreachable
+fm-contributions: data directory unavailable
+contributions: observation not armed; coverage is unconfirmed
+fm-contributions: data directory unavailable
+contributions: observation not armed; coverage is unconfirmed
+ok - fm-pr-check does not refresh PR head after HEAD moves
+fm-contributions: data directory unavailable
+contributions: observation not armed; coverage is unconfirmed
+ok - fm-pr-check records the remote PR head when the local worktree lags
+ok - worktree whose content already landed in the default branch is torn down (content fallback)
+ok - the content-landed fallback checks a task's recorded base branch, not the default branch
+ok - content fallback refreshes origin default before comparing trees
+ok - dirty worktree is refused even when its committed work has landed (dirty always wins)
+ok - untracked/no-mistakes: dirty refusal classifies leftovers and preserves work
+ok - untracked/local-only: dirty refusal classifies leftovers and preserves work
+ok - tracked/no-mistakes: dirty refusal classifies leftovers and preserves work
+ok - tracked/local-only: dirty refusal classifies leftovers and preserves work
+ok - mixed/no-mistakes: dirty refusal classifies leftovers and preserves work
+ok - mixed/local-only: dirty refusal classifies leftovers and preserves work
+ok - scout copy with a nested clone and a scratch file returns with no untracked entries
+ok - ship copy with a nested clone is refused and its bytes stay
+ok - a return that leaves residue names the lost slot and the remaining paths
+ok - a dirty return is reported even when a later teardown step refuses
+ok - a forced secondmate teardown returns a child scout copy with a nested clone clean
+ok - a forced secondmate teardown warns about a dirty child return and still completes
+ok - a return that leaves no readable copy reports the slot as unverified, not clean
+ok - ignored files survive the scratch clean and plain scratch does not
+ok - gh lookup error with content not in default refuses (fail-safe)
+ok - a record predating spawn_gen refuses teardown until --legacy-record is passed
+ok - a windowless leftover with no spawn_gen and no worktree tears down without --legacy-record
+ok - a windowless leftover with no spawn_gen also tears down when --legacy-record is passed
+ok - a windowless leftover still refuses while its worktree holds unlanded work
+ok - a windowless record with a spawn_gen, a non-tmux backend or endpoint identity, no backlog validation, or ambiguous, foreign, or malformed identity still refuses
+ok - a windowless leftover retries its retained legacy stamp without --legacy-record
+ok - a landed legacy record with a dead endpoint tears down and logs its accepted incarnation
+ok - --legacy-record never relaxes the unlanded-work refusal
+ok - an endpoint that cannot be confidently read as dead refuses --legacy-record teardown
+ok - --legacy-record teardown rolls its stamp back when the close marker write fails
+ok - a legacy stamp a failed rollback left behind still faces the endpoint gate
+ok - a corrupt spawn_gen is never accepted as a legacy record
+ok - provably-stale worktree index.lock (old, no live holder) is cleared and teardown succeeds
+ok - live-held worktree index.lock is never removed and teardown refuses
+ok - lsof errors leave worktree index.lock in place and refuse teardown
+ok - stale lock cleanup rechecks and refuses dirty worktree before return
+ok - normal repo index.lock is resolved from the worktree and cleared when stale
+ok - lock mtime read failures leave worktree index.lock in place and refuse teardown
+ok - transient index.lock cleared after first failed return is retried successfully without force-remove
+ok - persistent index.lock exhausts retries and refuses without force-removing the lock
+ok - empty retry wait overrides use the default without aborting teardown
+ok - fractional legacy retry wait remains supported without arithmetic
+ok - teardown records the task's pipeline spend before removing its branch and record
+ok - teardown skips all pipeline-spend recording when the home has not opted in
+ok - teardown records unavailable pipeline spend for an owned ship task whose copy is gone
+ok - a task's own parked no-mistakes run is aborted, not orphaned, before the worker is removed
+ok - a parked run in a resolved workspace no-mistakes home is aborted before the worker is removed
+ok - a run that lands on passed-with-override after abort is still recognized as terminal
+ok - a run that lands on passed-with-skips after abort is still recognized as terminal
+ok - a parked run the pipeline advanced past the task copy is still concluded from the runs ledger, not orphaned
+ok - a ledger row for a different head never authorizes a parked-run abort
+ok - a malformed ledger row never authorizes a parked-run abort
+ok - an impossible ledger date never authorizes a parked-run abort
+ok - a terminal status with a stale gate never reaches ledger cleanup
+ok - an advanced head present locally aborts through the strict rule alone - the ledger fallback stays dormant
+ok - an unresolvable active row with no same-branch anchor is never concluded (conservative refusal)
+ok - an ancestor-only anchor never binds an advanced parked run to this task
+ok - a terminal unfetched-head row is stale history and never concludes a run
+ok - a terminal newest row anchored at this worktree's head never authorizes an abort
+ok - a resolvable diverged newer same-branch row makes every older row stale history; no run is concluded
+ok - consecutive unresolvable rows are ambiguous and never conclude a run
+ok - a ledger-proven continuation is still left alone while the run is autonomously active
+ok - teardown refuses before reap or removal when a task-owned run remains parked
+ok - a different run cannot confirm the targeted abort
+ok - empty post-abort status is not accepted as confirmation
+ok - the CLI's exact run-not-found signal confirms completion
+ok - a parked run on another branch is never aborted by this task's teardown (ownership is precise)
+ok - a task-owned autonomous running step is left alone rather than aborted
+ok - a leaked descendant process rooted under the task's worktree is reaped by teardown, not left surviving
+ok - a leaked descendant process rooted under the task's per-task tasktmp is reaped by teardown too
+ok - missing lsof falls back to reaping the tmux pane process group
+ok - an erroring lsof scan refuses teardown and preserves the task
+ok - a reused pid with a different start time is never force-killed
+ok - an exec change preserves birth identity and the process is reaped
+ok - a process spawned during grace is reaped on a later pass
+ok - persistent leaked processes refuse teardown after bounded retries
+ok - a process exiting during identity lookup does not block teardown
+ok - the run abort and the leaked-process reap both complete before the destructive worktree return
+FM_TEST_END 2026-11-14T22:13:24Z tests/fm-teardown.test.sh exit=0 duration_ms=288805 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T22:13:24Z tests/fm-bootstrap.test.sh family=session-bootstrap expected_gate_skip=none
+ok - bootstrap archives an old orphan status log and reports interleaved duplicates
+ok - bootstrap skips archiving while the task metadata lock is held
+ok - record hygiene keeps a status log whose metadata is published before the move
+ok - watcher heartbeat supplies the home data directory to record hygiene
+ok - watcher reclaims a stale hygiene marker and starts a worker
+ok - bootstrap bounds and reports backlog read timeout
+ok - bootstrap without config/record-hygiene reports nothing, moves nothing, and reads no backlog for it
+ok - watcher heartbeat without config/record-hygiene runs no hygiene scan
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap reports treehouse lease + tasks-axi/quota-axi bootstrap contracts
+ok - bootstrap reports pool orphans, duplicate clones, old unowned slots, and test pools
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap reads and reports Treehouse pools only when config/treehouse-pool-report exists
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap: an absent-tool case hides the tool in the fallback base path
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap separates an absent no-mistakes from one below its version floor
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap separates an absent gh-axi from one below its version floor
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap preserves legacy Lavish boards while recommending synchronous reply support
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap separates an absent tasks-axi from one below its floor or feature probe
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap separates an absent quota-axi from one below its version floor
+ok - bootstrap requires git with an install instruction
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap: backend=orca gates the Orca CLI without requiring it on the default backend
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+ok - bootstrap: session-provider backends require their own CLI + jq + treehouse, never tmux
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+fatal: not a git repository (or any parent up to mount point /)
+Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
+not ok - backend=herdr must fail closed on its own missing session CLI (missing: 'MISSING_MANUAL: herdr (instructions: https://herdr.dev)')
+--- output ---
+
+FM_TEST_END 2026-11-14T22:14:29Z tests/fm-bootstrap.test.sh exit=1 duration_ms=65328 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T22:14:29Z tests/fm-claude-stop-autoarm.test.sh family=standalone expected_gate_skip=none
+ok - auto-arm: inert in a linked child worktree even when in-flight
+ok - auto-arm: inert with no session lock
+ok - auto-arm: a demonstrably dead recorded session owner is reclaimed through fm-lock.sh before arming
+ok - auto-arm: inert without arm, rewake, or lock replacement when another live harness owns the home
+ok - auto-arm: inert while AFK owns supervision
+ok - auto-arm: stale-owner recovery leaves the AFK and supervision-need gates unchanged
+ok - auto-arm: resolves the outermost pid of a nested contiguous claude ancestry (bg-spare chain)
+ok - auto-arm: inert with nothing in flight and no X-mode need
+ok - auto-arm: actionable close translates to exactly one exit-2 rewake with reason
+ok - auto-arm: actionable close survives a healthy successor without duplicate delivery
+ok - auto-arm: StopFailure rewakes are paced to one per cooldown and never dropped
+ok - auto-arm: StopFailure failure continuations are paced by the same cooldown
+ok - auto-arm: a paced StopFailure rewake stands down when AFK or a lost need appears during its wait
+ok - auto-arm: an attached cycle's end starts a handling successor named after the closed arm before the rewake
+ok - auto-arm: an unconfirmed handling successor is reported in the rewake instead of blocking it
+ok - auto-arm: bounded failure verification emits one automatic-mechanism alarm
+ok - auto-arm: consecutive failures keep Stop-owned retry without repeating notice
+ok - auto-arm: marker-write refusal defers delivery until one successor commits the notice
+ok - auto-arm: unverified clean close exhausts retries and fails closed
+ok - auto-arm: post-alarm actionable outcomes cannot continue or reset failure state
+ok - auto-arm: benign cycle end with a live watcher and fresh beacon stays silent across the next cycle
+ok - auto-arm: budget contention preserves the episode and forces a reset retry
+ok - auto-arm: owner-mutex contention preserves successor episode state
+ok - auto-arm: X-mode poll need arms the cycle even with no tasks in flight
+ok - auto-arm: a registered custom check arms the cycle even with no tasks in flight
+ok - auto-arm: concurrent firings admit one owner and one rewake translation
+ok - auto-arm: TERM mid-arm commits a durable failure and exits 2 for rewake
+ok - auto-arm: HUP, TERM and INT episodes do not consume the replacement session's notice
+ok - auto-arm: a new session id retires an interrupted episode despite process identity reuse
+ok - auto-arm: verified same-session lock moves preserve the interrupted episode
+ok - auto-arm: HUP, TERM and INT after lock loss close silently as session-ended
+ok - auto-arm: all interruption signals preserve verified re-anchors and reject replacement session ids
+ok - auto-arm: an abandoned owner claim is reclaimed so a lapsed cycle re-arms
+ok - auto-arm: an abandoned-claim reclaim reaps a dead steal mutex without nesting
+ok - auto-arm: a legacy owner still arming is never reclaimed while its watcher keeps beating
+ok - auto-arm: a fresh legacy arming claim is never reclaimed while its startup window is still open
+ok - auto-arm: a live claim the ledger does not name is never reclaimed
+ok - auto-arm: a claim whose pid was reused is reclaimed even while its ledger entry still reads arming
+ok - auto-arm: a reused-pid claim is reclaimed even with no ledger entry to prove it
+ok - auto-arm: an identity-matched owner still arming is never reclaimed
+ok - auto-arm: the guard's terminal-check claim is never reclaimed
+ok - auto-arm: a stuck live legacy owner is retired via TERM and its lock reclaimed
+ok - auto-arm: a SIGSTOPped legacy owner is reclaimed with TERM pending and dies on continue
+ok - auto-arm: a live open generation claim defers concurrent firings with no lock held
+ok - auto-arm: a hung generation owner with no watcher beat is superseded so re-arming self-heals
+ok - auto-arm: a dead session's orphaned open claim is superseded so the replacement session delivers the wake
+ok - auto-arm: a resumed session with the dead session's id still supersedes its orphaned claim
+ok - auto-arm: a claim is open only under a numeric session lock its owner descends from
+ok - auto-arm: a recycled-bridge claim stays open on its recorded session id and lock-holder identity, and nothing else does
+ok - auto-arm: an identityless arming ledger never defers the gate (reused-pid loophole closed)
+ok - auto-arm: a superseded owner never re-invokes the arm and leaves its successor's claim untouched
+ok - auto-arm: a superseded owner goes silent - one supersession episode, one translation, no held mutex
+ok - auto-arm: a claim from an earlier Claude session no longer defers the continued session's firings
+ok - auto-arm: need vanishing mid-cycle closes without a rewake
+ok - auto-arm: mid-cycle AFK hands triage to the daemon with no rewake
+ok - auto-arm: active in a marked secondmate home
+ok - auto-arm: a long FM_POLL with FM_GUARD_GRACE unset reaches fm-watch-arm.sh with the derived grace
+ok - auto-arm: config/supervision-host-off keeps the hook on the arm exactly as before
+ok - auto-arm: a Claude home without config/supervision-host runs the host by default
+ok - auto-arm: an opted-in home runs the host bound to its generation, and a host line rewakes like a wake
+ok - auto-arm: a wake the host hands back under the away record says it is automatic supervision, not a return
+ok - auto-arm: a wake the host hands back beside a quiet record carries no away note
+ok - auto-arm: without the host the rewake banner is unchanged, eight wake lines at most
+ok - auto-arm: a host handback delivers every host line, while its wake lines keep their cap
+ok - auto-arm: a host that stood down closes silently without a retry
+ok - auto-arm: a host rewake refused on an acknowledged marker opens no failure episode
+ok - auto-arm: a lost host hand-back notifies once per failure episode
+ok - auto-arm: a lost host hand-back on an announced marker notifies once per failure episode
+ok - auto-arm: a host that died without a close is retried, then reported as a failure
+ok - auto-arm: --help, -h, and an unknown argument arm nothing; the Stop path still arms
+ok - fm-lock: shared session-lock lib preserves the status path
+ok - auto-arm: stands down only on a pi-code-delivered transcript_path (/.pi/)
+FM_TEST_END 2026-11-14T22:15:36Z tests/fm-claude-stop-autoarm.test.sh exit=0 duration_ms=67310 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T22:15:36Z tests/fm-spawn-dispatch-profile.test.sh family=backend-dispatch expected_gate_skip=none
+ok - allowlist=absent preserves the operational floor and filters only when opted in
+ok - allowlist=missing-config preserves the operational floor and filters only when opted in
+ok - allowlist=enabled preserves the operational floor and filters only when opted in
+ok - allowlist=empty preserves the operational floor and filters only when opted in
+ok - invalid allowlist names refuse before launch or task publication
+ok - inaccessible config with present allowlist refuses before launch or task publication
+ok - inaccessible config with absent allowlist refuses before launch or task publication
+ok - inaccessible ancestor with present allowlist refuses before launch or task publication
+ok - inaccessible ancestor with absent allowlist refuses before launch or task publication
+ok - secondmate launch inherits the allowlist for subsequent worker launches
+ok - local inheritance preserves the allowlist on source errors and mirrors proven absence
+ok - remote inheritance preserves the allowlist on source errors and mirrors proven absence
+ok - Codex absent, bypass, and restricted modes preserve flags for ships, scouts, and secondmates
+ok - invalid Codex permission files refuse spawns and relaunches before mutation
+not ok - Claude spawn with Codex restriction should succeed: warning: ~/.cache/tmp/fm-spawn-dispatch-profile.yNB3ih/codex-perm-claude/home/data/codex-perm-claude/launch-brief.md records no ship branch; defaulting to legacy branch fm/codex-perm-claude
+warning: ~/.cache/tmp/fm-spawn-dispatch-profile.yNB3ih/codex-perm-claude/home/data/codex-perm-claude/launch-brief.md records no delivery contract line (scaffolded before ship briefs recorded one); launching on the explicit --mode no-mistakes - confirm its definition of done matches
+mise ERROR error parsing config file: ~/.config/mise/config.toml
+mise ERROR Config files in ~/.config/mise/config.toml are not trusted.
+Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
+mise ERROR Version: 2026.11.3 linux-x64 (2026-11-06)
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+error: refusing to pre-register Claude trust: could not record trust for '~/.cache/tmp/fm-spawn-dispatch-profile.yNB3ih/codex-perm-claude/wt' and project '~/.cache/tmp/fm-spawn-dispatch-profile.yNB3ih/codex-perm-claude/project' in '~/.cache/tmp/fm-spawn-dispatch-profile.yNB3ih/codex-perm-claude/home/user-home/.claude.json'
+error: could not pre-register Claude workspace trust for ~/.cache/tmp/fm-spawn-dispatch-profile.yNB3ih/codex-perm-claude/wt; refusing to launch a claude worker that would wedge on the trust dialog; inspect window firstmate:fm-codex-perm-claude: expected exit 0, got 1
+FM_TEST_END 2026-11-14T22:16:13Z tests/fm-spawn-dispatch-profile.test.sh exit=1 duration_ms=36279 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T22:16:13Z tests/fm-archive-task.test.sh family=unclassified expected_gate_skip=none
+ok - archive copies the named task artifacts and reports success
+ok - missing worktree refuses without archiving
+ok - missing task artifacts refuse
+ok - existing archive refuses without force
+ok - force replaces an existing archive
+ok - completed archive survives a retry after worktree cleanup
+ok - only the requested task directory is copied
+FM_TEST_END 2026-11-14T22:16:13Z tests/fm-archive-task.test.sh exit=0 duration_ms=404 gate_skip=false
+FM_TEST_BEGIN 2026-11-14T22:16:13Z tests/fm-contributions.test.sh family=snapshot-bearings expected_gate_skip=optional-binary
+ok - a declared settlement defers quietly while another command holds the task
+ok - a task settled by its first PR gets no closed event for its second closed PR
+ok - a declared release waits while the home is away and applies on the next attended poll
+ok - a declared release waits while another process holds the away-record lock
+ok - linking a follow-up PR keeps the declared policy valid
+ok - a closed PR of a task without a captain hold raises no event
+ok - a hold linked after the closure gets its own closed event once
+ok - retained delivery keeps its PR policy and interrupted settlement replays once
+ok - errored evidence, a different PR, and a changed question cannot settle a hold
+ok - forge events settle only declared questions and preserve unfinished work
+ok - disabled, unmatched, and superseded policies cannot settle a hold
+ok - only required-captain contributions are rows; other actors are counted
+ok - replaced-head verdict is stale and cannot create a captain requirement
+ok - unchecked ownership is disclosed and cannot prove silence
+ok - newest check with no verdict is distinct from passing and pending
+ok - new maintainer comment wakes once and stays pending until acknowledged
+ok - new maintainer review wakes once and stays pending until acknowledged
+ok - new maintainer inline wakes once and stays pending until acknowledged
+ok - a listed collaborator bot and its re-raise remain review-bot fleet signals
+ok - review-bot watching is off until a home lists a bot
+ok - the armed allowlist is stable across working directories and policy toggles
+ok - ready-for-pr on a filed issue becomes a planning wake
+ok - a fresh open issue remains measured maintainer triage
+ok - an absent check lane remains missing across repeated observations
+ok - mixed freshness retains measured captain work and discloses the gap
+ok - malformed durable evidence cannot prove silence
+ok - a transient ready-for-pr label wakes and its exact acknowledgement survives replay
+ok - recorded judgment keeps its exact head and is stale immediately on a published replacement
+ok - verdict help and refusal name exactly the actors the command accepts
+ok - a current forge observation refreshes a verdict after a replacement
+ok - an unavailable current head leaves verdict freshness unknown
+ok - away yolo delivery is fleet work without granting merge authority
+actionable: PR https://github.com/o/r/pull/8 is registered but its ready line did not reach the parent channel (rc=3)
+ok - cross-home away yolo delivery is fleet work
+ok - retired ownership persists and unsupported forge remains visibly unmeasured
+ok - unsupported forge coverage is disclosed without inventing fleet work
+ok - held unsupported forge coverage remains unmeasured
+ok - unsupported ownership stays silent and unmeasured; legacy errors clear without fabricated evidence
+ok - legacy cleanup preserves unsupported ownership and supported missing-evidence failure in the same file
+ok - shared contribution signal wakes once while retaining both acknowledgements
+ok - watcher keeps observer diagnostics separate from contribution wakes
+ok - expired child unsupported-forge coverage remains unmeasured
+ok - watcher surfaces one newly durable contribution signal without re-ringing it
+ok - parent consumes measured child coverage and refuses expired child silence
+ok - unreadable pending signals refuse an empty-inbox claim
+ok - record task identity is the directory dirname/basename named
+ok - snapshot and pending create nothing in a home without state
+ok - budget exhausted mid-observation (exhaust) keeps the prior record and stays silent
+ok - budget exhausted mid-observation (hang) keeps the prior record and stays silent
+ok - a genuine forge failure inside the budget still records the error, its cause and wakes
+ok - one HTTP 500 is retried once and a successful retry stays healthy
+ok - two transient failures wake once and name the failed read in the record
+ok - an HTTP 404 is reported without retrying
+ok - real gh error shapes drive the intended retry decision and keep their error
+ok - a URL never inherits the previous URL read diagnostic
+jq: error (at ~/.cache/tmp/fm-contributions.d7nopf/after.json:1): null (null) cannot be matched, as it is not a string
+ok - a URL owned by two tasks is observed once and every owner receives the result
+ok - a merged or closed contribution settles once, is not re-read, and never wakes again
+ok - a late owner inherits a terminal observation without a forge read or wake
+ok - a retry converges every owner whose saved row is not terminal, keeping its own acknowledgement state
+ok - an open PR linked from a done task keeps being observed
+ok - a home with many settled records still observes its open PR within the check bound
+ok - a home with many settled records and a malformed one still observes its open PR within the check bound
+ok - a record without a trailing newline stays readable beside its neighbours
+ok - records beyond one read batch are all read
+ok - a later URL waits when fewer than fifteen seconds remain for its observation
+ok - eight 3-second PR reads complete fresh within one 20-second poll cycle
+ok - a read killed at the five-second bound is budget refusal and stays silent
+ok - rotation preserves timed-out records and refreshes every slow PR on successive cycles
+ok - the effective budget is cut down to the watcher per-check bound with margin
+ok - generated checks enforce configured and inherited budgets at runtime
+ok - a genuinely unavailable forge records an error and wakes once per failure episode
+ok - a late owner does not restart a shared forge failure episode
+ok - retire stops the unavailable check, leaves rotation and restores complete coverage
+ok - a late owner settled beside a retired final record stays unretired and known
+ok - retire is idempotent and refuses non-captain, unknown, malformed and signal-bearing pairs
+ok - an acknowledged unanswered thread under a hold is raised again after a day, daily, until the author replies
+ok - a resolved thread with no reply counts as answered
+ok - only inline threads and reviews requesting changes with text, no author reply, resolution or later verdict are tracked as unanswered
+ok - the reply age is a validated seconds setting
+ok - a closed pull request stops raising its threads
+ok - the unanswered re-raise and the review-thread read stay off unless a reply age is configured
+ok - arm copies a configured reply age into the generated check
+ok - a many-review PR stores only classified review fields and stays readable
+FM_TEST_END 2026-11-14T22:19:53Z tests/fm-contributions.test.sh exit=0 duration_ms=219895 gate_skip=false
+FM_TEST_SUMMARY total=14 failed=6 skipped_gate=0 duration_ms=1678354
+FM_TEST_SUMMARY_FAMILY family=backend-dispatch count=1 duration_ms=36279 failed=1
+FM_TEST_SUMMARY_FAMILY family=pr-forge count=3 duration_ms=308650 failed=2
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=2 duration_ms=539878 failed=1
+FM_TEST_SUMMARY_FAMILY family=session-bootstrap count=1 duration_ms=65328 failed=1
+FM_TEST_SUMMARY_FAMILY family=snapshot-bearings count=1 duration_ms=219895 failed=0
+FM_TEST_SUMMARY_FAMILY family=standalone count=1 duration_ms=67310 failed=0
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=404 failed=0
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=4 duration_ms=700315 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-captain-hold-lifecycle.test.sh duration_ms=530076
+FM_TEST_SLOWEST rank=2 script=tests/fm-watch-triage-pause.test.sh duration_ms=459970
+FM_TEST_SLOWEST rank=3 script=tests/fm-teardown.test.sh duration_ms=288805
+FM_TEST_SLOWEST rank=4 script=tests/fm-contributions.test.sh duration_ms=219895
+FM_TEST_SLOWEST rank=5 script=tests/fm-watcher-lock.test.sh duration_ms=113098
+FM_TEST_SLOWEST rank=6 script=tests/fm-session-lock-ancestry.test.sh duration_ms=84319
+FM_TEST_SLOWEST rank=7 script=tests/fm-claude-stop-autoarm.test.sh duration_ms=67310
+FM_TEST_SLOWEST rank=8 script=tests/fm-bootstrap.test.sh duration_ms=65328
+FM_TEST_SLOWEST rank=9 script=tests/fm-inactive-reconcile.test.sh duration_ms=42928
+FM_TEST_SLOWEST rank=10 script=tests/fm-spawn-dispatch-profile.test.sh duration_ms=36279
+FM_TEST_SLOWEST rank=11 script=tests/fm-park.test.sh duration_ms=18928
+FM_TEST_SLOWEST rank=12 script=tests/fm-dod-lib.test.sh duration_ms=9802
+FM_TEST_SLOWEST rank=13 script=tests/fm-pr-merge.test.sh duration_ms=917
+FM_TEST_SLOWEST rank=14 script=tests/fm-archive-task.test.sh duration_ms=404
+fm-test-run: wrote timing artifact: ~/.no-mistakes/evidence/01M7DZX4NWQD0NWBF1Y31WVJ0V/targeted-tests.json

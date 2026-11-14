@@ -1,0 +1,21 @@
+Failure triage for the weekly refit merge (HEAD 0f2766e2) - test phase, 2026-11-14
+
+Targeted run (bin/fm-test-run.sh, 14 scripts, targeted-tests.log/json): 9 scripts passed; 5 failed.
+Each failure was compared against the unmerged upstream head 427056c4 and the fork base a2647e82.
+
+1. fm-pr-merge "updated-draft-pending", fm-captain-hold-lifecycle "could not create the user-config origin",
+   fm-spawn-dispatch-profile (a different case fails on each tree)
+   Cause: host tasks-axi is a mise shim (~/.local/bin/tasks-axi -> mise shims). These tests set HOME to a throwaway dir,
+   so mise loses its trust record and the shim exits 1 ("Config files in ~/.config/mise/config.toml are not trusted").
+   Same failure on 427056c4 and a2647e82.
+   Proof: rerun with PATH=<real node bin>:$PATH -> fm-spawn-dispatch-profile 111 ok / 0 fail; fm-pr-merge 150 ok / 0 fail
+   (rerun-real-tasks-axi.*.log).
+2. fm-bootstrap "backend=herdr must fail closed on its own missing session CLI"
+   Cause: herdr is installed in /usr/bin, which is in the test's BASE_PATH, so the test cannot hide herdr. Host-specific.
+3. fm-session-lock-ancestry "the pty-host was not reparented to init"
+   Cause: orphans on this host are adopted by the user systemd subreaper (pid 1180), not pid 1. Host-specific.
+4. fm-park "pending-hang: the tick did not save the lane it never reached"
+   bin/fm-park.sh and tests/fm-park.test.sh are byte-identical to upstream 427056c4; the case fails there too.
+   Instrumented: cursor=[lane] took=1s. FM_PARK_TICK_SECS=2 gives parked lanes a (2+1)/2 = 1 s integer-second budget,
+   which tick setup uses up before the first lane is visited, so the cursor names lane, not lane2.
+   Upstream-owned timing issue, not a merge regression.

@@ -1,0 +1,26 @@
+## 1. first archive while worktree exists
+$ bin/fm-archive-task.sh t1
+archived task t1 from $LAB/wt-t1/.agent/tasks/t1 into $LAB/projects/demo/.agent/archive/t1
+[exit=0]
+$ cat $LAB/projects/demo/.agent/archive/t1/notes.md
+v1 notes
+[exit=0]
+## 2. lane changes artifacts after resume
+## 3. plain rerun refuses
+$ bin/fm-archive-task.sh t1
+REFUSED: archive destination already exists: $LAB/projects/demo/.agent/archive/t1 (rerun with --force to overwrite)
+[exit=1]
+## 4. --force refresh (ship-landing instruction)
+$ bin/fm-archive-task.sh t1 --force
+archived task t1 from $LAB/wt-t1/.agent/tasks/t1 into $LAB/projects/demo/.agent/archive/t1
+[exit=0]
+$ cat $LAB/projects/demo/.agent/archive/t1/notes.md
+v2 notes after review
+[exit=0]
+## 5. worktree removed by watcher teardown; archive survives
+$ bin/fm-archive-task.sh t1
+archived task t1 already present at $LAB/projects/demo/.agent/archive/t1; recorded worktree is gone
+[exit=0]
+$ cat $LAB/projects/demo/.agent/archive/t1/notes.md
+v2 notes after review
+[exit=0]

@@ -1,0 +1,5 @@
+## bootstrap in fresh lab home (defaults)
+[exit=0]
+## bootstrap with config/record-hygiene and a stale ghost record
+RECORD_HYGIENE: metadata has no tab: ghost
+[exit=0]

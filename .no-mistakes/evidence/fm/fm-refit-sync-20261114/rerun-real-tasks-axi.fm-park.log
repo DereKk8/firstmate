@@ -1,0 +1,13 @@
+1..34
+ok - github gate: clean PR parks, and draft, closed, conflict, behind, unknown mergeability, CI pending/failing/absent, changes requested, unresolved and unread threads each refuse
+ok - github gate refuses while a required check of the base branch has not reported on the head, or the requirement cannot be read
+ok - github gate waits for every reviewer bot to submit a review of the current head, or the quiet window since it was pushed
+ok - gitlab gate: clean MR parks, and draft, conflict, rebase, CI running/failed/absent, changes requested, other merge blockers, unresolved threads, a pipeline on an older commit, and a review bot that has not finished each refuse, across every page of discussions; a failed page is unreadable for gate and tick
+ok - park evaluates the gate twice, leases the slot, writes a private record, stops the agent once, and declares the wait
+ok - park refuses an unsupported backend before leasing, recording, or stopping
+ok - a head change between the verdict and the stop refuses the park and leaves the agent running
+ok - an instruction or a new turn arriving after the preflight refuses the park before the agent is stopped
+ok - park holds the inbox delivery lock across its final check and stop, refusing a newly delivered instruction without stopping the agent
+ok - park leaves the task metadata lock available to fm-control exit
+ok - a pending park stays watched during stop, promotes a later stop, and expires only after the stop bound
+not ok - pending-hang: the tick did not save the lane it never reached
