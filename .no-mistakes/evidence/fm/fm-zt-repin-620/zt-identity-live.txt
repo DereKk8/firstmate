@@ -1,0 +1,32 @@
+$ git -C <fresh clone of github.com/DereKk8/project-skills> log -1 --format=%H origin/master -- shared/zero-trust-review/SKILL.md
+d6d9b9d603d5d092157187b9e1b61ef062b9decd
+$ git rev-parse d6d9b9d:shared/zero-trust-review/SKILL.md ; grep Skill version
+553488098e1e1b4eafa4ee0410024bf6d1ab3466
+Skill version: 6.2.0
+
+## Scenario 1: new pin (this branch)
+$ bin/fm-zt-review.sh identity
+Identity: zero-trust-review 6.2.0 d6d9b9d603d5d092157187b9e1b61ef062b9decd 553488098e1e1b4eafa4ee0410024bf6d1ab3466
+rc=0
+$ bin/fm-zt-review.sh identity --check
+Identity: zero-trust-review 6.2.0 d6d9b9d603d5d092157187b9e1b61ef062b9decd 553488098e1e1b4eafa4ee0410024bf6d1ab3466
+rc=0
+$ bin/fm-zt-review.sh show-skill | head -5
+---
+name: zero-trust-review
+description: The shared, project-agnostic zero-trust review of an agent-built change, for every team and every tool. Use for every PR or change review. Defines intent and pinning, roles, independent interpretation and verification, product-surface proof, the attack phase, findings, model choice, staffing, the bounded fix loop, the briefing template, the verdict words and the report shape, each rule with a stable requirement ID.
+---
+
+rc=0
+
+## Scenario 2: base commit script (old 6.0.0 pin) against same clone
+error: pinned skill 6.0.0 at 948a446a568c2f5353c88a74c1a44fc73cb40244 is not the newest master change d6d9b9d603d5d092157187b9e1b61ef062b9decd (version 6.2.0); re-pin this script
+rc=1
+
+## Scenario 3: stale clone (origin/master at 959e17e) refuses? new pin must not be newest-check-satisfied by older clone - shows check reads clone state
+error: pinned skill 6.2.0 at d6d9b9d603d5d092157187b9e1b61ef062b9decd is not the newest master change 959e17eec321b9b780e95b75198bd0c0aad6227b (version 6.1.0); re-pin this script
+rc=1
+
+## Scenario 4: blob drift adversarial - pin override with wrong blob
+error: pinned skill blob drift: commit d6d9b9d603d5d092157187b9e1b61ef062b9decd has 553488098e1e1b4eafa4ee0410024bf6d1ab3466, pin is e2e0757666dc1072dce4e7fb4580d2c3b0900106
+rc=1
