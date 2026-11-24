@@ -1,0 +1,38 @@
+FM_TEST_BEGIN 2026-11-24T14:16:29Z tests/fm-captain-hold-teardown.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - new, active, and released holds publish origins after backend success with and without deferral
+Terminated                 PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" bash -c 'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b > "$home/hold.out" 2> "$home/hold.err"
+Terminated                 PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" bash -c 'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b > "$home/hold.out" 2> "$home/hold.err"
+Terminated                 PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" bash -c 'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b > "$home/hold.out" 2> "$home/hold.err"
+Terminated                 PATH="$home/fakebin:$PATH" REAL_TASKS_AXI="$TASKS_AXI_BIN" FM_HOME="$home" FM_STATE_OVERRIDE="$home/state" FM_DATA_OVERRIDE="$home/data" FM_CONFIG_OVERRIDE="$home/config" bash -c 'printf "%s\n" "$$" > "$FM_HOME/hold-pid"; exec "$@"' _ "$ROOT/bin/fm-captain-hold.sh" hold "$id" --reason "Choose for B" --origin origin-b > "$home/hold.out" 2> "$home/hold.err"
+ok - failed and interrupted origin moves cannot inherit active, expired, replayed, or completed calls
+ok - historical self-inventories name a workable repair that preserves sibling entries
+ok - completion and verification compare backend identities for entries and current or stored origins
+ok - complete refuses the origin as its own captain-call inventory
+ok - complete refuses an entry held for another origin and flags one with none recorded
+ok - both body-decoding paths work without the allow_nonref default
+ok - cleanup preserves every byte of a retained body's non-ASCII characters
+ok - cleanup leaves a captain-held work item open with its deliverable, and only an answer closes it
+ok - release and scout report retention distinguish deliveries from rejected merge answers
+ok - an interrupted cleanup keeps the captain call recoverable and session start retains it
+ok - an answer before cleanup replay preserves the retained report
+ok - an answer before cleanup replay notes the retained Gerrit change
+ok - an unusable pending-close record names its reason instead of a bare refusal
+ok - an unsupported relocated report does not wedge the captain's answer
+ok - cleanup retains captain calls in the configured backlog
+ok - cleanup keeps a captain-held Gerrit task open and records its change URL
+ok - merge approval releases before zero-retention cleanup records completion
+ok - the PR merge entrypoint refuses a captain-held task before merging
+ok - the local merge entrypoint refuses a captain-held task before merging
+ok - the PR merge entrypoint separates an unreadable authority record from an absent one
+ok - the local merge entrypoint separates an unreadable authority record from an absent one
+ok - merge entrypoints reject unsafe identities and absent state before locking
+ok - merge entrypoints refuse a replacement incarnation after waiting for cleanup
+ok - merge entrypoints own task state before forced cleanup can retire it
+ok - a released merge passes the guarded entrypoint and remains recently landed
+ok - cleanup refuses a ship row when its captain hold cannot be read
+ok - an answered captain call archived by Done retention still satisfies the completion gate
+ok - an answered captain call archived to a user-configured location still satisfies the completion gate
+FM_TEST_END 2026-11-24T14:22:29Z tests/fm-captain-hold-teardown.test.sh exit=0 duration_ms=360197 gate_skip=false
+FM_TEST_SUMMARY total=1 failed=0 skipped_gate=0 duration_ms=360232
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=1 duration_ms=360197 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-captain-hold-teardown.test.sh duration_ms=360197

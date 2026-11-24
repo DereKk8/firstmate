@@ -1,0 +1,27 @@
+$ bin/fm-test-run.sh --json lane.json tests/fm-zt-review.test.sh (real lane timing)
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=3147 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-zt-review.test.sh duration_ms=3147
+fm-test-run: wrote timing artifact: ~/.cache/tmp/tmp.XbzbRgzOOQ/lane.json
+exit=0
+FM_TEST_AGGREGATE lanes=1 total=1 failed=0 skipped_gate=0 critical_path_duration_ms=3181
+aggregate exit=0
+$ fm-ci-budget-warn.sh agg.json  (real short lane -> expect silence)
+exit=0
+$ fm-ci-budget-warn.sh over.json  (same lane rewritten to 21.0 min -> expect warning)
+::warning title=CI budget::lane scripts command time was 21.0 minutes, above the 20-minute healthy budget
+fm-ci-budget-warn: warning: lane scripts command time was 21.0 minutes, above the 20-minute healthy budget
+exit=0
+$ edge 1199999 ms -> expect silence
+exit=0
+$ lint telemetry 1300s -> expect warning
+fm-ci-budget-warn: warning: lint partition shellcheck-1 command time was 21.7 minutes, above the 20-minute healthy budget
+exit=0
+$ missing aggregate -> warn, exit 0
+fm-ci-budget-warn: warning: no aggregate timing JSON at ~/.cache/tmp/tmp.XbzbRgzOOQ/nope.json; skipped the 20-minute budget check
+exit=0
+$ unreadable aggregate -> warn, exit 0
+fm-ci-budget-warn: warning: could not parse ~/.cache/tmp/tmp.XbzbRgzOOQ/bad.json; skipped the 20-minute budget check
+exit=0
+$ no args -> usage exit 2
+fm-ci-budget-warn: need an aggregate timing JSON (see --help)
+exit=2

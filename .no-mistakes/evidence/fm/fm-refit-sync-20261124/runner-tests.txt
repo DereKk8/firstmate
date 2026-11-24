@@ -1,0 +1,135 @@
+FM_TEST_BEGIN 2026-11-24T14:00:48Z tests/fm-ci-workflow.test.sh family=unclassified expected_gate_skip=none
+ok - CI matrices cover every executable serial lane and canonical lint root exactly once
+ok - CI keeps the 15-minute packing layout, 30-minute caps, lint cache, and warning-only budget check
+ok - a newer push to one PR supersedes that PR's in-flight CI
+ok - distinct PRs get distinct concurrency groups
+ok - close main pushes keep only the newest run, apart from every PR group
+ok - only the full-ci label joins and supersedes the PR's group; other labels cancel nothing
+ok - an unlabelled outside PR runs only the quick checks and a failing Full suite naming full-ci
+ok - the full-ci label and later pushes run every job, and the verdict follows the lanes
+ok - main pushes, own branches and write-access authors still run every job and pass the verdict
+ok - an unrelated label runs no job on a waiting, labelled or owner PR
+ok - a late-finishing unrelated label run leaves a full-ci pass visible
+ok - an unrelated label after a failed or waiting suite leaves every earlier check as it was
+ok - the fork skip variables change nothing unless set, and each skips only its own run or job
+ok - the timing aggregate still runs after a failed lane unless the push run is skipped
+ok - every ci.yml job carries a finite timeout
+ok - every ci.yml job belongs to one of the three timeout tiers
+ok - fast tier jobs share one 5 minute tripwire
+ok - normal tier jobs share one 30 minute budget
+ok - each heavy lane keeps a 20 minute step tripwire under a 75 minute job backstop
+FM_TEST_END 2026-11-24T14:00:55Z tests/fm-ci-workflow.test.sh exit=0 duration_ms=7157 gate_skip=false
+FM_TEST_BEGIN 2026-11-24T14:00:55Z tests/fm-test-run.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - exact suite coverage: --all lists every tests/*.test.sh once
+ok - family selection returns a proper subset of the suite
+ok - single-script selection lists exactly that path
+ok - changed-file selection stays conservative (never silent full suite)
+ok - a task marker refuses execution in the primary checkout and leaves worktrees and inspection alone
+ok - runner and its documentation surfaces select their curated family, not just their contract owners
+ok - shell line-ending policy selects runner coverage
+ok - changed inheritance sender, receiver and counter select the focused generation contract
+fm-test-run: no tests selected for changes vs HEAD (map is conservative; use --all for the complete suite)
+ok - changed selection covers dependents, fails closed for live unmapped source, and accepts retired unconsumed source
+ok - a bin reference selects the referencing scripts, and consumers still select their curated families
+ok - changed defaults to bounded automatic scheduling with serial override
+ok - Windows emulation exempts only synthetic POSIX modes
+ok - a plain script list defaults to bounded automatic concurrency without an automatic timeout
+ok - family proofs run concurrently only within separate family phases
+ok - empty changed selection emits deterministic text and JSON summaries
+ok - timing markers and JSON artifact are valid
+ok - aggregate exit reflects any script failure
+ok - gate-skip accounting is honest and non-failing
+ok - a gate skip records why it skipped
+ok - a script that actually ran records no skip reason
+ok - live guards are recorded as a capability class, not a bare env opt-in
+ok - fail-on-gate-skip converts herdr-not-found into a hard failure
+ok - exclude-family drops the named primary family after selection
+ok - fm-test-run: family tern selects the tern suite and smoke test, and the lane coverage guard accepts them
+ok - proven-isolated scheduling uses committed CI duration weights
+ok - family, all, changed, and script selections ignore parallel hints
+ok - portable shard union, disjointness, and coverage guard hold
+ok - portable parallel lanes are fully hinted and packed within 5% of each other
+ok - portable serial shards are a deterministic disjoint cover of the serial lane
+ok - coverage guard bounds the unmeasured share and serial packing within fifteen minutes
+ok - serial packing accepts the exact budget, keeps an indivisible overflow, and refuses a multi-script overflow
+ok - portable serial shard lanes refuse mismatched, out-of-range, and countless names
+ok - --jobs refuses non-proven / stateful selections
+ok - --jobs 2 is accepted on a portable parallel lane
+not ok - --jobs on a proven family must be admitted, got 1:  FM_TEST_BEGIN 2026-11-24T14:05:43Z tests/fm-session-lock-ancestry.test.sh family=watcher-wake-lock expected_gate_skip=none
+FM_TEST_BEGIN 2026-11-24T14:05:43Z tests/fm-supervision-events.test.sh family=watcher-wake-lock expected_gate_skip=none
+ok - handle_push_transition: a blocked crew enqueues a stale wake naming its window and wakes the supervisor
+ok - handle_push_transition: a rex blocked edge's wake names the backend and carries Rex's blocked kind and message
+ok - handle_push_transition: enqueue failure cannot commit the Herdr dedupe marker
+ok - handle_push_transition: a declared-pause crew is absorbed (no fast wake), left to the poll loop's long cadence
+ok - handle_push_transition: a captain-held crew is absorbed (no fast wake), left to the poll loop's long cadence
+ok - event_wait_or_sleep: herdr windows go on the event pane list, but kind=secondmate endpoints are excluded
+ok - event_wait_or_sleep: herdr keeps the push wait in a mixed home; T3's wait runs only without another push backend
+ok - event_wait_or_sleep: one cached capability probe owns validation across bounded waits
+ok - event_wait_or_sleep: a home with no push-capable window is inert (sleeps POLL, never touches the event path)
+ok - event_wait_or_sleep: consecutive event-path failures disable the fast-path and revert to pure polling (fail-closed)
+# fm-supervision-events.test.sh: all assertions passed
+FM_TEST_END 2026-11-24T14:05:44Z tests/fm-supervision-events.test.sh exit=0 duration_ms=773 gate_skip=false
+ok - session-lock: a version-named Claude Code session is identified from its install path and argv[0]
+ok - session-lock: a harness that is pid 1 of its own namespace is examined, not skipped
+ok - session-lock: a bun-run omp script is identified under both platforms' comm reporting
+ok - session-lock: ordinary script paths under a harness directory are not harness processes
+ok - session-lock: ownership stops at the first non-harness gap above the contiguous run
+ok - session-lock: a live version-named session holding the lock is not mistaken for a stale owner
+ok - session-lock: a trusted same-session id keeps owning a recycled background chain, and nothing weaker does
+ok - session-lock: a trusted id anchors the lock on the model-loop process, anything else on the outermost pid
+ok - session-lock: a Windows session is identified from its published pid across the severed parent link
+ok - session-lock: a published Windows pid is confirmed against the process table before it is trusted
+ok - session-lock: a tagged Windows pid is never resolved against the Cygwin process table
+ok - session-lock: a published identity is accepted by every gate that reads the lock
+ok - session-lock: a live tagged lock holder is a live foreign owner to a second Windows session
+ok - session-lock: fm-lock.sh protects valid tagged owners and reclaims dead or malformed records
+ok - session-lock: a published Windows Claude pid is accepted only with its session id
+ok - session-lock: a Windows /clear keeps the lock and re-keys its session id
+ok - session-lock: a Windows-tagged lock stays inert off Windows
+ok - session-lock: a task lease follows a live tagged lock holder and goes stale when it exits
+ok - session-lock: a harness in the local process table resolves untagged when ps has no -o option
+ok - session-lock e2e: a version-named session claims the home and arms supervision
+ok - session-lock e2e: a session parented by a harness-named daemon claims the home and arms supervision
+ok - session-lock e2e: a version-named session under a harness-named daemon keeps its own lock
+not ok - the pty-host was not reparented to init after the daemon ended
+FM_TEST_END 2026-11-24T14:07:05Z tests/fm-session-lock-ancestry.test.sh exit=1 duration_ms=82380 gate_skip=false
+FM_TEST_SUMMARY total=2 failed=1 skipped_gate=0 duration_ms=82486
+FM_TEST_SUMMARY_FAMILY family=watcher-wake-lock count=2 duration_ms=83153 failed=1
+FM_TEST_SLOWEST rank=1 script=tests/fm-session-lock-ancestry.test.sh duration_ms=82380
+FM_TEST_SLOWEST rank=2 script=tests/fm-supervision-events.test.sh duration_ms=773
+FM_TEST_END 2026-11-24T14:07:05Z tests/fm-test-run.test.sh exit=1 duration_ms=370620 gate_skip=false
+FM_TEST_BEGIN 2026-11-24T14:07:05Z tests/fm-lint.test.sh family=pure-contract-unit expected_gate_skip=none
+ok - fm-lint.sh --help reports the complete executable interface
+ok - fm-lint.sh --list-files reports the complete shell inventory
+ok - canonical lint partitions preserve complete source-aware coverage and reject weakened modes
+ok - fm-lint.sh --fast disables ShellCheck extended analysis
+ok - fm-lint.sh keeps full ShellCheck analysis by default in CI
+ok - fm-lint.sh rejects explicit --fast mode in CI
+ok - fm-lint.sh --fast catches an ordinary shell lint defect
+ok - fm-lint.sh pins an explicit ShellCheck version (0.11.0)
+ok - ShellCheck installer retries a transient download failure
+ok - ShellCheck installer skips download when the pinned binary is already present
+ok - ShellCheck installer selects the official archive, URL, and checksum per OS/arch
+ok - ShellCheck installer rejects a wrong checksum
+ok - ShellCheck installer falls back to shasum -a 256 when sha256sum is absent
+ok - ShellCheck installer prefers sha256sum when both hashers are present
+ok - ShellCheck installer rejects an unsupported OS or architecture
+ok - missing ShellCheck fails closed
+ok - fm-lint.sh refuses to lint under a non-pinned ShellCheck version
+ok - fm-lint.sh catches a real lint defect the old no-op gate passed
+ok - fm-lint.sh rejects direct Beads CLI invocations in firstmate core
+ok - fm-lint.sh enforces backend purity for explicit core paths
+ok - fm-lint.sh ignores ambient ShellCheck options
+ok - fm-lint.sh passes a clean fixture
+ok - jobs=1 and jobs=2 preserve deterministic diagnostics, failures, cleanup bounds, and quiet telemetry
+ok - jobs=1 and jobs=2 stop complete worker trees with and without telemetry
+ok - a root pinned at the wall deadline fails by name, reaps its tree, and leaves the sentinel alive
+ok - a root refused by its enforced memory limit fails by name with a memory reason
+not ok - the fallback attempts lost per-root RSS reporting: unavailable
+FM_TEST_END 2026-11-24T14:07:33Z tests/fm-lint.test.sh exit=1 duration_ms=27395 gate_skip=false
+FM_TEST_SUMMARY total=3 failed=2 skipped_gate=0 duration_ms=405231
+FM_TEST_SUMMARY_FAMILY family=pure-contract-unit count=2 duration_ms=398015 failed=2
+FM_TEST_SUMMARY_FAMILY family=unclassified count=1 duration_ms=7157 failed=0
+FM_TEST_SLOWEST rank=1 script=tests/fm-test-run.test.sh duration_ms=370620
+FM_TEST_SLOWEST rank=2 script=tests/fm-lint.test.sh duration_ms=27395
+FM_TEST_SLOWEST rank=3 script=tests/fm-ci-workflow.test.sh duration_ms=7157

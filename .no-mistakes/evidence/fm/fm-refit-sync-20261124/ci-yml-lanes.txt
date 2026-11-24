@@ -1,0 +1,7 @@
+jobs: 11
+ci.yml lanes referenced: ['"$FM_SERIAL_LANE"', 'portable-parallel-1', 'portable-parallel-2']
+runner shard lanes missing from ci.yml: ['portable-serial-10of19', 'portable-serial-11of19', 'portable-serial-12of19', 'portable-serial-13of19', 'portable-serial-14of19', 'portable-serial-15of19', 'portable-serial-16of19', 'portable-serial-17of19', 'portable-serial-18of19', 'portable-serial-19of19', 'portable-serial-1of19', 'portable-serial-2of19', 'portable-serial-3of19', 'portable-serial-4of19', 'portable-serial-5of19', 'portable-serial-6of19', 'portable-serial-7of19', 'portable-serial-8of19', 'portable-serial-9of19']
+ci.yml lanes unknown to runner: ['"$FM_SERIAL_LANE"']
+job tests-portable-serial matrix.shard = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19] -> job-total 19 ; lanes portable-serial-<k>of19
+runner on mismatched portable-serial-1of18 exit=2
+fm-test-run: lane 'portable-serial-1of18' asks for 18 portable serial shards but this runner is configured for 19 (see --list-lanes)
