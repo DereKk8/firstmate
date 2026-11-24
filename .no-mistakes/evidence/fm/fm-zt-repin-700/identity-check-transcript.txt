@@ -1,0 +1,33 @@
+$ git -C project-skills log -1 --format="%H %s" origin/master -- shared/zero-trust-review/SKILL.md
+362715199226d1ceb3449aba79f75d8b3e8ba7d3 feat(zero-trust-review): file the smallest set of stand-alone issues (ZT-SEV-2) (7.0.0)
+
+## S1 new pin: bin/fm-zt-review.sh identity
+Identity: zero-trust-review 7.0.0 362715199226d1ceb3449aba79f75d8b3e8ba7d3 da922aa204afebb2540c3c9bef50feacb287cc2d
+exit=0
+
+## S2 new pin: bin/fm-zt-review.sh identity --check (fresh clone of DereKk8/project-skills)
+Identity: zero-trust-review 7.0.0 362715199226d1ceb3449aba79f75d8b3e8ba7d3 da922aa204afebb2540c3c9bef50feacb287cc2d
+exit=0
+
+## S3 new pin: show-skill header + ZT-SEV-2 lines
+exit=0
+6:Skill version: 7.0.0
+116:  1. Map each candidate to a model id the runtime offers now. A newer version of the same line counts and comes first. An older version does not count.
+193:  1. Skill identity: the identity line from the last `/sync-zero-trust`, which names this version.
+45:- **ZT-SEV-1.** A reproduced finding makes the verdict PRODUCT_FAIL only when it has real, reproduced harm (ZT-PROP-2) and falls in one of these floor categories: security (including tenant isolation and auth), data loss, false success or false green, breakage of a core path, or a regression that the change introduced. A reproduced finding below the floor, such as docs wording, test strength, style, or a rare edge that fails safe, does not fail the verdict. The report lists it with its trigger, harm and smallest disposition, and the coordinator files it as ZT-SEV-2 says before the verdict is final. A review with only below-floor findings gets PASS. The author fixes them in a PR separate from the PR under review, so the PASS head stays the head that merges.
+46:- **ZT-SEV-2.** Before the verdict is final, the coordinator files in the project's tracker the smallest set of issues that each stand alone. Each issue is the work of one fix PR for one owner. This holds for every issue a review files, including a pre-existing bug (ZT-PREEX-1) filed as an issue.
+143:- **ZT-LOOP-7.** A fix round changes only what the reproduced floor defects of the change need (ZT-SEV-1). A floor defect of the change is one the merge base does not have (ZT-PREEX-2). A pre-existing bug that the review found goes to its own PR (ZT-PREEX-1), and a below-floor finding goes to the PR of the issue it is filed in (ZT-SEV-2). Each fix commit goes on top of the tested head and names the IDs of the defects it fixes, so the re-check can tell the fix from everything else.
+179:  | PASS | Both proof phases ran on the pinned head and found no reproduced floor defect (ZT-SEV-1) and no serious unresolved suspicion. Below-floor findings are listed and filed as ZT-SEV-2 says. |
+blob of shown skill: da922aa204afebb2540c3c9bef50feacb287cc2d
+
+## S4 baseline (old 6.2.0 pin from base commit 8c0fff2f): identity --check
+error: pinned skill 6.2.0 at d6d9b9d603d5d092157187b9e1b61ef062b9decd is not the newest master change 362715199226d1ceb3449aba79f75d8b3e8ba7d3 (version 7.0.0); re-pin this script
+exit=1
+
+## S5 adversarial: override pin back to 6.2.0 with new script
+error: pinned skill 6.2.0 at d6d9b9d603d5d092157187b9e1b61ef062b9decd is not the newest master change 362715199226d1ceb3449aba79f75d8b3e8ba7d3 (version 7.0.0); re-pin this script
+exit=1
+
+## S6 adversarial: right commit, wrong blob
+error: pinned skill blob drift: commit 362715199226d1ceb3449aba79f75d8b3e8ba7d3 has da922aa204afebb2540c3c9bef50feacb287cc2d, pin is 553488098e1e1b4eafa4ee0410024bf6d1ab3466
+exit=1
