@@ -92,7 +92,7 @@ pin_version() {
     printf '%s\n' "$FM_ZT_VERSION"
     return 0
   fi
-  printf '%s\n' '7.0.0'
+  printf '%s\n' '7.1.0'
 }
 
 pin_commit() {
@@ -101,7 +101,7 @@ pin_commit() {
     printf '%s\n' "$FM_ZT_COMMIT"
     return 0
   fi
-  printf '%s\n' '362715199226d1ceb3449aba79f75d8b3e8ba7d3'
+  printf '%s\n' 'c800625e6e8d742d5106bebf82745318e4caf919'
 }
 
 pin_blob() {
@@ -110,7 +110,7 @@ pin_blob() {
     printf '%s\n' "$FM_ZT_BLOB"
     return 0
   fi
-  printf '%s\n' 'da922aa204afebb2540c3c9bef50feacb287cc2d'
+  printf '%s\n' '95dbf83b9d8d63559d770e34251561db2fadf173'
 }
 
 identity_line() {
