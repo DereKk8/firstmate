@@ -1,0 +1,24 @@
+$ git -C project-skills log -1 --format="%H %s" origin/master -- shared/zero-trust-review/SKILL.md
+c800625e6e8d742d5106bebf82745318e4caf919 feat(zero-trust-review): seat list is Opus 5.5 for review, Gemini 4 Neon for authoring (ZT-MODEL-4) (7.1.0)
+
+== S1: identity (new pin) ==
+Identity: zero-trust-review 7.1.0 c800625e6e8d742d5106bebf82745318e4caf919 95dbf83b9d8d63559d770e34251561db2fadf173
+rc=0
+
+== S2: identity --check against fresh project-skills clone ==
+Identity: zero-trust-review 7.1.0 c800625e6e8d742d5106bebf82745318e4caf919 95dbf83b9d8d63559d770e34251561db2fadf173
+rc=0
+
+== S3: show-skill version/seat lines from pinned bytes ==
+6:Skill version: 7.1.0
+113:  - Reviewer, verifier and every other role that never edits the product (ZT-ROLE-2): 1. Claude Opus 5.5, effort high. 2. GPT-6.2 Sol, reasoning xhigh.
+114:  - Author and fixer: 1. Gemini 4 Neon, effort high, or xhigh for the hardest changes. 2. Claude Opus 5.5, effort high.
+rc=0
+
+== S4 (adversarial): old 7.0.0 pin is refused by identity --check ==
+error: pinned skill 7.0.0 at 362715199226d1ceb3449aba79f75d8b3e8ba7d3 is not the newest master change c800625e6e8d742d5106bebf82745318e4caf919 (version 7.1.0); re-pin this script
+rc=1
+
+== S5 (adversarial): new commit with wrong version is refused ==
+error: pinned skill version is 7.1.0, pin is 7.0.0
+rc=1
